@@ -1,0 +1,88 @@
+[2026-01-01T01:20:50.919+0000] {processor.py:161} INFO - Started process (PID=1252) to work on /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:20:50.921+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/Copy_smoke_pipeline.py for tasks to queue
+[2026-01-01T01:20:50.923+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:20:50.922+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:20:51.052+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:21:14.008+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:21:14.007+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:21:14.023+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:21:14.023+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:21:14.525+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/Copy_smoke_pipeline.py took 23.619 seconds
+[2026-01-01T01:21:44.872+0000] {processor.py:161} INFO - Started process (PID=1267) to work on /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:21:44.874+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/Copy_smoke_pipeline.py for tasks to queue
+[2026-01-01T01:21:44.876+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:21:44.875+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:21:44.902+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:21:44.929+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:21:44.928+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:21:44.947+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:21:44.946+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:21:44.974+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/Copy_smoke_pipeline.py took 0.109 seconds
+[2026-01-01T01:22:15.343+0000] {processor.py:161} INFO - Started process (PID=1277) to work on /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:22:15.347+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/Copy_smoke_pipeline.py for tasks to queue
+[2026-01-01T01:22:15.349+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:22:15.348+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:22:15.386+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:22:15.675+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:22:15.674+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:22:15.698+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:22:15.697+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:22:15.822+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/Copy_smoke_pipeline.py took 0.493 seconds
+[2026-01-01T01:22:45.957+0000] {processor.py:161} INFO - Started process (PID=1287) to work on /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:22:45.959+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/Copy_smoke_pipeline.py for tasks to queue
+[2026-01-01T01:22:45.962+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:22:45.961+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:22:45.992+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:22:46.040+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:22:46.039+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:22:46.055+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:22:46.054+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:22:46.079+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/Copy_smoke_pipeline.py took 0.136 seconds
+[2026-01-01T01:23:16.352+0000] {processor.py:161} INFO - Started process (PID=1297) to work on /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:23:16.354+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/Copy_smoke_pipeline.py for tasks to queue
+[2026-01-01T01:23:16.355+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:23:16.355+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:23:16.384+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:23:16.408+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:23:16.407+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:23:16.423+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:23:16.423+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:23:16.679+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/Copy_smoke_pipeline.py took 0.337 seconds
+[2026-01-01T01:23:47.107+0000] {processor.py:161} INFO - Started process (PID=1307) to work on /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:23:47.109+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/Copy_smoke_pipeline.py for tasks to queue
+[2026-01-01T01:23:47.111+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:23:47.110+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:23:47.144+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:23:47.328+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:23:47.328+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:23:47.341+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:23:47.341+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:23:47.367+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/Copy_smoke_pipeline.py took 0.276 seconds
+[2026-01-01T01:24:17.706+0000] {processor.py:161} INFO - Started process (PID=1317) to work on /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:24:17.973+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/Copy_smoke_pipeline.py for tasks to queue
+[2026-01-01T01:24:17.974+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:24:17.974+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:24:18.025+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:24:18.432+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:24:18.431+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:24:18.619+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:24:18.619+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:24:18.672+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/Copy_smoke_pipeline.py took 0.987 seconds
+[2026-01-01T01:24:49.715+0000] {processor.py:161} INFO - Started process (PID=1327) to work on /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:24:49.717+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/Copy_smoke_pipeline.py for tasks to queue
+[2026-01-01T01:24:49.718+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:24:49.718+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:24:49.748+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:24:49.777+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:24:49.776+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:24:49.795+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:24:49.794+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:24:49.839+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/Copy_smoke_pipeline.py took 0.132 seconds
+[2026-01-01T01:25:20.208+0000] {processor.py:161} INFO - Started process (PID=1337) to work on /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:25:20.210+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/Copy_smoke_pipeline.py for tasks to queue
+[2026-01-01T01:25:20.213+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:25:20.212+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:25:20.249+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:25:20.559+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:25:20.558+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:25:20.582+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:25:20.582+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:25:20.683+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/Copy_smoke_pipeline.py took 0.490 seconds
+[2026-01-01T01:25:50.761+0000] {processor.py:161} INFO - Started process (PID=1347) to work on /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:25:50.762+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/Copy_smoke_pipeline.py for tasks to queue
+[2026-01-01T01:25:50.765+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:25:50.764+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:25:50.794+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:25:50.848+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:25:50.847+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:25:50.885+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:25:50.884+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:25:50.940+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/Copy_smoke_pipeline.py took 0.189 seconds
+[2026-01-01T01:26:12.844+0000] {processor.py:161} INFO - Started process (PID=1352) to work on /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:26:12.846+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/Copy_smoke_pipeline.py for tasks to queue
+[2026-01-01T01:26:12.849+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:26:12.848+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:26:12.945+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:26:13.278+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:26:13.277+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:26:13.301+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:26:13.301+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:26:14.138+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/Copy_smoke_pipeline.py took 1.314 seconds
+[2026-01-01T01:26:18.433+0000] {processor.py:161} INFO - Started process (PID=1357) to work on /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:26:18.435+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/Copy_smoke_pipeline.py for tasks to queue
+[2026-01-01T01:26:18.436+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:26:18.436+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:26:18.471+0000] {processor.py:840} INFO - DAG(s) 'copy_smoke_test' retrieved from /opt/airflow/dags/Copy_smoke_pipeline.py
+[2026-01-01T01:26:23.747+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:26:23.746+0000] {override.py:1858} INFO - Created Permission View: can read on DAG:copy_smoke_test
+[2026-01-01T01:26:23.759+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:26:23.758+0000] {override.py:1858} INFO - Created Permission View: can edit on DAG:copy_smoke_test
+[2026-01-01T01:26:23.769+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:26:23.769+0000] {override.py:1858} INFO - Created Permission View: can delete on DAG:copy_smoke_test
+[2026-01-01T01:26:23.770+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:26:23.770+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:26:23.784+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:26:23.783+0000] {dag.py:3111} INFO - Creating ORM DAG for copy_smoke_test
+[2026-01-01T01:26:23.786+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:26:23.785+0000] {dag.py:3947} INFO - Setting next_dagrun for copy_smoke_test to None, run_after=None
+[2026-01-01T01:26:24.761+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/Copy_smoke_pipeline.py took 6.339 seconds

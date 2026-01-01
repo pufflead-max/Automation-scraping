@@ -15,7 +15,7 @@ with DAG(
         bash_command="python /opt/airflow/scraper/src/main.py",
         env={
             "MONGO_DB": "scraping",
-            "JOB_NAME": "airflow_smoke",
+            "JOB_NAME": "test3",
             "MONGO_URI": "mongodb://scraper:ScraperPasswordHere@mongo:27017/scraping?authSource=scraping",
         },
     )

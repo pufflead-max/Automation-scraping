@@ -239,3 +239,675 @@
 [2026-01-01T00:31:11.285+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:31:11.285+0000] {dag.py:3089} INFO - Sync 1 DAGs
 [2026-01-01T00:31:11.305+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:31:11.305+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
 [2026-01-01T00:31:11.333+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.131 seconds
+[2026-01-01T00:31:42.027+0000] {processor.py:161} INFO - Started process (PID=767) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:31:42.028+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:31:42.030+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:31:42.029+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:31:42.055+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:31:42.122+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:31:42.121+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:31:42.172+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:31:42.172+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:31:42.277+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.258 seconds
+[2026-01-01T00:32:12.526+0000] {processor.py:161} INFO - Started process (PID=772) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:32:12.529+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:32:12.531+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:32:12.530+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:32:12.576+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:32:12.656+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:32:12.655+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:32:12.692+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:32:12.692+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:32:12.738+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.227 seconds
+[2026-01-01T00:32:43.579+0000] {processor.py:161} INFO - Started process (PID=777) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:32:43.679+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:32:43.683+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:32:43.681+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:32:43.773+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:32:43.870+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:32:43.870+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:32:43.905+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:32:43.905+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:32:43.957+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.398 seconds
+[2026-01-01T00:33:14.295+0000] {processor.py:161} INFO - Started process (PID=782) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:33:14.297+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:33:14.299+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:33:14.298+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:33:14.327+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:33:14.389+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:33:14.389+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:33:14.412+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:33:14.411+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:33:14.447+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.165 seconds
+[2026-01-01T00:33:44.574+0000] {processor.py:161} INFO - Started process (PID=787) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:33:44.576+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:33:44.578+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:33:44.577+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:33:44.619+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:33:44.712+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:33:44.711+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:33:44.758+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:33:44.757+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:33:44.804+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.243 seconds
+[2026-01-01T00:34:14.992+0000] {processor.py:161} INFO - Started process (PID=792) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:34:14.993+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:34:14.995+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:34:14.994+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:34:15.032+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:34:15.123+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:34:15.123+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:34:15.154+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:34:15.153+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:34:15.185+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.205 seconds
+[2026-01-01T00:34:45.429+0000] {processor.py:161} INFO - Started process (PID=797) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:34:45.430+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:34:45.432+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:34:45.431+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:34:45.459+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:34:45.510+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:34:45.510+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:34:45.527+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:34:45.526+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:34:45.556+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.135 seconds
+[2026-01-01T00:35:15.783+0000] {processor.py:161} INFO - Started process (PID=802) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:35:15.829+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:35:15.831+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:35:15.831+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:35:15.859+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:35:15.907+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:35:15.906+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:35:15.922+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:35:15.922+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:35:15.952+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.182 seconds
+[2026-01-01T00:35:46.130+0000] {processor.py:161} INFO - Started process (PID=807) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:35:46.132+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:35:46.135+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:35:46.134+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:35:46.171+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:35:46.232+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:35:46.231+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:35:46.256+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:35:46.256+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:35:46.290+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.174 seconds
+[2026-01-01T00:36:16.690+0000] {processor.py:161} INFO - Started process (PID=812) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:36:16.691+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:36:16.693+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:36:16.692+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:36:16.721+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:36:16.768+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:36:16.767+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:36:16.785+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:36:16.784+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:36:16.813+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.134 seconds
+[2026-01-01T00:36:46.914+0000] {processor.py:161} INFO - Started process (PID=817) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:36:46.916+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:36:46.918+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:36:46.917+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:36:46.943+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:36:47.034+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:36:47.034+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:36:47.055+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:36:47.054+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:36:47.090+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.187 seconds
+[2026-01-01T00:37:17.364+0000] {processor.py:161} INFO - Started process (PID=822) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:37:17.366+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:37:17.368+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:37:17.367+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:37:17.400+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:37:17.459+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:37:17.459+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:37:17.480+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:37:17.480+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:37:17.509+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.156 seconds
+[2026-01-01T00:37:47.741+0000] {processor.py:161} INFO - Started process (PID=827) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:37:47.749+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:37:47.751+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:37:47.750+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:37:47.797+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:37:47.890+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:37:47.889+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:37:47.922+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:37:47.922+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:37:47.972+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.243 seconds
+[2026-01-01T00:38:18.100+0000] {processor.py:161} INFO - Started process (PID=832) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:38:18.101+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:38:18.103+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:38:18.102+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:38:18.136+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:38:18.252+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:38:18.252+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:38:18.272+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:38:18.272+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:38:18.302+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.220 seconds
+[2026-01-01T00:38:48.437+0000] {processor.py:161} INFO - Started process (PID=837) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:38:48.439+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:38:48.440+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:38:48.440+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:38:48.508+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:38:48.661+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:38:48.660+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:38:48.676+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:38:48.675+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:38:48.701+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.273 seconds
+[2026-01-01T00:39:18.951+0000] {processor.py:161} INFO - Started process (PID=842) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:39:18.954+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:39:18.956+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:39:18.955+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:39:18.993+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:39:19.060+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:39:19.059+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:39:19.221+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:39:19.221+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:39:19.256+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.324 seconds
+[2026-01-01T00:39:49.625+0000] {processor.py:161} INFO - Started process (PID=847) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:39:49.628+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:39:49.634+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:39:49.632+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:39:49.692+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:39:49.843+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:39:49.842+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:39:49.893+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:39:49.892+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:39:49.976+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.380 seconds
+[2026-01-01T00:40:20.255+0000] {processor.py:161} INFO - Started process (PID=852) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:40:20.257+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:40:20.260+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:40:20.259+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:40:20.296+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:40:20.365+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:40:20.364+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:40:20.388+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:40:20.388+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:40:20.417+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.174 seconds
+[2026-01-01T00:40:50.613+0000] {processor.py:161} INFO - Started process (PID=857) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:40:50.614+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:40:50.616+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:40:50.616+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:40:50.654+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:40:50.703+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:40:50.703+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:40:50.721+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:40:50.720+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:40:50.746+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.146 seconds
+[2026-01-01T00:41:20.849+0000] {processor.py:161} INFO - Started process (PID=862) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:41:20.851+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:41:20.853+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:41:20.852+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:41:20.900+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:41:20.956+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:41:20.955+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:41:20.976+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:41:20.976+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:41:21.016+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.176 seconds
+[2026-01-01T00:41:51.261+0000] {processor.py:161} INFO - Started process (PID=867) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:41:51.264+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:41:51.265+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:41:51.265+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:41:51.300+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:41:51.385+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:41:51.384+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:41:51.433+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:41:51.432+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:41:51.488+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.246 seconds
+[2026-01-01T00:42:21.724+0000] {processor.py:161} INFO - Started process (PID=872) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:42:22.049+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:42:22.053+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:42:22.051+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:42:22.454+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:42:22.617+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:42:22.616+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:42:22.720+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:42:22.719+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:42:22.940+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 1.234 seconds
+[2026-01-01T00:42:53.690+0000] {processor.py:161} INFO - Started process (PID=877) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:42:53.692+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:42:53.694+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:42:53.693+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:42:53.726+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:42:53.774+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:42:53.774+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:42:53.793+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:42:53.793+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:42:53.820+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.142 seconds
+[2026-01-01T00:43:23.902+0000] {processor.py:161} INFO - Started process (PID=882) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:43:23.904+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:43:23.906+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:43:23.905+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:43:23.947+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:43:24.018+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:43:24.017+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:43:24.047+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:43:24.046+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:43:24.084+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.195 seconds
+[2026-01-01T00:43:54.824+0000] {processor.py:161} INFO - Started process (PID=887) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:43:54.826+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:43:54.827+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:43:54.827+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:43:54.851+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:43:54.935+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:43:54.934+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:43:54.956+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:43:54.955+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:43:54.991+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.174 seconds
+[2026-01-01T00:44:25.127+0000] {processor.py:161} INFO - Started process (PID=892) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:44:25.129+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:44:25.131+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:44:25.130+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:44:25.158+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:44:25.209+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:44:25.208+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:44:25.492+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:44:25.491+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:44:25.523+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.404 seconds
+[2026-01-01T00:44:55.795+0000] {processor.py:161} INFO - Started process (PID=897) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:44:55.797+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:44:55.799+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:44:55.798+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:44:55.826+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:44:55.872+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:44:55.871+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:44:55.887+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:44:55.887+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:44:55.920+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.138 seconds
+[2026-01-01T00:45:26.042+0000] {processor.py:161} INFO - Started process (PID=902) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:45:26.043+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:45:26.045+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:45:26.044+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:45:26.075+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:45:26.161+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:45:26.160+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:45:26.229+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:45:26.228+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:45:26.387+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.353 seconds
+[2026-01-01T00:45:56.867+0000] {processor.py:161} INFO - Started process (PID=907) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:45:56.869+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:45:56.870+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:45:56.870+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:45:56.904+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:45:56.950+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:45:56.949+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:45:56.964+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:45:56.964+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:45:56.989+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.130 seconds
+[2026-01-01T00:46:27.059+0000] {processor.py:161} INFO - Started process (PID=912) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:46:27.060+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:46:27.062+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:46:27.061+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:46:27.088+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:46:27.156+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:46:27.156+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:46:27.175+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:46:27.175+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:46:27.201+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.154 seconds
+[2026-01-01T00:47:00.695+0000] {processor.py:161} INFO - Started process (PID=917) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:47:00.989+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:47:01.105+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:47:01.008+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:47:01.613+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:47:03.709+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:47:03.709+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:47:03.946+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:47:03.945+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:47:04.420+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 4.074 seconds
+[2026-01-01T00:47:34.961+0000] {processor.py:161} INFO - Started process (PID=922) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:47:35.044+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:47:35.046+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:47:35.045+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:47:35.138+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:47:35.205+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:47:35.205+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:47:35.226+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:47:35.226+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:47:35.253+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.302 seconds
+[2026-01-01T00:48:05.593+0000] {processor.py:161} INFO - Started process (PID=927) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:48:05.648+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:48:05.650+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:48:05.650+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:48:05.945+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:48:06.090+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:48:06.090+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:48:06.114+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:48:06.114+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:48:06.145+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.560 seconds
+[2026-01-01T00:48:37.004+0000] {processor.py:161} INFO - Started process (PID=932) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:48:37.006+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:48:37.008+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:48:37.007+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:48:37.047+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:48:37.128+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:48:37.128+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:48:37.157+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:48:37.156+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:48:37.184+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.191 seconds
+[2026-01-01T00:49:07.612+0000] {processor.py:161} INFO - Started process (PID=937) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:49:07.614+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:49:07.616+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:49:07.615+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:49:07.729+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:49:07.818+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:49:07.817+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:49:07.857+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:49:07.856+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:49:07.921+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.324 seconds
+[2026-01-01T00:49:38.261+0000] {processor.py:161} INFO - Started process (PID=942) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:49:38.262+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:49:38.264+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:49:38.264+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:49:38.300+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:49:38.362+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:49:38.361+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:49:38.384+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:49:38.384+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:49:38.411+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.159 seconds
+[2026-01-01T00:50:08.514+0000] {processor.py:161} INFO - Started process (PID=947) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:50:08.516+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:50:08.519+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:50:08.518+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:50:08.553+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:50:08.647+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:50:08.647+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:50:08.676+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:50:08.676+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:50:08.719+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.216 seconds
+[2026-01-01T00:50:38.984+0000] {processor.py:161} INFO - Started process (PID=952) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:50:38.986+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:50:38.988+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:50:38.987+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:50:39.021+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:50:39.080+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:50:39.080+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:50:39.105+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:50:39.104+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:50:39.132+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.160 seconds
+[2026-01-01T00:51:09.408+0000] {processor.py:161} INFO - Started process (PID=957) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:51:09.410+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:51:09.411+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:51:09.411+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:51:09.442+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:51:09.660+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:51:09.660+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:51:09.681+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:51:09.680+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:51:09.714+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.315 seconds
+[2026-01-01T00:51:40.118+0000] {processor.py:161} INFO - Started process (PID=962) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:51:40.119+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:51:40.121+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:51:40.121+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:51:40.152+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:51:40.219+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:51:40.218+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:51:40.261+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:51:40.260+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:51:40.287+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.179 seconds
+[2026-01-01T00:52:10.442+0000] {processor.py:161} INFO - Started process (PID=967) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:52:10.444+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:52:10.446+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:52:10.445+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:52:10.478+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:52:10.546+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:52:10.545+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:52:10.580+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:52:10.580+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:52:10.642+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.212 seconds
+[2026-01-01T00:52:40.819+0000] {processor.py:161} INFO - Started process (PID=972) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:52:40.821+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:52:40.823+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:52:40.822+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:52:40.881+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:52:41.004+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:52:41.003+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:52:41.040+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:52:41.040+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:52:41.089+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.284 seconds
+[2026-01-01T00:53:11.424+0000] {processor.py:161} INFO - Started process (PID=977) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:53:11.426+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:53:11.428+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:53:11.427+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:53:11.455+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:53:11.535+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:53:11.535+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:53:11.558+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:53:11.557+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:53:11.592+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.177 seconds
+[2026-01-01T00:53:41.878+0000] {processor.py:161} INFO - Started process (PID=982) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:53:41.880+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:53:41.881+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:53:41.881+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:53:41.910+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:53:41.954+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:53:41.953+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:53:41.969+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:53:41.969+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:53:41.994+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.123 seconds
+[2026-01-01T00:54:12.143+0000] {processor.py:161} INFO - Started process (PID=987) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:54:12.154+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:54:12.165+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:54:12.163+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:54:12.221+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:54:12.299+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:54:12.299+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:54:12.322+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:54:12.322+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:54:12.350+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.229 seconds
+[2026-01-01T00:54:42.500+0000] {processor.py:161} INFO - Started process (PID=992) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:54:42.502+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:54:42.504+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:54:42.503+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:54:42.537+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:54:42.611+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:54:42.610+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:54:42.650+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:54:42.649+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:54:42.694+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.206 seconds
+[2026-01-01T00:55:12.777+0000] {processor.py:161} INFO - Started process (PID=997) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:55:12.779+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:55:12.781+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:55:12.780+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:55:12.807+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:55:12.856+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:55:12.855+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:55:12.872+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:55:12.871+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:55:12.902+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.135 seconds
+[2026-01-01T00:55:43.157+0000] {processor.py:161} INFO - Started process (PID=1002) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:55:43.159+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:55:43.160+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:55:43.160+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:55:43.196+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:55:43.273+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:55:43.273+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:55:43.307+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:55:43.306+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:55:43.348+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.200 seconds
+[2026-01-01T00:56:13.469+0000] {processor.py:161} INFO - Started process (PID=1007) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:56:13.502+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:56:13.504+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:56:13.503+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:56:13.530+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:56:13.583+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:56:13.582+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:56:13.602+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:56:13.601+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:56:13.630+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.172 seconds
+[2026-01-01T00:56:43.740+0000] {processor.py:161} INFO - Started process (PID=1012) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:56:43.741+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:56:43.743+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:56:43.742+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:56:43.770+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:56:43.818+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:56:43.818+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:56:43.834+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:56:43.833+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:56:43.856+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.125 seconds
+[2026-01-01T00:57:14.134+0000] {processor.py:161} INFO - Started process (PID=1017) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:57:14.136+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:57:14.138+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:57:14.137+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:57:14.167+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:57:14.216+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:57:14.216+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:57:14.233+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:57:14.233+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:57:14.262+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.141 seconds
+[2026-01-01T00:57:44.358+0000] {processor.py:161} INFO - Started process (PID=1022) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:57:44.360+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:57:44.361+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:57:44.361+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:57:44.408+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:57:44.481+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:57:44.480+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:57:44.505+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:57:44.505+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:57:44.543+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.195 seconds
+[2026-01-01T00:58:14.708+0000] {processor.py:161} INFO - Started process (PID=1027) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:58:14.710+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:58:14.712+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:58:14.711+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:58:14.745+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:58:14.818+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:58:14.817+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:58:14.838+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:58:14.838+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:58:14.866+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.171 seconds
+[2026-01-01T00:58:45.103+0000] {processor.py:161} INFO - Started process (PID=1032) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:58:45.105+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:58:45.109+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:58:45.108+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:58:45.179+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:58:45.241+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:58:45.241+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:58:45.263+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:58:45.263+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:58:45.299+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.215 seconds
+[2026-01-01T00:59:15.586+0000] {processor.py:161} INFO - Started process (PID=1037) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:59:15.588+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:59:15.590+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:59:15.590+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:59:15.616+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:59:15.659+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:59:15.659+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:59:15.677+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:59:15.677+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:59:15.711+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.137 seconds
+[2026-01-01T00:59:45.911+0000] {processor.py:161} INFO - Started process (PID=1042) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:59:45.913+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T00:59:45.915+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:59:45.914+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:59:45.939+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T00:59:45.998+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:59:45.998+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T00:59:46.022+0000] {logging_mixin.py:188} INFO - [2026-01-01T00:59:46.022+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T00:59:46.066+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.166 seconds
+[2026-01-01T01:00:16.355+0000] {processor.py:161} INFO - Started process (PID=1047) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:00:16.357+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:00:16.359+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:00:16.359+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:00:16.387+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:00:16.450+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:00:16.450+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:00:16.478+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:00:16.478+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:00:16.532+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.187 seconds
+[2026-01-01T01:00:46.772+0000] {processor.py:161} INFO - Started process (PID=1052) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:00:46.773+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:00:46.775+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:00:46.774+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:00:46.795+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:00:46.835+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:00:46.835+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:00:46.853+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:00:46.853+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:00:46.880+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.116 seconds
+[2026-01-01T01:01:17.016+0000] {processor.py:161} INFO - Started process (PID=1057) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:01:17.018+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:01:17.020+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:01:17.019+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:01:17.050+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:01:17.098+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:01:17.097+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:01:17.117+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:01:17.117+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:01:17.144+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.137 seconds
+[2026-01-01T01:01:47.300+0000] {processor.py:161} INFO - Started process (PID=1062) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:01:47.302+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:01:47.303+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:01:47.303+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:01:47.331+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:01:47.376+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:01:47.376+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:01:47.397+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:01:47.397+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:01:47.428+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.136 seconds
+[2026-01-01T01:02:17.570+0000] {processor.py:161} INFO - Started process (PID=1067) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:02:17.573+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:02:17.574+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:02:17.574+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:02:17.600+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:02:17.645+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:02:17.644+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:02:17.660+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:02:17.660+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:02:17.683+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.125 seconds
+[2026-01-01T01:02:47.835+0000] {processor.py:161} INFO - Started process (PID=1072) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:02:47.837+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:02:47.838+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:02:47.838+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:02:47.866+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:02:47.929+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:02:47.929+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:02:47.946+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:02:47.946+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:02:47.976+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.148 seconds
+[2026-01-01T01:03:18.140+0000] {processor.py:161} INFO - Started process (PID=1077) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:03:18.142+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:03:18.145+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:03:18.144+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:03:18.173+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:03:18.219+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:03:18.219+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:03:18.234+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:03:18.234+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:03:18.259+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.131 seconds
+[2026-01-01T01:03:48.405+0000] {processor.py:161} INFO - Started process (PID=1082) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:03:48.406+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:03:48.408+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:03:48.408+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:03:48.433+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:03:48.484+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:03:48.484+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:03:48.500+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:03:48.499+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:03:48.527+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.130 seconds
+[2026-01-01T01:04:18.719+0000] {processor.py:161} INFO - Started process (PID=1087) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:04:18.721+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:04:18.722+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:04:18.722+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:04:18.754+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:04:18.808+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:04:18.808+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:04:18.825+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:04:18.825+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:04:18.849+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.138 seconds
+[2026-01-01T01:04:48.967+0000] {processor.py:161} INFO - Started process (PID=1092) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:04:48.969+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:04:48.970+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:04:48.969+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:04:48.995+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:04:49.052+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:04:49.051+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:04:49.069+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:04:49.069+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:04:49.095+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.137 seconds
+[2026-01-01T01:05:19.374+0000] {processor.py:161} INFO - Started process (PID=1097) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:05:19.376+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:05:19.378+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:05:19.377+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:05:19.407+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:05:19.464+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:05:19.463+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:05:19.481+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:05:19.480+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:05:19.510+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.144 seconds
+[2026-01-01T01:05:49.616+0000] {processor.py:161} INFO - Started process (PID=1102) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:05:49.618+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:05:49.620+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:05:49.619+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:05:49.659+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:05:49.721+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:05:49.721+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:05:49.744+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:05:49.744+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:05:49.775+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.174 seconds
+[2026-01-01T01:06:20.608+0000] {processor.py:161} INFO - Started process (PID=1107) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:06:20.609+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:06:20.611+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:06:20.610+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:06:20.638+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:06:20.695+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:06:20.695+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:06:20.720+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:06:20.720+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:06:20.774+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.175 seconds
+[2026-01-01T01:06:51.442+0000] {processor.py:161} INFO - Started process (PID=1112) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:06:51.445+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:06:51.448+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:06:51.447+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:06:51.491+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:06:51.571+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:06:51.571+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:06:51.596+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:06:51.596+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:06:51.629+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.206 seconds
+[2026-01-01T01:07:21.959+0000] {processor.py:161} INFO - Started process (PID=1117) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:07:22.007+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:07:22.009+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:07:22.008+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:07:22.122+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:07:22.177+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:07:22.176+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:07:22.193+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:07:22.193+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:07:22.222+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.273 seconds
+[2026-01-01T01:07:52.990+0000] {processor.py:161} INFO - Started process (PID=1122) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:07:52.992+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:07:52.996+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:07:52.995+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:07:53.035+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:07:53.103+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:07:53.102+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:07:53.127+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:07:53.126+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:07:53.160+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.192 seconds
+[2026-01-01T01:08:27.732+0000] {processor.py:161} INFO - Started process (PID=1127) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:08:27.734+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:08:27.736+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:08:27.735+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:08:28.452+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:08:28.561+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:08:28.560+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:08:28.696+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:08:28.695+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:08:28.750+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 3.134 seconds
+[2026-01-01T01:08:58.978+0000] {processor.py:161} INFO - Started process (PID=1132) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:08:58.980+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:08:58.981+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:08:58.981+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:08:59.009+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:08:59.072+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:08:59.071+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:08:59.089+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:08:59.089+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:08:59.125+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.154 seconds
+[2026-01-01T01:09:29.200+0000] {processor.py:161} INFO - Started process (PID=1137) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:09:29.205+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:09:29.207+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:09:29.207+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:09:29.234+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:09:29.297+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:09:29.296+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:09:29.315+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:09:29.315+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:09:29.344+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.153 seconds
+[2026-01-01T01:09:59.829+0000] {processor.py:161} INFO - Started process (PID=1142) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:09:59.834+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:09:59.845+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:09:59.844+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:09:59.904+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:10:00.061+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:10:00.061+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:10:00.090+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:10:00.090+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:10:00.140+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.340 seconds
+[2026-01-01T01:10:30.415+0000] {processor.py:161} INFO - Started process (PID=1147) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:10:30.417+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:10:30.420+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:10:30.418+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:10:30.449+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:10:30.503+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:10:30.503+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:10:30.529+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:10:30.529+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:10:30.561+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.155 seconds
+[2026-01-01T01:11:00.688+0000] {processor.py:161} INFO - Started process (PID=1152) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:11:00.690+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:11:00.693+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:11:00.692+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:11:00.726+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:11:00.799+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:11:00.798+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:11:00.817+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:11:00.816+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:11:00.862+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.187 seconds
+[2026-01-01T01:11:31.432+0000] {processor.py:161} INFO - Started process (PID=1157) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:11:31.445+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:11:31.453+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:11:31.452+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:11:31.587+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:11:31.667+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:11:31.667+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:11:31.697+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:11:31.697+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:11:31.765+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.347 seconds
+[2026-01-01T01:12:02.047+0000] {processor.py:161} INFO - Started process (PID=1162) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:12:02.049+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:12:02.052+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:12:02.051+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:12:02.085+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:12:02.178+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:12:02.178+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:12:02.206+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:12:02.205+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:12:02.255+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.221 seconds
+[2026-01-01T01:12:32.512+0000] {processor.py:161} INFO - Started process (PID=1167) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:12:32.513+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:12:32.515+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:12:32.514+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:12:32.540+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:12:32.585+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:12:32.584+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:12:32.601+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:12:32.601+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:12:32.626+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.122 seconds
+[2026-01-01T01:13:02.695+0000] {processor.py:161} INFO - Started process (PID=1172) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:13:02.696+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:13:02.697+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:13:02.697+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:13:02.722+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:13:02.795+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:13:02.795+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:13:02.826+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:13:02.826+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:13:02.865+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.180 seconds
+[2026-01-01T01:13:33.019+0000] {processor.py:161} INFO - Started process (PID=1177) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:13:33.020+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:13:33.022+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:13:33.021+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:13:33.050+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:13:33.098+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:13:33.097+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:13:33.117+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:13:33.116+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:13:33.146+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.137 seconds
+[2026-01-01T01:14:03.302+0000] {processor.py:161} INFO - Started process (PID=1182) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:14:03.304+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:14:03.307+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:14:03.306+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:14:03.342+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:14:03.431+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:14:03.430+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:14:03.608+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:14:03.607+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:14:03.644+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.356 seconds
+[2026-01-01T01:14:34.445+0000] {processor.py:161} INFO - Started process (PID=1187) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:14:34.447+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:14:34.448+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:14:34.448+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:14:34.474+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:14:35.043+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:14:35.042+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:14:35.059+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:14:35.058+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:14:35.083+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.647 seconds
+[2026-01-01T01:15:05.169+0000] {processor.py:161} INFO - Started process (PID=1192) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:15:05.173+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:15:05.176+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:15:05.175+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:15:05.229+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:15:05.344+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:15:05.344+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:15:05.384+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:15:05.384+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:15:05.431+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.285 seconds
+[2026-01-01T01:15:35.576+0000] {processor.py:161} INFO - Started process (PID=1197) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:15:35.578+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:15:35.579+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:15:35.579+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:15:35.604+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:15:35.649+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:15:35.648+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:15:35.664+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:15:35.664+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:15:35.689+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.121 seconds
+[2026-01-01T01:16:05.931+0000] {processor.py:161} INFO - Started process (PID=1202) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:16:05.933+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:16:05.934+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:16:05.934+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:16:05.963+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:16:06.021+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:16:06.021+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:16:06.037+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:16:06.036+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:16:06.063+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.141 seconds
+[2026-01-01T01:16:36.140+0000] {processor.py:161} INFO - Started process (PID=1207) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:16:36.142+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:16:36.143+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:16:36.143+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:16:36.172+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:16:36.233+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:16:36.232+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:16:36.252+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:16:36.252+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:16:36.280+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.151 seconds
+[2026-01-01T01:17:06.366+0000] {processor.py:161} INFO - Started process (PID=1212) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:17:06.367+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:17:06.369+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:17:06.368+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:17:06.397+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:17:06.440+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:17:06.439+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:17:06.454+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:17:06.454+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:17:06.479+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.123 seconds
+[2026-01-01T01:17:36.708+0000] {processor.py:161} INFO - Started process (PID=1217) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:17:36.710+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:17:36.711+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:17:36.711+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:17:36.737+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:17:36.785+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:17:36.785+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:17:36.801+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:17:36.801+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:17:36.825+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.126 seconds
+[2026-01-01T01:18:06.957+0000] {processor.py:161} INFO - Started process (PID=1222) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:18:06.959+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:18:06.961+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:18:06.960+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:18:06.989+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:18:07.040+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:18:07.039+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:18:07.055+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:18:07.054+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:18:07.079+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.137 seconds
+[2026-01-01T01:18:37.306+0000] {processor.py:161} INFO - Started process (PID=1227) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:18:37.307+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:18:37.310+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:18:37.309+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:18:37.336+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:18:37.395+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:18:37.395+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:18:37.421+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:18:37.421+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:18:37.447+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.150 seconds
+[2026-01-01T01:19:07.526+0000] {processor.py:161} INFO - Started process (PID=1232) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:19:07.528+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:19:07.530+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:19:07.530+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:19:07.560+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:19:07.609+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:19:07.609+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:19:07.632+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:19:07.631+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:19:07.663+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.149 seconds
+[2026-01-01T01:19:37.914+0000] {processor.py:161} INFO - Started process (PID=1237) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:19:37.916+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:19:37.917+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:19:37.917+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:19:37.964+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:19:38.009+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:19:38.009+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:19:38.027+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:19:38.027+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:19:38.053+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.149 seconds
+[2026-01-01T01:20:08.135+0000] {processor.py:161} INFO - Started process (PID=1242) to work on /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:20:08.137+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/scrape_smoke_test.py for tasks to queue
+[2026-01-01T01:20:08.139+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:20:08.139+0000] {dagbag.py:545} INFO - Filling up the DagBag from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:20:08.172+0000] {processor.py:840} INFO - DAG(s) 'scrape_smoke_test' retrieved from /opt/airflow/dags/scrape_smoke_test.py
+[2026-01-01T01:20:08.237+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:20:08.237+0000] {dag.py:3089} INFO - Sync 1 DAGs
+[2026-01-01T01:20:08.272+0000] {logging_mixin.py:188} INFO - [2026-01-01T01:20:08.271+0000] {dag.py:3947} INFO - Setting next_dagrun for scrape_smoke_test to None, run_after=None
+[2026-01-01T01:20:08.307+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/scrape_smoke_test.py took 0.186 seconds

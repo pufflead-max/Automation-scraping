@@ -14,7 +14,7 @@ services:
     volumes:
       - mongo_data:/data/db
       - ./mongo-init:/docker-entrypoint-initdb.d:ro
-    networks: [appnet]
+    networks: [ appnet ]
 
   postgres:
     image: postgres:16
@@ -26,16 +26,50 @@ services:
       POSTGRES_DB: airflow
     volumes:
       - pg_data:/var/lib/postgresql/data
-    networks: [appnet]
+    networks: [ appnet ]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+
+  airflow-init:
+    build:
+      context: .
+      dockerfile: airflow/Dockerfile
+    container_name: airflow-init
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+    networks: [ appnet ]
+    user: "50000:0"
+    command: version
 
   airflow-webserver:
     build:
       context: .
       dockerfile: airflow/Dockerfile
-
     container_name: airflow-web
     restart: unless-stopped
-    depends_on: [postgres]
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    env_file:
+      - .env
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
@@ -49,7 +83,14 @@ services:
       - ./airflow/plugins:/opt/airflow/plugins
       - ./scraper/src:/opt/airflow/scraper/src
       - /var/run/docker.sock:/var/run/docker.sock
-    networks: [appnet]
+    networks: [ appnet ]
+    user: "50000:0"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     command: webserver
 
   airflow-scheduler:
@@ -58,20 +99,29 @@ services:
       dockerfile: airflow/Dockerfile
     container_name: airflow-scheduler
     restart: unless-stopped
-    depends_on: [postgres]
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    env_file:
+      - .env
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
       - ./scraper/src:/opt/airflow/scraper/src
       - /var/run/docker.sock:/var/run/docker.sock
-    
-    networks: [appnet]
+    networks: [ appnet ]
+    user: "50000:0"
+    healthcheck:
+      test: ["CMD", "airflow", "jobs", "check", "--job-type", "SchedulerJob", "--hostname", "${HOSTNAME}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     command: scheduler
 
 volumes:

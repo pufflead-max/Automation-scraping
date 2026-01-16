@@ -8,7 +8,8 @@ from contextlib import contextmanager
 from pymongo import MongoClient
 from pymongo.database import Database
 from pymongo.collection import Collection
-from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
+from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError, BulkWriteError
+from pymongo import UpdateOne
 
 try:
     from .config import get_mongo_uri, get_mongo_db
@@ -330,6 +331,74 @@ class DatabaseManager:
             )
             raise
     
+    def bulk_upsert(self, collection_name: str, documents: List[Dict[str, Any]], unique_field: str) -> int:
+        """
+        Bulk upsert (update or insert) multiple documents.
+        Avoids duplicates by matching on a unique field.
+        
+        Args:
+            collection_name: Name of the collection
+            documents: List of documents to upsert
+            unique_field: Field name to use as unique identifier
+        
+        Returns:
+            int: Number of documents upserted (modified + inserted)
+        """
+        if not documents:
+            return 0
+            
+        try:
+            collection = self.get_collection(collection_name)
+            operations = []
+            
+            for doc in documents:
+                if unique_field in doc and doc[unique_field]:
+                    # Create copy to avoid modifying original
+                    doc_data = doc.copy()
+                    # Remove _id if present to avoid immutable field error on update
+                    doc_data.pop('_id', None)
+                    
+                    operations.append(
+                        UpdateOne(
+                            {unique_field: doc[unique_field]},
+                            {"$set": doc_data},
+                            upsert=True
+                        )
+                    )
+            
+            if not operations:
+                logger.warning("bulk_upsert_no_valid_operations", collection=collection_name)
+                return 0
+                
+            result = collection.bulk_write(operations, ordered=False)
+            
+            count = result.modified_count + result.upserted_count
+            
+            logger.info(
+                "documents_upserted",
+                collection=collection_name,
+                count=count,
+                modified=result.modified_count,
+                upserted=result.upserted_count
+            )
+            
+            return count
+            
+        except BulkWriteError as bwe:
+             logger.error(
+                "bulk_upsert_partial_failure",
+                collection=collection_name,
+                error=str(bwe.details)
+            )
+             return bwe.details.get('nModified', 0) + bwe.details.get('nUpserted', 0)
+        except Exception as e:
+            logger.error(
+                "bulk_upsert_failed",
+                collection=collection_name,
+                error=str(e)
+            )
+            raise
+
     @staticmethod
     def _mask_uri(uri: str) -> str:
         """

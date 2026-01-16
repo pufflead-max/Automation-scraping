@@ -188,9 +188,10 @@ class BaseScraper(ABC):
         """
         proxies = None
         if use_proxy and self.config.get('scraperapi_proxy'):
+            # ScraperAPI proxies use HTTP for both HTTP and HTTPS traffic
             proxies = {
                 "http": f"http://{self.config['scraperapi_proxy']}",
-                "https": f"https://{self.config['scraperapi_proxy']}"
+                "https": f"http://{self.config['scraperapi_proxy']}"  # Use HTTP, not HTTPS
             }
         
         try:
@@ -226,9 +227,14 @@ class BaseScraper(ABC):
             )
             raise
     
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True
+    )
     def save_leads(self, leads: List[ScrapedLead], collection: str = "leads") -> int:
         """
-        Save scraped leads to the database.
+        Save scraped leads to the database with retries.
         
         Args:
             leads: List of validated leads
@@ -241,21 +247,29 @@ class BaseScraper(ABC):
             self.logger.warning("save_leads_called_with_empty_list")
             return 0
         
+        # Ensure Db connection
+        if not self.db:
+             from database import get_db_manager
+             self.db = get_db_manager()
+
         # Convert leads to dictionaries
         lead_dicts = [lead.model_dump() for lead in leads]
         
         try:
             # Insert leads
-            inserted_ids = self.db.insert_many(collection, lead_dicts)
+            # Use ordered=False to continue inserting even if some fail (e.g. duplicates)
+            # Use bulk_upsert to handle deduplication logic
+            # Use source_url as unique identifier
+            count = self.db.bulk_upsert(collection, lead_dicts, unique_field="source_url")
             
             self.logger.info(
                 "leads_saved",
                 collection=collection,
-                count=len(inserted_ids),
+                count=count,
                 job_id=self.current_job.job_id if self.current_job else None
             )
             
-            return len(inserted_ids)
+            return count
             
         except Exception as e:
             self.logger.error(
@@ -264,7 +278,7 @@ class BaseScraper(ABC):
                 lead_count=len(leads),
                 error=str(e)
             )
-            return 0
+            raise
 
     def save_to_json(self, leads: List[ScrapedLead]) -> str:
         """
@@ -283,8 +297,17 @@ class BaseScraper(ABC):
             return ""
             
         try:
-            # Ensure data directory exists (use logs dir which is writable and mounted)
-            data_dir = "/opt/airflow/logs/scraped_data"
+            # Determine data directory based on environment
+            if os.path.exists("/opt/airflow/logs"):
+                # Docker environment
+                data_dir = "/opt/airflow/logs/scraped_data"
+            else:
+                # Local environment - find airflow/logs relative to project root
+                # structure: scraper/src/scrapers/base.py -> ../../../airflow/logs
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
+                data_dir = os.path.join(project_root, "airflow", "logs", "scraped_data")
+            
             os.makedirs(data_dir, exist_ok=True)
             
             # Generate filename: scraper_YYYYMMDD_HHMMSS.json
@@ -308,6 +331,7 @@ class BaseScraper(ABC):
     def run(self, target: str, save_to_db: bool = True, **kwargs) -> List[ScrapedLead]:
         """
         Run the complete scraping workflow.
+        Order: Scrape -> Save JSON (Backup) -> Save DB (Primary)
         
         Args:
             target: Target to scrape
@@ -322,15 +346,18 @@ class BaseScraper(ABC):
         self.start_job(target, category)
         
         try:
-            # Run scraper
+            # 1. Run scraper
             leads = self.scrape(target, **kwargs)
             self.scraped_items = leads
             
-            # Save to JSON file (Backup)
-            self.save_to_json(leads)
-
-            # Save to database if requested
+            # 2. Save to JSON file (Backup) - Always do this first
+            json_path = self.save_to_json(leads)
+            if json_path:
+                self.logger.info("step_json_backup_completed", path=json_path)
+            
+            # 3. Save to database if requested - Do this second
             if save_to_db and leads:
+                self.logger.info("step_db_save_started", count=len(leads))
                 self.save_leads(leads)
             
             # Mark job as completed

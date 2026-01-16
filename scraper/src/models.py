@@ -121,6 +121,8 @@ class NextdoorLead(ScrapedLead):
     images: List[str] = Field(default_factory=list)
     tagged_business: Optional[str] = Field(None, description="Tagged business name")
     tagged_business_category: Optional[str] = Field(None, description="Business category")
+    topics: List[str] = Field(default_factory=list, description="Post topics")
+    is_service_request: bool = Field(default=False, description="Whether this is a service request")
 
 
 class ScrapeJob(BaseModel):

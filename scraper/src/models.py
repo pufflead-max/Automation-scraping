@@ -174,39 +174,3 @@ class ScraperMetrics(BaseModel):
         json_encoders = {
             datetime: lambda v: v.isoformat()
         }
-
-
-if __name__ == "__main__":
-    # Test models
-    print("Testing data models...")
-    
-    # Test CraigslistLead
-    lead = CraigslistLead(
-        source_url="https://boston.craigslist.org/test/123",
-        title="Test Lead",
-        description="Test description",
-        contact_email="test@example.com",
-        contact_phone="+1-555-123-4567",
-        location="Boston, MA",
-        category="automotive"
-    )
-    
-    print(f"✓ CraigslistLead created: {lead.title}")
-    print(f"  Email normalized: {lead.contact_email}")
-    print(f"  Phone normalized: {lead.contact_phone}")
-    
-    # Test JSON serialization
-    json_data = lead.model_dump_json(indent=2)
-    print(f"\n✓ JSON serialization works")
-    
-    # Test ScrapeJob
-    job = ScrapeJob(
-        job_id="test-job-123",
-        scraper="craigslist",
-        status="completed",
-        items_found=100,
-        items_saved=95
-    )
-    
-    print(f"\n✓ ScrapeJob created: {job.job_id}")
-    print(f"  Success rate: {job.items_saved}/{job.items_found}")

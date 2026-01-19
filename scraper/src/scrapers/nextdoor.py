@@ -1,135 +1,72 @@
-"""
-Nextdoor scraper implementation.
-Extracts service leads from Nextdoor using Playwright to intercept GraphQL traffic.
-"""
+"""Nextdoor scraper implementation."""
 
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-import time
-import json
+import os
 from playwright.sync_api import sync_playwright
 
 from .base import BaseScraper
 try:
     from ..models import NextdoorLead, ScrapedLead
-    from ..logger import ScraperLogger
 except ImportError:
     from models import NextdoorLead, ScrapedLead
-    from logger import ScraperLogger
 
 
 class NextdoorScraper(BaseScraper):
-    """
-    Scraper for Nextdoor service posts.
-    Uses Playwright to automate the browser and intercept GraphQL API calls.
-    """
+    """Scraper for Nextdoor service posts using Playwright."""
     
     def __init__(self, cookies: Optional[Dict[str, str]] = None, **kwargs):
-        """
-        Initialize Nextdoor scraper.
-        
-        Args:
-            cookies: Nextdoor session cookies (required for authentication)
-            **kwargs: Additional arguments passed to BaseScraper
-        """
         super().__init__("nextdoor", **kwargs)
         self.cookies = cookies or {}
     
     def parse_post(self, post_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """
-        Parse a single post from the feed.
-        """
+        """Parse a single post from the feed."""
         try:
-            # Skip if not a POST type
             if post_data.get('feedItemType') != 'POST':
                 return None
             
             post = post_data.get('post', {})
-            
-            # Extract basic info
-            post_id = post.get('legacyPostId') or post.get('id')
-            title = post.get('subject', '')
-            body = post.get('body', '')
-            
-            # Extract author info
             author = post.get('author', {})
-            author_name = author.get('displayName')
-            author_url = f"https://nextdoor.com/profile/{author.get('id')}" if author.get('id') else None
-            
-            # Extract neighborhood
             neighborhood_data = author.get('originationNeighborhood', {})
-            neighborhood = neighborhood_data.get('shortName')
-            city = neighborhood_data.get('city')
-            state = neighborhood_data.get('state')
-            
-            # Extract timestamps
             created_at = post.get('createdAt', {})
-            posted_timestamp = created_at.get('epochMillis')
+            
             posted_date = None
-            if posted_timestamp:
+            if posted_timestamp := created_at.get('epochMillis'):
                 posted_date = datetime.fromtimestamp(int(posted_timestamp) / 1000)
             
-            # Extract engagement
-            comments = post.get('comments', {})
-            comment_count = comments.get('totalCommentCount', 0)
+            images = [photo['url'] for photo in post.get('photos', []) if photo.get('url')]
             
-            reactions = post.get('reactionSummaries', {})
-            reaction_count = len(reactions.get('summaries', []))
-            
-            # Extract images
-            images = []
-            photos = post.get('photos', [])
-            for photo in photos:
-                if photo.get('url'):
-                    images.append(photo['url'])
-            
-            # Review tagged business
-            tagged_business = None
-            tagged_category = None
-            tagged_content = post.get('taggedContent', [])
-            if tagged_content:
+            tagged_business = tagged_category = None
+            if tagged_content := post.get('taggedContent', []):
                 entity_page = tagged_content[0].get('entityPage', {})
                 tagged_business = entity_page.get('name')
-                category_info = entity_page.get('categoryInfo', {})
-                display_category = category_info.get('displayCategory', {})
-                if display_category:
+                if display_category := entity_page.get('categoryInfo', {}).get('displayCategory', {}):
                     tagged_category = display_category.get('styledName', {}).get('text')
             
-            # Extract topics
-            topics = []
-            for topic in post.get('topics', []):
-                topic_name = topic.get('name', {}).get('singularName')
-                if topic_name:
-                    topics.append(topic_name)
+            topics = [t.get('name', {}).get('singularName') for t in post.get('topics', []) if t.get('name', {}).get('singularName')]
             
-            # Build URL
-            detail_link = post.get('detailLink', {})
-            href = detail_link.get('href', '')
-            if href:
-                href = href.split('?')[0]  # Remove query parameters for robust deduplication
-                url = f"https://nextdoor.com{href}"
-            else:
-                url = None
+            url = None
+            if href := post.get('detailLink', {}).get('href', ''):
+                url = f"https://nextdoor.com{href.split('?')[0]}"
             
             return {
-                'post_id': post_id,
+                'post_id': post.get('legacyPostId') or post.get('id'),
                 'url': url,
-                'title': title,
-                'body': body,
-                'author_name': author_name,
-                'author_url': author_url,
-                'neighborhood': neighborhood,
-                'city': city,
-                'state': state,
+                'title': post.get('subject', ''),
+                'body': post.get('body', ''),
+                'author_name': author.get('displayName'),
+                'author_url': f"https://nextdoor.com/profile/{author.get('id')}" if author.get('id') else None,
+                'neighborhood': neighborhood_data.get('shortName'),
+                'city': neighborhood_data.get('city'),
+                'state': neighborhood_data.get('state'),
                 'posted_date': posted_date,
-                'comment_count': comment_count,
-                'reaction_count': reaction_count,
+                'comment_count': post.get('comments', {}).get('totalCommentCount', 0),
+                'reaction_count': len(post.get('reactionSummaries', {}).get('summaries', [])),
                 'images': images,
                 'tagged_business': tagged_business,
                 'tagged_category': tagged_category,
                 'topics': topics,
             }
-            
         except Exception as e:
             self.logger.warning("failed_to_parse_nextdoor_post", error=str(e))
             return None
@@ -137,39 +74,25 @@ class NextdoorScraper(BaseScraper):
     def parse_item(self, raw_data: Dict[str, Any]) -> Optional[NextdoorLead]:
         """Parse raw data into a NextdoorLead model."""
         try:
-            # Determine if service request
-            # Heuristic: Title or body contains request keywords and NOT promotion keywords
-            title = raw_data.get('title', '') or ''
-            description = raw_data.get('description', '') or raw_data.get('body', '') or ''
-            text = f"{title} {description}".lower()
+            text = f"{raw_data.get('title', '')} {raw_data.get('description', '') or raw_data.get('body', '')}".lower()
             
-            request_keywords = [
-                "looking for", "need ", "needs ", "in search of", "iso ", "anyone know", 
-                "can anyone", "help needed", "searching for", "help wanted", 
-                "recommendation needed", "who do you use", "referral needed",
-                "anyone available", "can someone", "anyone recommend"
-            ]
+            high_intent = ["looking for", "need ", "needs ", "in search of", "iso ", "anyone available",
+                          "can someone", "help needed", "help wanted", "urgent", "emergency", "asap",
+                          "today", "tomorrow", "this week", "available near me", "recommendation for", "quote needed"]
             
-            negative_keywords = [
-                # Promotions/Ads
-                "free estimate", "i offer", "we offer", "we do", "contact me", "contact us",
-                "call me", "call us", "my number", "years experience", "services offered",
-                "fully insured", "licensed",
-                # Recommendations/Reviews
-                "wanted to share", "shout out", "highly recommend", "i recommend", 
-                "cannot recommend", "huge thanks", "excellent work", "great job", 
-                "recommend this", "recommend him", "recommend her", "recommend them"
-            ]
+            negative = ["free estimate", "i offer", "we offer", "we do", "contact me", "contact us",
+                       "call me", "call us", "my number is", "years experience", "services offered",
+                       "fully insured", "licensed", "discount", "promotion", "book now",
+                       "who do you recommend", "who do you use", "best plumber", "best electrician",
+                       "thoughts on", "anyone know if", "has anyone used", "reviews for",
+                       "shout out", "wanted to share", "highly recommend", "i recommend",
+                       "cannot recommend", "huge thanks", "excellent work", "great job"]
             
-            has_request = any(k in text for k in request_keywords)
-            has_negative = any(k in text for k in negative_keywords)
+            is_service_request = (any(k in text for k in high_intent) and 
+                                not any(k in text for k in negative) and 
+                                bool(raw_data.get('url')))
             
-            # If specifically in 'General' or 'Recommendations' but has request keywords, it's likely a request.
-            # But if it has negative keywords (ads or reviews), it's NOT a request.
-            
-            is_service_request = has_request and not has_negative
-
-            lead = NextdoorLead(
+            return NextdoorLead(
                 source_url=raw_data.get('url', ''),
                 source_id=raw_data.get('post_id'),
                 post_id=raw_data.get('post_id'),
@@ -190,92 +113,100 @@ class NextdoorScraper(BaseScraper):
                 topics=raw_data.get('topics', []),
                 is_service_request=is_service_request,
             )
-            return lead
         except Exception as e:
             self.logger.warning("failed_to_create_nextdoor_lead", error=str(e))
             return None
 
     def scrape(self, target: str = None, **kwargs) -> List[ScrapedLead]:
-        """
-        Main scraping method using Playwright.
-        Arguments:
-            max_pages: Number of scroll pages to load
-        """
-        max_pages = kwargs.get('max_pages', 5)
-        all_leads = []
-        collected_posts = {} # Deduplication dict by ID
-
+        """Main scraping method using Playwright."""
         if not self.cookies:
             self.logger.error("nextdoor_cookies_required")
             raise ValueError("Nextdoor cookies not configured.")
-
-        # Playwright Execution
+        
+        max_pages = kwargs.get('max_pages', 5)
+        collected_posts = {}
+        
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
+            launch_args = {"headless": True}
+            if chrome_bin := os.getenv("CHROME_BIN"):
+                launch_args.update({"executable_path": chrome_bin, "args": ["--no-sandbox", "--disable-dev-shm-usage"]})
+            
+            browser = p.chromium.launch(**launch_args)
             context = browser.new_context(
                 viewport={'width': 1280, 'height': 800},
                 user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             )
             
-            # Add cookies
             cookie_list = []
-            for k, v in self.cookies.items():
-                cookie_list.append({
-                    'name': k,
-                    'value': v,
-                    'domain': '.nextdoor.com',
-                    'path': '/'
-                })
-            context.add_cookies(cookie_list)
+            if isinstance(self.cookies, list):
+                for c in self.cookies:
+                    curr = {'name': c.get('name'), 'value': c.get('value'),
+                           'domain': c.get('domain', '.nextdoor.com'), 'path': c.get('path', '/')}
+                    if 'expirationDate' in c: curr['expires'] = c['expirationDate']
+                    if 'secure' in c: curr['secure'] = c['secure']
+                    if 'httpOnly' in c: curr['httpOnly'] = c['httpOnly']
+                    if 'sameSite' in c:
+                        ss = {'lax': 'Lax', 'strict': 'Strict', 'no_restriction': 'None', 'none': 'None'}.get(c['sameSite'].lower())
+                        if ss: curr['sameSite'] = ss
+                    cookie_list.append(curr)
+            else:
+                cookie_list = [{'name': k, 'value': v, 'domain': '.nextdoor.com', 'path': '/'} 
+                              for k, v in self.cookies.items()]
             
+            context.add_cookies(cookie_list)
             page = context.new_page()
             
-            # Response listener for GraphQL
             def handle_response(response):
                 try:
                     if "PersonalizedFeed" in response.url and response.status == 200:
-                        data = response.json()
-                        feed_data = data.get('data', {}).get('me', {}).get('personalizedFeed', {})
-                        feed_items = feed_data.get('feedItems', [])
-                        
-                        for item in feed_items:
-                            parsed = self.parse_post(item)
-                            if parsed and parsed.get('post_id'):
+                        for item in response.json().get('data', {}).get('me', {}).get('personalizedFeed', {}).get('feedItems', []):
+                            if (parsed := self.parse_post(item)) and parsed.get('post_id'):
                                 collected_posts[parsed['post_id']] = parsed
                 except Exception:
                     pass
-
+            
             page.on("response", handle_response)
             
             try:
                 self.logger.info("navigating_to_feed")
-                page.goto("https://nextdoor.com/news_feed/", timeout=60000)
-                page.wait_for_load_state("networkidle")
+                page.goto("https://nextdoor.com/news_feed/", timeout=90000)
+                try:
+                    page.wait_for_load_state("domcontentloaded", timeout=60000)
+                except:
+                    pass
+                page.wait_for_timeout(5000)
                 
-                # Scroll loop
+                previous_height = 0
                 for i in range(max_pages):
                     self.logger.info(f"scrolling_page_{i+1}")
-                    page.evaluate("window.scrollBy(0, 1000)")
+                    page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    
                     try:
-                        page.wait_for_timeout(2000) # Wait for network
-                        # Check for 'Sign in' redirect which implies cookies failed
+                        page.wait_for_timeout(4000)
                         if "login" in page.url or "signup" in page.url:
-                             self.logger.error("session_invalid_redirected_to_login")
-                             break
-                    except Exception:
-                        pass
+                            self.logger.error("session_invalid_redirected_to_login")
+                            break
+                        
+                        for btn_text in ["See more", "Load more", "Show more"]:
+                            if (buttons := page.get_by_role("button", name=btn_text)).count() > 0 and buttons.first.is_visible():
+                                self.logger.info(f"clicking_{btn_text.lower().replace(' ', '_')}_button")
+                                buttons.first.click()
+                                page.wait_for_timeout(2000)
+                                break
+                        
+                        current_height = page.evaluate("document.body.scrollHeight")
+                        if current_height == previous_height:
+                            self.logger.info("no_height_change_detected")
+                            page.keyboard.press("End")
+                            page.wait_for_timeout(2000)
+                        previous_height = current_height
+                    except Exception as e:
+                        self.logger.warning("scroll_iteration_error", error=str(e))
                 
                 self.logger.info("scrolling_complete", gathered=len(collected_posts))
-                
             except Exception as e:
                 self.logger.error("playwright_execution_failed", error=str(e))
             finally:
                 browser.close()
         
-        # Convert collected dicts to Leads
-        for post_data in collected_posts.values():
-            lead = self.parse_item(post_data)
-            if lead:
-                all_leads.append(lead)
-                
-        return all_leads
+        return [lead for post_data in collected_posts.values() if (lead := self.parse_item(post_data))]

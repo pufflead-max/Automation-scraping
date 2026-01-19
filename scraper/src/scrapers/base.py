@@ -1,13 +1,12 @@
-"""
-Base scraper class with common functionality.
-All specific scrapers inherit from this class.
-"""
+"""Base scraper class with common functionality."""
 
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import time
 import uuid
+import json
+import os
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 import requests
 from requests.exceptions import RequestException, Timeout
@@ -25,96 +24,41 @@ except ImportError:
 
 
 class BaseScraper(ABC):
-    """
-    Abstract base class for all scrapers.
-    Provides common functionality for scraping, error handling, and data storage.
-    """
+    """Abstract base class for all scrapers."""
     
     def __init__(self, scraper_name: str, db_manager: Optional[DatabaseManager] = None):
-        """
-        Initialize base scraper.
-        
-        Args:
-            scraper_name: Name of the scraper (e.g., 'craigslist')
-            db_manager: Optional database manager instance
-        """
         self.scraper_name = scraper_name
         self.logger = ScraperLogger(scraper_name)
         self.db = db_manager or get_db_manager()
         self.config = get_scraper_config()
-        
-        # Job tracking
         self.current_job: Optional[ScrapeJob] = None
         self.scraped_items: List[ScrapedLead] = []
-        
         self.logger.info("scraper_initialized", scraper=scraper_name)
     
     @abstractmethod
     def scrape(self, target: str, **kwargs) -> List[ScrapedLead]:
-        """
-        Main scraping method - must be implemented by subclasses.
-        
-        Args:
-            target: Target URL or identifier to scrape
-            **kwargs: Additional scraper-specific parameters
-        
-        Returns:
-            List[ScrapedLead]: List of scraped and validated leads
-        """
+        """Main scraping method - must be implemented by subclasses."""
         pass
     
     @abstractmethod
     def parse_item(self, raw_data: Any) -> Optional[ScrapedLead]:
-        """
-        Parse raw scraped data into a ScrapedLead model.
-        
-        Args:
-            raw_data: Raw data from the source (HTML, JSON, etc.)
-        
-        Returns:
-            Optional[ScrapedLead]: Parsed and validated lead, or None if parsing fails
-        """
+        """Parse raw scraped data into a ScrapedLead model."""
         pass
     
     def start_job(self, target: str, category: Optional[str] = None) -> ScrapeJob:
-        """
-        Start a new scrape job and log it to the database.
-        
-        Args:
-            target: Target being scraped
-            category: Optional category
-        
-        Returns:
-            ScrapeJob: The created job instance
-        """
-        job = ScrapeJob(
-            job_id=str(uuid.uuid4()),
-            scraper=self.scraper_name,
-            status="started",
-            target=target,
-            category=category,
-            started_at=datetime.utcnow()
-        )
-        
+        """Start a new scrape job and log it to the database."""
+        job = ScrapeJob(job_id=str(uuid.uuid4()), scraper=self.scraper_name, status="started",
+                       target=target, category=category, started_at=datetime.utcnow())
         self.current_job = job
-        
-        # Save job to database
         try:
             self.db.insert_one("scrape_jobs", job.model_dump())
             self.logger.log_scrape_start(target, job_id=job.job_id, category=category)
         except Exception as e:
             self.logger.error("failed_to_save_job", error=str(e))
-        
         return job
     
     def complete_job(self, status: str = "completed", error: Optional[Exception] = None) -> None:
-        """
-        Mark the current job as completed and update the database.
-        
-        Args:
-            status: Final status ('completed' or 'failed')
-            error: Optional exception if job failed
-        """
+        """Mark the current job as completed and update the database."""
         if not self.current_job:
             self.logger.warning("complete_job_called_without_active_job")
             return
@@ -128,260 +72,113 @@ class BaseScraper(ABC):
             self.current_job.error_message = str(error)
             self.current_job.error_type = type(error).__name__
         
-        # Update job in database
         try:
-            self.db.update_one(
-                "scrape_jobs",
-                {"job_id": self.current_job.job_id},
-                {"$set": self.current_job.model_dump()},
-                upsert=True
-            )
-            
+            self.db.update_one("scrape_jobs", {"job_id": self.current_job.job_id},
+                             {"$set": self.current_job.model_dump()}, upsert=True)
             if status == "completed":
-                self.logger.log_scrape_success(
-                    self.current_job.target,
-                    items_count=self.current_job.items_saved,
-                    job_id=self.current_job.job_id
-                )
+                self.logger.log_scrape_success(self.current_job.target, items_count=self.current_job.items_saved, job_id=self.current_job.job_id)
             else:
-                self.logger.log_scrape_error(
-                    self.current_job.target,
-                    error,
-                    job_id=self.current_job.job_id
-                )
+                self.logger.log_scrape_error(self.current_job.target, error, job_id=self.current_job.job_id)
         except Exception as e:
             self.logger.error("failed_to_update_job", error=str(e))
     
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((RequestException, Timeout)),
-        reraise=True
-    )
-    def make_request(
-        self,
-        url: str,
-        method: str = "GET",
-        headers: Optional[Dict[str, str]] = None,
-        cookies: Optional[Dict[str, str]] = None,
-        data: Optional[Dict] = None,
-        json: Optional[Dict] = None,
-        use_proxy: bool = True
-    ) -> requests.Response:
-        """
-        Make an HTTP request with automatic retries and proxy support.
-        
-        Args:
-            url: Target URL
-            method: HTTP method (GET, POST, etc.)
-            headers: Optional headers
-            cookies: Optional cookies
-            data: Optional form data
-            json: Optional JSON data
-            use_proxy: Whether to use ScraperAPI proxy
-        
-        Returns:
-            requests.Response: The response object
-        
-        Raises:
-            RequestException: If request fails after retries
-        """
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10),
+           retry=retry_if_exception_type((RequestException, Timeout)), reraise=True)
+    def make_request(self, url: str, method: str = "GET", headers: Optional[Dict[str, str]] = None,
+                    cookies: Optional[Dict[str, str]] = None, data: Optional[Dict] = None,
+                    json: Optional[Dict] = None, use_proxy: bool = True) -> requests.Response:
+        """Make an HTTP request with automatic retries and proxy support."""
         proxies = None
         if use_proxy and self.config.get('scraperapi_proxy'):
-            # ScraperAPI proxies use HTTP for both HTTP and HTTPS traffic
-            proxies = {
-                "http": f"http://{self.config['scraperapi_proxy']}",
-                "https": f"http://{self.config['scraperapi_proxy']}"  # Use HTTP, not HTTPS
-            }
+            proxy_url = f"http://{self.config['scraperapi_proxy']}"
+            proxies = {"http": proxy_url, "https": proxy_url}
         
         try:
-            response = requests.request(
-                method=method,
-                url=url,
-                headers=headers,
-                cookies=cookies,
-                data=data,
-                json=json,
-                proxies=proxies,
-                timeout=self.config.get('timeout', 30),
-                verify=False  # Disable SSL verification for proxies
-            )
-            
+            response = requests.request(method=method, url=url, headers=headers, cookies=cookies,
+                                       data=data, json=json, proxies=proxies,
+                                       timeout=self.config.get('timeout', 30), verify=False)
             response.raise_for_status()
-            
-            self.logger.debug(
-                "request_successful",
-                url=url,
-                status_code=response.status_code,
-                response_size=len(response.content)
-            )
-            
+            self.logger.debug("request_successful", url=url, status_code=response.status_code,
+                            response_size=len(response.content))
             return response
-            
         except Exception as e:
-            self.logger.warning(
-                "request_failed",
-                url=url,
-                error=str(e),
-                error_type=type(e).__name__
-            )
+            self.logger.warning("request_failed", url=url, error=str(e), error_type=type(e).__name__)
             raise
     
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        reraise=True
-    )
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), reraise=True)
     def save_leads(self, leads: List[ScrapedLead], collection: str = "leads") -> int:
-        """
-        Save scraped leads to the database with retries.
-        
-        Args:
-            leads: List of validated leads
-            collection: Collection name to save to
-        
-        Returns:
-            int: Number of leads successfully saved
-        """
+        """Save scraped leads to the database with retries."""
         if not leads:
             self.logger.warning("save_leads_called_with_empty_list")
             return 0
         
-        # Ensure Db connection
         if not self.db:
-             from database import get_db_manager
-             self.db = get_db_manager()
-
-        # Convert leads to dictionaries
-        lead_dicts = [lead.model_dump() for lead in leads]
+            from database import get_db_manager
+            self.db = get_db_manager()
         
         try:
-            # Insert leads
-            # Use ordered=False to continue inserting even if some fail (e.g. duplicates)
-            # Use bulk_upsert to handle deduplication logic
-            # Use source_url as unique identifier
-            count = self.db.bulk_upsert(collection, lead_dicts, unique_field="source_url")
-            
-            self.logger.info(
-                "leads_saved",
-                collection=collection,
-                count=count,
-                job_id=self.current_job.job_id if self.current_job else None
-            )
-            
+            count = self.db.bulk_upsert(collection, [lead.model_dump() for lead in leads], unique_field="source_url")
+            self.logger.info("leads_saved", collection=collection, count=count,
+                           job_id=self.current_job.job_id if self.current_job else None)
             return count
-            
         except Exception as e:
-            self.logger.error(
-                "failed_to_save_leads",
-                collection=collection,
-                lead_count=len(leads),
-                error=str(e)
-            )
+            self.logger.error("failed_to_save_leads", collection=collection, lead_count=len(leads), error=str(e))
             raise
 
     def save_to_json(self, leads: List[ScrapedLead]) -> str:
-        """
-        Save leads to a local JSON file.
-        
-        Args:
-            leads: List of leads to save
-        
-        Returns:
-            str: Path of the saved file
-        """
-        import json
-        import os
-        
+        """Save leads to a local JSON file."""
         if not leads:
             return ""
-            
+        
         try:
-            # Determine data directory based on environment
-            if os.path.exists("/opt/airflow/logs"):
-                # Docker environment
-                data_dir = "/opt/airflow/logs/scraped_data"
-            else:
-                # Local environment - find airflow/logs relative to project root
-                # structure: scraper/src/scrapers/base.py -> ../../../airflow/logs
-                current_dir = os.path.dirname(os.path.abspath(__file__))
-                project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
-                data_dir = os.path.join(project_root, "airflow", "logs", "scraped_data")
-            
+            data_dir = "/opt/airflow/logs/scraped_data" if os.path.exists("/opt/airflow/logs") else os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
+                "airflow", "logs", "scraped_data")
             os.makedirs(data_dir, exist_ok=True)
             
-            # Generate filename: scraper_YYYYMMDD_HHMMSS.json
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"{self.scraper_name}_{timestamp}.json"
-            filepath = os.path.join(data_dir, filename)
-            
-            # Dump data
-            data = [lead.model_dump(mode='json') for lead in leads]
+            filepath = os.path.join(data_dir, f"{self.scraper_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
             with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-                
+                json.dump([lead.model_dump(mode='json') for lead in leads], f, indent=2, ensure_ascii=False)
+            
             self.logger.info("leads_saved_to_json", file=filepath, count=len(leads))
             print(f"\n✓ Saved backup to: {filepath}")
             return filepath
-            
         except Exception as e:
             self.logger.error("failed_to_save_json", error=str(e))
             return ""
     
     def run(self, target: str, save_to_db: bool = True, **kwargs) -> List[ScrapedLead]:
-        """
-        Run the complete scraping workflow.
-        Order: Scrape -> Save JSON (Backup) -> Save DB (Primary)
-        
-        Args:
-            target: Target to scrape
-            save_to_db: Whether to save results to database
-            **kwargs: Additional scraper-specific parameters
-        
-        Returns:
-            List[ScrapedLead]: List of scraped leads
-        """
-        # Start job
-        category = kwargs.get('category')
-        self.start_job(target, category)
+        """Run the complete scraping workflow."""
+        self.start_job(target, kwargs.get('category'))
         
         try:
-            # 1. Run scraper
             leads = self.scrape(target, **kwargs)
             self.scraped_items = leads
             
-            # 2. Save to JSON file (Backup) - Always do this first
             json_path = self.save_to_json(leads)
             if json_path:
                 self.logger.info("step_json_backup_completed", path=json_path)
             
-            # 3. Save to database if requested - Do this second
             if save_to_db and leads:
-                self.logger.info("step_db_save_started", count=len(leads))
-                self.save_leads(leads)
+                scraper_cap = self.scraper_name.capitalize()
+                self.logger.info("saving_to_raw_collection", collection=f"{scraper_cap}_raw_data", count=len(leads))
+                self.save_leads(leads, collection=f"{scraper_cap}_raw_data")
+                
+                final_leads = leads
+                if self.scraper_name == 'nextdoor':
+                    final_leads = [l for l in leads if getattr(l, 'is_service_request', False)]
+                
+                if final_leads:
+                    self.logger.info("saving_to_final_collection", collection=f"{scraper_cap}_final_data", count=len(final_leads))
+                    self.save_leads(final_leads, collection=f"{scraper_cap}_final_data")
             
-            # Mark job as completed
             self.complete_job(status="completed")
-            
             return leads
-            
         except Exception as e:
-            # Mark job as failed
             self.complete_job(status="failed", error=e)
             raise
     
     def sleep(self, seconds: float) -> None:
-        """
-        Sleep for specified seconds with logging.
-        
-        Args:
-            seconds: Number of seconds to sleep
-        """
+        """Sleep for specified seconds with logging."""
         self.logger.debug("sleeping", seconds=seconds)
         time.sleep(seconds)
-
-
-if __name__ == "__main__":
-    # Test base scraper (can't instantiate abstract class directly)
-    print("BaseScraper is an abstract class and must be subclassed.")
-    print("See craigslist.py or nextdoor.py for concrete implementations.")

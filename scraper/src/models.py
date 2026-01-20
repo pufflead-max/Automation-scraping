@@ -174,3 +174,20 @@ class ScraperMetrics(BaseModel):
         json_encoders = {
             datetime: lambda v: v.isoformat()
         }
+
+
+class FacebookLead(ScrapedLead):
+    """
+    Facebook specific lead model.
+    """
+    source: Literal["facebook"] = "facebook"
+    
+    # Media
+    images: List[str] = Field(default_factory=list, description="List of image URLs")
+    videos: List[str] = Field(default_factory=list, description="List of video URLs")
+    image_count: int = Field(default=0, ge=0)
+    video_count: int = Field(default=0, ge=0)
+    has_media: bool = Field(default=False)
+    
+    # Content metrics
+    word_count: int = Field(default=0, ge=0)

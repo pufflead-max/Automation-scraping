@@ -53,7 +53,7 @@ def load_nextdoor_cookies():
             pass
     
     # Try to load from file
-    cookies_file = os.getenv('NEXTDOOR_COOKIES_FILE', '/opt/airflow/config/nextdoor_cookies.json')
+    cookies_file = os.getenv('NEXTDOOR_COOKIES_FILE', '/opt/airflow/scraper/cookies/nextdoor_cookies.json')
     if os.path.exists(cookies_file):
         try:
             with open(cookies_file, 'r') as f:

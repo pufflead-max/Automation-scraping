@@ -45,15 +45,34 @@ def run_craigslist_scraper(target: str, category: Optional[str] = None, save_to_
         raise
 
 
+
+def run_facebook_scraper(target: str, cookies: Optional[dict] = None, save_to_db: bool = True, headless: bool = True, limit: int = 25) -> List[ScrapedLead]:
+    from scrapers.facebook import FacebookScraper
+    
+    scraper_logger = ScraperLogger("facebook")
+    scraper_logger.info("starting_facebook_scraper", target=target)
+    
+    try:
+        scraper = FacebookScraper(cookies=cookies, headless=headless)
+        leads = scraper.run(target=target, save_to_db=save_to_db, limit=limit)
+        scraper_logger.info("facebook_scraper_completed", leads_count=len(leads))
+        return leads
+    except Exception as e:
+        scraper_logger.error("facebook_scraper_failed", target=target, error=str(e), error_type=type(e).__name__)
+        raise
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run web scrapers for lead extraction")
-    parser.add_argument("--scraper", type=str, required=True, choices=["craigslist", "nextdoor"], help="Which scraper to run")
+    parser.add_argument("--scraper", type=str, required=True, choices=["craigslist", "nextdoor", "facebook"], help="Which scraper to run")
     parser.add_argument("--target", type=str, required=True, help="Target URL or location to scrape")
     parser.add_argument("--category", type=str, default=None, help="Category name for the scraping job")
     parser.add_argument("--no-save", action="store_true", help="Don't save results to database (dry run)")
     parser.add_argument("--no-headless", action="store_true", help="Run browser in visible mode (for debugging)")
     parser.add_argument("--nextdoor-cookies", type=str, default=None, help="Path to JSON file containing Nextdoor authentication cookies")
+    parser.add_argument("--facebook-cookies", type=str, default=None, help="Path to JSON file containing Facebook authentication cookies")
     parser.add_argument("--max-pages", type=int, default=30, help="Maximum number of pages to scrape (for Nextdoor)")
+    parser.add_argument("--limit", type=int, default=25, help="Limit number of items to scrape (for Facebook)")
     
     args = parser.parse_args()
     
@@ -86,6 +105,17 @@ def main():
                 sys.exit(1)
             
             leads = run_nextdoor_scraper(cookies=cookies, save_to_db=not args.no_save, max_pages=args.max_pages)
+        elif args.scraper == "facebook":
+            cookies = None
+            if args.facebook_cookies and os.path.exists(args.facebook_cookies):
+                import json
+                try:
+                    with open(args.facebook_cookies, 'r') as f:
+                        cookies = json.load(f)
+                except Exception as e:
+                     logger.warning("failed_to_load_facebook_cookies", error=str(e))
+
+            leads = run_facebook_scraper(target=args.target, cookies=cookies, save_to_db=not args.no_save, headless=not args.no_headless, limit=args.limit)
         else:
             logger.error("unknown_scraper", scraper=args.scraper)
             sys.exit(1)

@@ -2,14 +2,12 @@ FROM apache/airflow:2.9.3-python3.11
 
 USER root
 
-# System dependencies for Chromium + Selenium
+# System dependencies for Chromium and Selenium
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
     unzip \
     curl \
-    chromium \
-    chromium-driver \
     fonts-liberation \
     libasound2 \
     libatk-bridge2.0-0 \
@@ -30,6 +28,14 @@ RUN apt-get update && apt-get install -y \
     libxrandr2 \
     xdg-utils \
     ca-certificates \
+    libglib2.0-0 \
+    libxss1 \
+    libxtst6 \
+    libpangocairo-1.0-0 \
+    libpango-1.0-0 \
+    libcairo2 \
+    chromium \
+    chromium-driver \
     && rm -rf /var/lib/apt/lists/*
 
 USER airflow
@@ -38,14 +44,14 @@ USER airflow
 COPY scraper/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
-# Airflow providers - use constraints to ensure compatibility
+# Airflow providers
 RUN pip install --no-cache-dir \
     apache-airflow-providers-mongo==4.1.1 \
     psycopg2-binary==2.9.9
 
 # Runtime environment
 ENV PYTHONPATH="/opt/airflow/scraper/src"
-ENV CHROME_BIN=/usr/bin/chromium
-ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
+ENV CHROME_BIN="/usr/bin/chromium"
+ENV CHROMEDRIVER_BIN="/usr/bin/chromedriver"
 
 # DO NOT override ENTRYPOINT or CMD - let the base image handle it

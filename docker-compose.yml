@@ -83,7 +83,7 @@ services:
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
       - ./scraper/src:/opt/airflow/scraper/src
-      - ./nextdoor_cookies.json:/opt/airflow/config/nextdoor_cookies.json
+      - ./scraper/cookies:/opt/airflow/scraper/cookies
       - /var/run/docker.sock:/var/run/docker.sock
     networks: [ appnet ]
     user: "50000:0"
@@ -115,7 +115,7 @@ services:
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
       - ./scraper/src:/opt/airflow/scraper/src
-      - ./nextdoor_cookies.json:/opt/airflow/config/nextdoor_cookies.json
+      - ./scraper/cookies:/opt/airflow/scraper/cookies
       - /var/run/docker.sock:/var/run/docker.sock
     networks: [ appnet ]
     user: "50000:0"

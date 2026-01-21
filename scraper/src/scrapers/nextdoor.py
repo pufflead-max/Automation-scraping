@@ -18,6 +18,25 @@ class NextdoorScraper(BaseScraper):
     def __init__(self, cookies: Optional[Dict[str, str]] = None, **kwargs):
         super().__init__("nextdoor", **kwargs)
         self.cookies = cookies or {}
+        
+        # Load cookie file if path provided
+        if isinstance(self.cookies, str) and os.path.exists(self.cookies):
+            import json
+            with open(self.cookies, 'r') as f:
+                self.cookies = json.load(f)
+        
+        # If no cookies passed, try to load from default location
+        if not self.cookies:
+            import json
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            cookie_path = os.path.join(project_root, 'cookies', 'nextdoor_cookies.json')
+            if os.path.exists(cookie_path):
+                try:
+                    with open(cookie_path, 'r') as f:
+                        self.cookies = json.load(f)
+                    self.logger.info("loaded_cookies_from_file", path=cookie_path)
+                except Exception as e:
+                    self.logger.warning("failed_to_load_cookie_file", error=str(e))
     
     def parse_post(self, post_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Parse a single post from the feed."""
@@ -204,9 +223,33 @@ class NextdoorScraper(BaseScraper):
                         self.logger.warning("scroll_iteration_error", error=str(e))
                 
                 self.logger.info("scrolling_complete", gathered=len(collected_posts))
+                
+                # Save cookies if session was successful
+                if len(collected_posts) > 0:
+                    self._save_cookies(context.cookies())
+                    
             except Exception as e:
                 self.logger.error("playwright_execution_failed", error=str(e))
             finally:
                 browser.close()
         
         return [lead for post_data in collected_posts.values() if (lead := self.parse_item(post_data))]
+
+    def _save_cookies(self, cookies):
+        """Save current cookies back to the file."""
+        import json
+        try:
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            cookie_dir = os.path.join(project_root, 'cookies')
+            cookie_path = os.path.join(cookie_dir, 'nextdoor_cookies.json')
+            
+            # Use /tmp if project directory is read-only
+            if not os.access(os.path.dirname(project_root), os.W_OK):
+                cookie_path = '/tmp/nextdoor_cookies.json'
+                
+            os.makedirs(os.path.dirname(cookie_path), exist_ok=True)
+            with open(cookie_path, 'w', encoding='utf-8') as f:
+                json.dump(cookies, f, ensure_ascii=False, indent=2)
+            self.logger.info("cookies_saved", path=cookie_path)
+        except Exception as e:
+            self.logger.warning("failed_to_save_cookies", error=str(e))

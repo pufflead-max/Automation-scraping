@@ -25,11 +25,11 @@ default_args = {
 def run_facebook_scraper(**context):
     """Execute the Facebook scraper."""
     # Get configuration from Airflow variables or defaults
-    target_urls_raw = Variable.get("facebook_target_url", default_var="https://www.facebook.com/share/g/1ahUgW7G9w/?mibextid=wwXIfr")
+    target_urls_raw = Variable.get("facebook_target_url", default_var="https://www.facebook.com/share/g/14Tv25M9ns8/?mibextid=wwXIfr")
     # Support multiple URLs separated by commas or newlines
     target_urls = [url.strip() for url in target_urls_raw.replace('\n', ',').split(',') if url.strip()]
     
-    limit = int(Variable.get("facebook_post_limit", default_var="100"))
+    limit = int(Variable.get("facebook_post_limit", default_var="25"))
     headless = Variable.get("facebook_headless", default_var="true").lower() == "true"
     
     # Try to get cookies from variable, otherwise scraper will look for file

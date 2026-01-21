@@ -8,6 +8,7 @@ import json
 import time
 import traceback
 import random
+import logging
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -40,10 +41,12 @@ class FacebookScraper(BaseScraper):
         
         # If no cookies passed, try to load from default location
         if not self.cookies:
-            cookie_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'cookies', 'facebook_cookies.json')
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            cookie_path = os.path.join(project_root, 'cookies', 'facebook_cookies.json')
             if os.path.exists(cookie_path):
                  with open(cookie_path, 'r') as f:
                     self.cookies = json.load(f)
+                 self.logger.info("loaded_cookies_from_file", path=cookie_path)
         
         self.seen_urls = set()
         self.seen_texts = set()
@@ -185,11 +188,26 @@ class FacebookScraper(BaseScraper):
             return False
 
     def _save_cookies(self):
-        """Save current cookies back to the file."""
+        """Save current cookies back to the file with fallback for read-only environments."""
         try:
             cookies = self.driver.get_cookies()
-            cookie_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'cookies', 'facebook_cookies.json')
-            os.makedirs(os.path.dirname(cookie_path), exist_ok=True)
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            cookie_path = os.path.join(project_root, 'cookies', 'facebook_cookies.json')
+            
+            # If default path is not writable, try /tmp
+            directory = os.path.dirname(cookie_path)
+            if not os.path.exists(directory):
+                try:
+                    os.makedirs(directory, exist_ok=True)
+                except:
+                    pass
+                    
+            if not os.access(directory, os.W_OK):
+                cookie_path = '/tmp/facebook_cookies.json'
+                self.logger.warning("using_tmp_for_cookies_due_to_permissions", path=cookie_path)
+            else:
+                os.makedirs(os.path.dirname(cookie_path), exist_ok=True)
+                
             with open(cookie_path, 'w', encoding='utf-8') as f:
                 json.dump(cookies, f, ensure_ascii=False, indent=2)
             self.logger.info("cookies_saved", path=cookie_path)
@@ -206,6 +224,8 @@ class FacebookScraper(BaseScraper):
                 '[aria-label="Dismiss"]',
                 'div[aria-label="Not Now"]',
                 'button[aria-label="Not Now"]',
+                'div[role="dialog"] [aria-label="Close"]',
+                '#login_popup_cta_form i.x1n2onr6' # Login popup close button
             ]
             
             for selector in close_selectors:
@@ -214,10 +234,21 @@ class FacebookScraper(BaseScraper):
                     for el in elements:
                         if el.is_displayed():
                             el.click()
-                            time.sleep(0.3)
+                            self.logger.info("popup_closed", selector=selector)
+                            time.sleep(0.5)
                 except:
                     pass
             
+            # Special check for the "login/signup" banner at the bottom
+            try:
+                self.driver.execute_script("""
+                    const banner = document.querySelector('div[role="banner"]');
+                    if (banner && (banner.textContent.includes('Log In') || banner.textContent.includes('Sign Up'))) {
+                        banner.style.display = 'none';
+                    }
+                """)
+            except: pass
+
             try:
                 ActionChains(self.driver).send_keys(Keys.ESCAPE).perform()
             except:
@@ -443,34 +474,55 @@ class FacebookScraper(BaseScraper):
     def _scroll_smoothly(self, scroll_count=0):
         """Perform aggressive, human-like scrolling with multiple fallbacks."""
         try:
-            # 0. Initial tiny wiggle to trigger scroll listeners
-            self.driver.execute_script("window.scrollBy(0, -10);")
-            time.sleep(0.1)
-            self.driver.execute_script("window.scrollBy(0, 10);")
+            # 0. Focus and wiggle to wake up event listeners
+            self.driver.execute_script("document.body.focus();")
+            self.driver.execute_script("window.scrollBy(0, -50);")
             time.sleep(0.2)
-
+            self.driver.execute_script("window.scrollBy(0, 50);")
+            time.sleep(0.3)
+            
             # 1. Random small scrolls (mimic mouse wheel)
-            for _ in range(5):
-                amount = random.randint(300, 600)
+            for _ in range(3):
+                amount = random.randint(500, 1000)
                 self.driver.execute_script(f"window.scrollBy(0, {amount});")
-                time.sleep(0.4)
+                time.sleep(random.uniform(0.5, 1.0))
             
             # 2. Use Page Down keys (very effective for Facebook)
             actions = ActionChains(self.driver)
-            for _ in range(2):
+            for _ in range(random.randint(2, 4)):
                 actions.send_keys(Keys.PAGE_DOWN)
-                time.sleep(0.3)
+                time.sleep(random.uniform(0.2, 0.4))
             actions.perform()
             
-            # 3. Occasional 'End' key to trigger lazy loading
-            if scroll_count % 3 == 0:
+            # 3. Use JavaScript to scroll to the last found article
+            # This triggers the IntersectionObserver better than just scrolling to the bottom
+            self.driver.execute_script("""
+                const articles = document.querySelectorAll('div[role="article"]');
+                if (articles.length > 0) {
+                    articles[articles.length - 1].scrollIntoView({ behavior: 'smooth', block: 'end' });
+                } else {
+                    window.scrollTo(0, document.body.scrollHeight);
+                }
+            """)
+            
+            # 4. Occasional 'End' key to trigger lazy loading
+            if scroll_count % 2 == 0:
                 self.logger.info("sending_end_key_for_lazy_load")
                 ActionChains(self.driver).send_keys(Keys.END).perform()
-                time.sleep(1.5)
+                time.sleep(2)
             
-            # 4. Final Jump
-            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(2)
+            # 5. Check for "Loading" indicators or "See More" buttons at the bottom
+            self.driver.execute_script("""
+                const loadMore = Array.from(document.querySelectorAll('span, div')).find(el => 
+                    el.textContent && (el.textContent.includes('See more posts') || el.textContent.includes('Loading'))
+                );
+                if (loadMore) {
+                    loadMore.scrollIntoView();
+                    if (typeof loadMore.click === 'function') loadMore.click();
+                }
+            """)
+            
+            time.sleep(2.5) # Allow meaningful time for fetch
             
         except Exception as e:
             self.logger.debug("scroll_failed", error=str(e))
@@ -577,13 +629,22 @@ class FacebookScraper(BaseScraper):
             
             self.logger.info("navigating_to_target", url=target)
             self.driver.get(target)
-            time.sleep(5)
+            
+            # Allow more time for initial load and redirects (e.g. share links)
+            time.sleep(8)
+            
+            # Check for redirect or login wall
+            current_url = self.driver.current_url
+            if 'login' in current_url or 'checkpoint' in current_url:
+                self.logger.warning("login_wall_detected", url=current_url)
+            
             self._close_popups()
             
             last_height = self.driver.execute_script("return document.body.scrollHeight")
             scroll_count = 0
             no_change_count = 0
             consecutive_no_new_posts = 0
+            last_batch_save = 0
             
             while len(extracted_leads) < target_posts:
                 self.logger.info("scroll_iteration", 
@@ -598,12 +659,20 @@ class FacebookScraper(BaseScraper):
                 # Expand "See more" buttons
                 self._expand_see_more_buttons()
                 
-                # Wait for content to load
-                time.sleep(1.5)
+                # Wait for content to load - Facebook is heavy
+                time.sleep(2.5)
                 
-                # Extract posts
-                # Use more specific selector for actual posts
-                articles = self.driver.find_elements(By.CSS_SELECTOR, 'div[role="article"]')
+                # More restrictive selectors to avoid sidebar/footer clutter
+                # In groups/pages, posts are usually inside a specific main container or role="feed"
+                articles = self.driver.find_elements(By.CSS_SELECTOR, 'div[role="feed"] div[role="article"], div[role="main"] div[role="article"]')
+                
+                if not articles:
+                    articles = self.driver.find_elements(By.CSS_SELECTOR, 'div[role="article"]')
+                
+                # If no articles with role, try message-specific ones
+                if not articles:
+                    articles = self.driver.find_elements(By.CSS_SELECTOR, 'div[data-ad-preview="message"]')
+                    
                 self.logger.info("articles_found_in_dom", count=len(articles))
                 
                 posts_before = len(extracted_leads)
@@ -613,42 +682,45 @@ class FacebookScraper(BaseScraper):
                         break
                         
                     try:
-                        # Extract link first
+                        # Extract link with more patterns
                         link = None
-                        selectors = [
+                        link_selectors = [
                             'a[href*="/posts/"]', 
                             'a[href*="/photos/"]', 
                             'a[href*="/videos/"]', 
-                            'a[href*="/reel/"]'
+                            'a[href*="/reel/"]',
+                            'a[href*="fbid="]',
+                            'a[href*="/permalink/"]',
+                            'a[href*="/group/"]'
                         ]
                         
-                        for sel in selectors:
+                        for sel in link_selectors:
                             try:
                                 els = article.find_elements(By.CSS_SELECTOR, sel)
                                 for e in els:
                                     href = e.get_attribute('href')
-                                    if href and 'facebook.com' in href:
+                                    if href and 'facebook.com' in href and not any(x in href for x in ['#', 'javascript:']):
                                         link = href.split('?')[0]
                                         break
-                                if link: 
-                                    break
-                            except: 
-                                continue
-                        
-                        # Skip if we've seen this URL
-                        if link and link in self.seen_urls: 
-                            continue
+                                if link: break
+                            except: continue
                         
                         # Extract post text
                         post_text = self._extract_post_content_only(article)
-                        text_hash = post_text[:150].strip()
+                        text_hash = post_text[:200].strip() if post_text else ""
                         
-                        # Skip if no meaningful content
-                        if not link and (not text_hash or len(text_hash) < 10): 
+                        # VALIDATION: Skip if definitely not a post (no text AND no valid link)
+                        if not link and (not text_hash or len(text_hash) < 15):
+                            self.logger.debug("skipping_empty_article_stub")
                             continue
                         
-                        # Skip if we've seen this text
-                        if not link and text_hash in self.seen_texts: 
+                        # Skip if we've seen this URL
+                        if link and link in self.seen_urls:
+                            continue
+                        
+                        # Skip if we've seen this text (for posts without fixed URLs)
+                        # We use a longer hash for better uniqueness
+                        if not link and text_hash and text_hash in self.seen_texts:
                             continue
                         
                         # Mark as seen
@@ -705,6 +777,20 @@ class FacebookScraper(BaseScraper):
                 else:
                     consecutive_no_new_posts = 0
                     self.logger.info("new_posts_found", count=new_posts_this_iteration)
+                    
+                    # Batch save every 25 posts to MongoDB during the scrape
+                    if len(extracted_leads) >= last_batch_save + 25:
+                        self.logger.info("intermediate_batch_save_triggered", 
+                                       count=len(extracted_leads),
+                                       batch_size=len(extracted_leads) - last_batch_save)
+                        try:
+                            scraper_cap = self.scraper_name.capitalize()
+                            # Save to both raw and final collections
+                            self.save_leads(extracted_leads, collection=f"{scraper_cap}_raw_data")
+                            self.save_leads(extracted_leads, collection=f"{scraper_cap}_final_data")
+                            last_batch_save = len(extracted_leads)
+                        except Exception as e:
+                            self.logger.error("intermediate_batch_save_failed", error=str(e))
                 
                 # If we haven't found new posts in 4 scrolls, we might be stuck or at end
                 if consecutive_no_new_posts >= 4:
@@ -742,21 +828,23 @@ class FacebookScraper(BaseScraper):
                     no_change_count += 1
                     self.logger.info("no_height_change", count=no_change_count)
                     
-                    # Be very patient before giving up
-                    if no_change_count >= 12: 
+                    # Be even more patient - Facebook feed can be very slow
+                    if no_change_count >= 20: 
                         self.logger.info("end_of_content_reached_confirmed")
                         break
                     
-                    # Try to trigger more content loading every 3rd fail
-                    if no_change_count % 3 == 0:
+                    # Try more aggressive unsticking after 5 fails
+                    if no_change_count > 5:
+                        self.logger.info("forcing_content_load_via_alternative_scroll")
+                        # Scroll UP then DOWN
+                        self.driver.execute_script("window.scrollBy(0, -1500);")
+                        time.sleep(1)
+                        self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                        time.sleep(3)
+                        # Also click the body just in case
                         try:
-                            self.logger.info("forcing_refresh_via_scroll_jump")
-                            self.driver.execute_script("window.scrollBy(0, -500);")
-                            time.sleep(1)
-                            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                            time.sleep(3)
-                        except:
-                            pass
+                            self.driver.find_element(By.TAG_NAME, "body").click()
+                        except: pass
                 else:
                     no_change_count = 0
                     last_height = new_height

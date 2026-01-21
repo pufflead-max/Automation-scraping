@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", description="Logging level")
     log_format: str = Field(default="json", description="Log format: json or text")
     
+    ghl_api_key: Optional[str] = Field(default=None, description="GoHighLevel API Key")
+    ghl_location_id: Optional[str] = Field(default=None, description="GoHighLevel Location ID")
+    
     airflow_executor: str = Field(default="LocalExecutor", description="Airflow executor type")
     
     @field_validator('log_level')
@@ -72,6 +75,15 @@ def get_mongo_uri() -> str:
 def get_mongo_db() -> str:
     """Get MongoDB database name."""
     return get_settings().mongo_db
+
+
+def get_ghl_config() -> dict:
+    """Get GoHighLevel configuration."""
+    s = get_settings()
+    return {
+        "api_key": s.ghl_api_key,
+        "location_id": s.ghl_location_id
+    }
 
 
 def get_scraper_config() -> dict:

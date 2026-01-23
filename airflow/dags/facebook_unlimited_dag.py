@@ -71,4 +71,15 @@ with DAG(
         python_callable=run_facebook_unlimited_scraper,
     )
 
-    scrape_task
+    def push_facebook_leads_to_ghl():
+        """Push Facebook leads from MongoDB to GHL."""
+        from push_leads import push_leads
+        print("Starting Facebook push to GHL")
+        push_leads(source="facebook")
+
+    push_task = PythonOperator(
+        task_id='push_facebook_to_ghl',
+        python_callable=push_facebook_leads_to_ghl,
+    )
+
+    scrape_task >> push_task

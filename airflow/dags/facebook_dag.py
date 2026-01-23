@@ -5,9 +5,11 @@ from airflow.models import Variable
 import sys
 import os
 import json
-
 # Add scraper module to path
 sys.path.append("/opt/airflow/scraper/src")
+
+from scrapers import FacebookScraper
+from config import get_scraper_config
 
 from scrapers import FacebookScraper
 from config import get_scraper_config
@@ -71,4 +73,15 @@ with DAG(
         python_callable=run_facebook_scraper,
     )
 
-    scrape_task
+    def push_facebook_leads_to_ghl():
+        """Push Facebook leads from MongoDB to GHL."""
+        from push_leads import push_leads
+        print("Starting Facebook push to GHL")
+        push_leads(source="facebook")
+
+    push_task = PythonOperator(
+        task_id='push_facebook_to_ghl',
+        python_callable=push_facebook_leads_to_ghl,
+    )
+
+    scrape_task >> push_task

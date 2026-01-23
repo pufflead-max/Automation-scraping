@@ -98,6 +98,19 @@ for category_name, category_url in CATEGORIES:
     scraping_tasks.append(task)
 
 
+def push_craigslist_leads_to_ghl():
+    """Push Craigslist leads from MongoDB to GHL."""
+    from push_leads import push_leads
+    print("Starting Craigslist push to GHL")
+    push_leads(source="craigslist")
+
+push_task = PythonOperator(
+    task_id='push_craigslist_to_ghl',
+    python_callable=push_craigslist_leads_to_ghl,
+    dag=dag,
+)
+
+
 # Optional: Add a summary task at the end
 def summarize_scraping_results(**context):
     """
@@ -149,5 +162,5 @@ summary_task = PythonOperator(
 
 
 # Set task dependencies
-# All scraping tasks run in parallel, then summary runs after all complete
-scraping_tasks >> summary_task
+# All scraping tasks run in parallel, then push to GHL, then summary runs
+scraping_tasks >> push_task >> summary_task

@@ -42,6 +42,7 @@ USER airflow
 
 # Install scraper dependencies
 COPY scraper/requirements.txt /tmp/requirements.txt
+RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Airflow providers

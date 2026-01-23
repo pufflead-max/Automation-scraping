@@ -48,3 +48,4 @@ email-validator>=2.0.0
 # UTILITIES
 # ============================================
 pytz>=2023.3
+gohighlevel-api-client

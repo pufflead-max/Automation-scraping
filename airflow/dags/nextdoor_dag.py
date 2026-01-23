@@ -104,8 +104,20 @@ scrape_task = PythonOperator(
     task_id='scrape_nextdoor_feed',
     python_callable=scrape_nextdoor_feed,
     op_kwargs={
-        'max_pages': 30,  # Increased from 5 to 30 to get more records
+        'max_pages': 10,
     },
+    dag=dag,
+)
+
+def push_nextdoor_leads_to_ghl():
+    """Push Nextdoor leads from MongoDB to GHL."""
+    from push_leads import push_leads
+    print("Starting Nextdoor push to GHL")
+    push_leads(source="nextdoor")
+
+push_task = PythonOperator(
+    task_id='push_nextdoor_to_ghl',
+    python_callable=push_nextdoor_leads_to_ghl,
     dag=dag,
 )
 
@@ -170,4 +182,4 @@ summary_task = PythonOperator(
 )
 
 # Set task dependencies
-scrape_task >> summary_task
+scrape_task >> push_task >> summary_task

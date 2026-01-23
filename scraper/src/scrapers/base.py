@@ -179,10 +179,6 @@ class BaseScraper(ABC):
                 if final_leads:
                     self.logger.info("saving_to_final_collection", collection=f"{scraper_cap}_final_data", count=len(final_leads))
                     self.save_leads(final_leads, collection=f"{scraper_cap}_final_data")
-                    
-                    # Push to GoHighLevel
-                    if self.ghl_client:
-                        self.push_to_ghl(final_leads)
             
             self.complete_job(status="completed")
             return leads
@@ -190,59 +186,6 @@ class BaseScraper(ABC):
             self.complete_job(status="failed", error=e)
             raise
 
-    def push_to_ghl(self, leads: List[ScrapedLead]) -> None:
-        """Push leads to GoHighLevel."""
-        if not self.ghl_client:
-            self.logger.warning("ghl_push_skipped_no_client")
-            return
-            
-        self.logger.info("pushing_leads_to_ghl", count=len(leads))
-        
-        # Mapping based on user requirements
-        mapping = {
-            "contact_name": "name",           # Standard field
-            "contact_email": "email",         # Standard field
-            "contact_phone": "phone",         # Standard field
-            "source": "Contact Source",       # Custom field
-            "city": "City",                   # Custom field
-            "state": "State",                 # Custom field
-            "country": "Country",             # Custom field
-            "description": "Message",         # Custom field
-            "source_url": "notes"             # Standard field for URL/details
-        }
-        
-        success_count = 0
-        for lead in leads:
-            lead_dict = lead.model_dump()
-            
-            # Additional logic for Nextdoor specific author name
-            if lead_dict.get('source') == 'nextdoor' and not lead_dict.get('contact_name'):
-                lead_dict['contact_name'] = lead_dict.get('author_name')
-            
-            # Default values
-            if not lead_dict.get('contact_name'):
-                lead_dict['contact_name'] = f"Lead from {lead_dict.get('source', 'Web Scraper')}"
-            
-            if not lead_dict.get('country'):
-                lead_dict['country'] = "USA"
-
-            # Hardcode Contact Type if needed
-            lead_dict['Contact Type'] = 'Service Request' if getattr(lead, 'is_service_request', False) else 'Lead'
-
-            ghl_payload = self.ghl_client.map_lead_to_ghl(lead_dict, mapping)
-            
-            # Also add the Contact Type to mapping if not already there
-            ghl_payload['customField'] = ghl_payload.get('customField', {})
-            type_id = self.ghl_client.get_field_id("Contact Type")
-            if type_id:
-                ghl_payload['customField'][type_id] = lead_dict['Contact Type']
-            
-            contact_id = self.ghl_client.create_contact(ghl_payload)
-            if contact_id:
-                success_count += 1
-                
-        self.logger.info("ghl_push_completed", total=len(leads), successful=success_count)
-    
     def sleep(self, seconds: float) -> None:
         """Sleep for specified seconds with logging."""
         self.logger.debug("sleeping", seconds=seconds)

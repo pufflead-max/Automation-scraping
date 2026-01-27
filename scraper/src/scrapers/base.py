@@ -17,12 +17,14 @@ try:
     from ..config import get_scraper_config, get_ghl_config
     from ..models import ScrapedLead, ScrapeJob
     from ..integrations.ghl import GHLClient
+    from ..utils.lead_enrichment import LeadEnricher
 except ImportError:
     from logger import ScraperLogger
     from database import DatabaseManager, get_db_manager
     from config import get_scraper_config, get_ghl_config
     from models import ScrapedLead, ScrapeJob
     from integrations.ghl import GHLClient
+    from utils.lead_enrichment import LeadEnricher
 
 
 class BaseScraper(ABC):
@@ -163,25 +165,75 @@ class BaseScraper(ABC):
             leads = self.scrape(target, **kwargs)
             self.scraped_items = leads
             
-            json_path = self.save_to_json(leads)
-            if json_path:
-                self.logger.info("step_json_backup_completed", path=json_path)
+            # Filter for buyer requests IMMEDIATELY (before any saving)
+            # Check if leads have is_buyer_request or is_service_request attribute
+            buyer_leads = []
+            for lead in leads:
+                # Support both is_buyer_request (Craigslist, Facebook) and is_service_request (Nextdoor)
+                is_buyer = getattr(lead, 'is_buyer_request', None)
+                is_service = getattr(lead, 'is_service_request', None)
+                
+                # Include lead if either flag is True
+                if is_buyer or is_service:
+                    buyer_leads.append(lead)
             
-            if save_to_db and leads:
+            # Log filtering results
+            total_scraped = len(leads)
+            total_buyers = len(buyer_leads)
+            filtered_count = total_scraped - total_buyers
+            
+            self.logger.info("buyer_intent_filtering_complete",
+                           total_scraped=total_scraped,
+                           buyer_leads=total_buyers,
+                           seller_posts_filtered=filtered_count,
+                           buyer_percentage=f"{(total_buyers/total_scraped*100):.1f}%" if total_scraped > 0 else "0%")
+            
+            if filtered_count > 0:
+                self.logger.info("filtered_seller_content", 
+                               filtered_out=filtered_count,
+                               message=f"Skipped {filtered_count} seller/non-buyer posts - NOT saved to database")
+            
+            # Save JSON backup of BUYER LEADS ONLY
+            if buyer_leads:
+                # Enrich buyer leads with vertical, phone, and city
+                for lead in buyer_leads:
+                    # Combine title and description for analysis
+                    text = f"{lead.title or ''} {lead.description or ''}"
+                    
+                    # Vertical
+                    lead.vertical = LeadEnricher.extract_vertical(text)
+                    
+                    # Phone
+                    lead.phone = LeadEnricher.extract_phone(text)
+                    
+                    # City (Attempt to improve if missing)
+                    if not lead.city:
+                         lead.city = LeadEnricher.extract_city(text, lead.location)
+                
+                json_path = self.save_to_json(buyer_leads)
+                if json_path:
+                    self.logger.info("step_json_backup_completed", path=json_path, count=len(buyer_leads))
+            
+            # Save to MongoDB - BUYER LEADS ONLY
+            if save_to_db and buyer_leads:
                 scraper_cap = self.scraper_name.capitalize()
-                self.logger.info("saving_to_raw_collection", collection=f"{scraper_cap}_raw_data", count=len(leads))
-                self.save_leads(leads, collection=f"{scraper_cap}_raw_data")
                 
-                final_leads = leads
-                if self.scraper_name == 'nextdoor':
-                    final_leads = [l for l in leads if getattr(l, 'is_service_request', False)]
+                # Save to final collection only (no raw data collection)
+                self.logger.info("saving_buyer_leads_to_db", 
+                               collection=f"{scraper_cap}_final_data", 
+                               count=len(buyer_leads))
+                self.save_leads(buyer_leads, collection=f"{scraper_cap}_final_data")
                 
-                if final_leads:
-                    self.logger.info("saving_to_final_collection", collection=f"{scraper_cap}_final_data", count=len(final_leads))
-                    self.save_leads(final_leads, collection=f"{scraper_cap}_final_data")
+                self.logger.info("buyer_leads_saved_successfully", 
+                               saved=len(buyer_leads),
+                               skipped=filtered_count)
+            elif save_to_db and not buyer_leads:
+                self.logger.warning("no_buyer_leads_found_nothing_saved", 
+                                  total_scraped=total_scraped,
+                                  message="All posts were seller content - nothing saved to database")
             
             self.complete_job(status="completed")
-            return leads
+            return buyer_leads  # Return only buyer leads
         except Exception as e:
             self.complete_job(status="failed", error=e)
             raise

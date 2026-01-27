@@ -40,6 +40,10 @@ class ScrapedLead(BaseModel):
     price: Optional[float] = Field(None, description="Price if applicable")
     extra_data: dict = Field(default_factory=dict, description="Platform-specific extra data")
     
+    # Enrichment fields (extracted)
+    phone: Optional[str] = Field(None, description="Extracted phone number")
+    vertical: Optional[str] = Field(None, description="Inferred business vertical")
+    
     class Config:
         """Pydantic configuration."""
         json_encoders = {
@@ -57,6 +61,7 @@ class CraigslistLead(ScrapedLead):
     map_address: Optional[str] = Field(None, description="Address from map")
     has_image: bool = Field(default=False, description="Has images")
     has_map: bool = Field(default=False, description="Has map")
+    is_buyer_request: bool = Field(default=False, description="Whether this is a buyer request")
     
     @field_validator('price')
     @classmethod
@@ -155,3 +160,6 @@ class FacebookLead(ScrapedLead):
     
     # Content metrics
     word_count: int = Field(default=0, ge=0)
+    
+    # Buyer intent
+    is_buyer_request: bool = Field(default=False, description="Whether this is a buyer request")

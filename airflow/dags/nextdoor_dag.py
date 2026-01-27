@@ -104,7 +104,7 @@ scrape_task = PythonOperator(
     task_id='scrape_nextdoor_feed',
     python_callable=scrape_nextdoor_feed,
     op_kwargs={
-        'max_pages': 10,
+        'max_pages': 5,
     },
     dag=dag,
 )

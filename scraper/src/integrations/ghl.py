@@ -199,10 +199,21 @@ class GHLClient:
             return []
 
     def get_field_id(self, field_name: str) -> Optional[str]:
-        """Get field ID by name using cache."""
+        """Get field ID by name using cache (case-insensitive fallback)."""
         if not self._custom_fields_cache:
             self.get_custom_fields()
-        return self._custom_fields_cache.get(field_name)
+        
+        # Exact match
+        if field_name in self._custom_fields_cache:
+            return self._custom_fields_cache[field_name]
+        
+        # Case-insensitive match
+        field_name_lower = field_name.lower()
+        for name, id_val in self._custom_fields_cache.items():
+            if name.lower() == field_name_lower:
+                return id_val
+                
+        return None
 
     def create_contact(self, contact_data: Dict[str, Any]) -> Optional[str]:
         """Create a contact in GHL."""
@@ -338,6 +349,9 @@ class GHLClient:
             {"name": "Videos", "dataType": "LARGE_TEXT"},
             {"name": "Extra Data", "dataType": "LARGE_TEXT"},
             {"name": "Services Requested", "dataType": "TEXT"},
+            {"name": "Phone", "dataType": "TEXT"},
+            {"name": "City", "dataType": "TEXT"},
+            {"name": "Vertical", "dataType": "TEXT"},
         ]
         
         schema_id = self.create_custom_object_schema(schema_name, fields)
@@ -405,6 +419,9 @@ class GHLClient:
                     "source_url": "Source URL",
                     "posted_date": "Posted Date",
                     "scraped_date": "Scraped Date",
+                    "phone": "Phone",
+                    "city": "City",
+                    "vertical": "Vertical",
                 }
                 
                 for lead_key, field_name in text_mappings.items():
@@ -499,7 +516,9 @@ class GHLClient:
                 "title": "Lead Title",
                 "category": "Lead Category",
                 "comment_count": "Comment Count",
-                "is_service_request": "Services Requested"
+                "is_service_request": "Services Requested",
+                "phone": "phone",
+                "vertical": "vertical"
             }
             
             # Also add a custom field for the URL if needed for display

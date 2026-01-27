@@ -22,8 +22,10 @@ from selenium.webdriver.chrome.service import Service
 from .base import BaseScraper
 try:
     from ..models import FacebookLead, ScrapedLead
+    from ..utils.buyer_intent import BuyerIntentDetector
 except ImportError:
     from models import FacebookLead, ScrapedLead
+    from utils.buyer_intent import BuyerIntentDetector
 
 
 class FacebookScraper(BaseScraper):
@@ -452,6 +454,21 @@ class FacebookScraper(BaseScraper):
                         break
                     except: 
                         continue
+            
+            # Combine title and description for buyer intent analysis
+            text = f"{raw_data.get('title', '')} {raw_data.get('text', '')}"
+            
+            # Use centralized buyer intent detector
+            is_buyer_request = BuyerIntentDetector.is_buyer_request(
+                text=text,
+                require_url=False,  # Facebook posts may not always have stable URLs
+                url=raw_data.get('link')
+            )
+            
+            # Log detection reason for debugging
+            if not is_buyer_request:
+                reason = BuyerIntentDetector.get_detection_reason(text, raw_data.get('link'))
+                self.logger.debug("filtered_non_buyer_post", reason=reason, title=raw_data.get('title'))
 
             return FacebookLead(
                 source_url=raw_data.get('link') or f"https://facebook.com/post/{raw_data.get('id')}",
@@ -465,6 +482,7 @@ class FacebookScraper(BaseScraper):
                 video_count=raw_data.get('video_count', 0),
                 has_media=raw_data.get('has_media', False),
                 word_count=raw_data.get('word_count', 0),
+                is_buyer_request=is_buyer_request,
                 extra_data={'raw_date': post_date_str, 'scraped_at': raw_data.get('scraped_at')}
             )
         except Exception as e:

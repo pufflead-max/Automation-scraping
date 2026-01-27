@@ -74,9 +74,40 @@ def push_leads(source: str, limit: int = None, force: bool = False):
             seen_urls.add(url)
     
     leads_data = unique_leads
+    
+    # CRITICAL: Filter for buyer requests only before pushing to GHL
+    buyer_leads = []
+    for lead in leads_data:
+        # Check both is_buyer_request (Craigslist, Facebook) and is_service_request (Nextdoor)
+        is_buyer = lead.get('is_buyer_request', False)
+        is_service = lead.get('is_service_request', False)
+        
+        if is_buyer or is_service:
+            buyer_leads.append(lead)
+        else:
+            logger.debug("skipping_non_buyer_lead", 
+                        title=lead.get('title'),
+                        is_buyer_request=is_buyer,
+                        is_service_request=is_service)
+    
+    # Log filtering results
+    filtered_count = len(leads_data) - len(buyer_leads)
+    if filtered_count > 0:
+        logger.warning("filtered_non_buyer_leads_before_ghl_push",
+                      total_fetched=len(leads_data),
+                      buyer_leads=len(buyer_leads),
+                      filtered_out=filtered_count)
+        print(f"⚠️ Filtered out {filtered_count} non-buyer leads. Only pushing {len(buyer_leads)} buyer leads.")
+    
+    leads_data = buyer_leads
+
+    if not leads_data:
+        logger.warning("no_buyer_leads_after_filtering", source=source)
+        print(f"⚠️ No buyer leads found for {source} after filtering.")
+        return
 
     logger.info("leads_to_push", count=len(leads_data), source=source)
-    print(f"🚀 Found {len(leads_data)} unique leads for {source} to push to GoHighLevel...")
+    print(f"🚀 Found {len(leads_data)} unique buyer leads for {source} to push to GoHighLevel...")
     
     success_count = 0
     for i, lead_dict in enumerate(leads_data):

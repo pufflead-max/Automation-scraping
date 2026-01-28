@@ -7,8 +7,10 @@ from bs4 import BeautifulSoup as bs
 from .base import BaseScraper
 try:
     from ..models import CraigslistLead, ScrapedLead
+    from ..utils.buyer_intent import BuyerIntentDetector
 except ImportError:
     from models import CraigslistLead, ScrapedLead
+    from utils.buyer_intent import BuyerIntentDetector
 
 
 class CraigslistScraper(BaseScraper):
@@ -97,6 +99,21 @@ class CraigslistScraper(BaseScraper):
                     if (clean_part := parts[-1].replace('.html', '')).isdigit():
                         posting_id = clean_part
             
+            # Combine title and description for buyer intent analysis
+            text = f"{raw_data.get('title', '')} {raw_data.get('description', '')}"
+            
+            # Use centralized buyer intent detector
+            is_buyer_request = BuyerIntentDetector.is_buyer_request(
+                text=text,
+                require_url=True,
+                url=raw_data.get('url')
+            )
+            
+            # Log detection reason for debugging
+            if not is_buyer_request:
+                reason = BuyerIntentDetector.get_detection_reason(text, raw_data.get('url'))
+                self.logger.debug("filtered_non_buyer_post", reason=reason, title=raw_data.get('title'))
+            
             return CraigslistLead(
                 source_url=raw_data.get('url', ''),
                 source_id=posting_id,
@@ -109,6 +126,7 @@ class CraigslistScraper(BaseScraper):
                 date_full=raw_data.get('date_full'),
                 image_thumbnail=raw_data.get('image_url'),
                 images=[raw_data.get('image_url')] if raw_data.get('image_url') else [],
+                is_buyer_request=is_buyer_request,
             )
         except Exception as e:
             self.logger.warning("failed_to_parse_item", error=str(e))

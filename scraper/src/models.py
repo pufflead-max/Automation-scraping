@@ -24,16 +24,10 @@ class ScrapedLead(BaseModel):
     title: Optional[str] = Field(None, description="Title or subject of the listing")
     description: Optional[str] = Field(None, description="Full description/body text")
     
-    # Contact information
-    contact_name: Optional[str] = Field(None, description="Contact person name")
-    contact_email: Optional[str] = Field(None, description="Contact email")
-    contact_phone: Optional[str] = Field(None, description="Contact phone number")
-    
     # Location information
     location: Optional[str] = Field(None, description="Location/area")
     city: Optional[str] = Field(None, description="City")
     state: Optional[str] = Field(None, description="State/province")
-    zip_code: Optional[str] = Field(None, description="ZIP/postal code")
     
     # Metadata
     category: Optional[str] = Field(None, description="Category/classification")
@@ -46,35 +40,9 @@ class ScrapedLead(BaseModel):
     price: Optional[float] = Field(None, description="Price if applicable")
     extra_data: dict = Field(default_factory=dict, description="Platform-specific extra data")
     
-    @field_validator('contact_email')
-    @classmethod
-    def validate_email_format(cls, v: Optional[str]) -> Optional[str]:
-        """Validate email format if provided."""
-        if v is None or v.strip() == "":
-            return None
-        try:
-            # Validate and normalize email
-            valid = validate_email(v, check_deliverability=False)
-            return valid.normalized
-        except EmailNotValidError:
-            # Return None for invalid emails rather than raising
-            return None
-    
-    @field_validator('contact_phone')
-    @classmethod
-    def validate_phone_format(cls, v: Optional[str]) -> Optional[str]:
-        """Validate and normalize phone number if provided."""
-        if v is None or v.strip() == "":
-            return None
-        try:
-            # Try to parse as US number by default
-            parsed = phonenumbers.parse(v, "US")
-            if phonenumbers.is_valid_number(parsed):
-                # Return in E164 format
-                return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
-            return v  # Return original if not valid
-        except:
-            return v  # Return original if parsing fails
+    # Enrichment fields (extracted)
+    phone: Optional[str] = Field(None, description="Extracted phone number")
+    vertical: Optional[str] = Field(None, description="Inferred business vertical")
     
     class Config:
         """Pydantic configuration."""
@@ -93,6 +61,7 @@ class CraigslistLead(ScrapedLead):
     map_address: Optional[str] = Field(None, description="Address from map")
     has_image: bool = Field(default=False, description="Has images")
     has_map: bool = Field(default=False, description="Has map")
+    is_buyer_request: bool = Field(default=False, description="Whether this is a buyer request")
     
     @field_validator('price')
     @classmethod
@@ -191,3 +160,6 @@ class FacebookLead(ScrapedLead):
     
     # Content metrics
     word_count: int = Field(default=0, ge=0)
+    
+    # Buyer intent
+    is_buyer_request: bool = Field(default=False, description="Whether this is a buyer request")

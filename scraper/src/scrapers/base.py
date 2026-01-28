@@ -17,12 +17,14 @@ try:
     from ..config import get_scraper_config, get_ghl_config
     from ..models import ScrapedLead, ScrapeJob
     from ..integrations.ghl import GHLClient
+    from ..utils.lead_enrichment import LeadEnricher
 except ImportError:
     from logger import ScraperLogger
     from database import DatabaseManager, get_db_manager
     from config import get_scraper_config, get_ghl_config
     from models import ScrapedLead, ScrapeJob
     from integrations.ghl import GHLClient
+    from utils.lead_enrichment import LeadEnricher
 
 
 class BaseScraper(ABC):
@@ -163,86 +165,79 @@ class BaseScraper(ABC):
             leads = self.scrape(target, **kwargs)
             self.scraped_items = leads
             
-            json_path = self.save_to_json(leads)
-            if json_path:
-                self.logger.info("step_json_backup_completed", path=json_path)
+            # Filter for buyer requests IMMEDIATELY (before any saving)
+            # Check if leads have is_buyer_request or is_service_request attribute
+            buyer_leads = []
+            for lead in leads:
+                # Support both is_buyer_request (Craigslist, Facebook) and is_service_request (Nextdoor)
+                is_buyer = getattr(lead, 'is_buyer_request', None)
+                is_service = getattr(lead, 'is_service_request', None)
+                
+                # Include lead if either flag is True
+                if is_buyer or is_service:
+                    buyer_leads.append(lead)
             
-            if save_to_db and leads:
-                scraper_cap = self.scraper_name.capitalize()
-                self.logger.info("saving_to_raw_collection", collection=f"{scraper_cap}_raw_data", count=len(leads))
-                self.save_leads(leads, collection=f"{scraper_cap}_raw_data")
-                
-                final_leads = leads
-                if self.scraper_name == 'nextdoor':
-                    final_leads = [l for l in leads if getattr(l, 'is_service_request', False)]
-                
-                if final_leads:
-                    self.logger.info("saving_to_final_collection", collection=f"{scraper_cap}_final_data", count=len(final_leads))
-                    self.save_leads(final_leads, collection=f"{scraper_cap}_final_data")
+            # Log filtering results
+            total_scraped = len(leads)
+            total_buyers = len(buyer_leads)
+            filtered_count = total_scraped - total_buyers
+            
+            self.logger.info("buyer_intent_filtering_complete",
+                           total_scraped=total_scraped,
+                           buyer_leads=total_buyers,
+                           seller_posts_filtered=filtered_count,
+                           buyer_percentage=f"{(total_buyers/total_scraped*100):.1f}%" if total_scraped > 0 else "0%")
+            
+            if filtered_count > 0:
+                self.logger.info("filtered_seller_content", 
+                               filtered_out=filtered_count,
+                               message=f"Skipped {filtered_count} seller/non-buyer posts - NOT saved to database")
+            
+            # Save JSON backup of BUYER LEADS ONLY
+            if buyer_leads:
+                # Enrich buyer leads with vertical, phone, and city
+                for lead in buyer_leads:
+                    # Combine title and description for analysis
+                    text = f"{lead.title or ''} {lead.description or ''}"
                     
-                    # Push to GoHighLevel
-                    if self.ghl_client:
-                        self.push_to_ghl(final_leads)
+                    # Vertical
+                    lead.vertical = LeadEnricher.extract_vertical(text)
+                    
+                    # Phone
+                    lead.phone = LeadEnricher.extract_phone(text)
+                    
+                    # City (Attempt to improve if missing)
+                    if not lead.city:
+                         lead.city = LeadEnricher.extract_city(text, lead.location)
+                
+                json_path = self.save_to_json(buyer_leads)
+                if json_path:
+                    self.logger.info("step_json_backup_completed", path=json_path, count=len(buyer_leads))
+            
+            # Save to MongoDB - BUYER LEADS ONLY
+            if save_to_db and buyer_leads:
+                scraper_cap = self.scraper_name.capitalize()
+                
+                # Save to final collection only (no raw data collection)
+                self.logger.info("saving_buyer_leads_to_db", 
+                               collection=f"{scraper_cap}_final_data", 
+                               count=len(buyer_leads))
+                self.save_leads(buyer_leads, collection=f"{scraper_cap}_final_data")
+                
+                self.logger.info("buyer_leads_saved_successfully", 
+                               saved=len(buyer_leads),
+                               skipped=filtered_count)
+            elif save_to_db and not buyer_leads:
+                self.logger.warning("no_buyer_leads_found_nothing_saved", 
+                                  total_scraped=total_scraped,
+                                  message="All posts were seller content - nothing saved to database")
             
             self.complete_job(status="completed")
-            return leads
+            return buyer_leads  # Return only buyer leads
         except Exception as e:
             self.complete_job(status="failed", error=e)
             raise
 
-    def push_to_ghl(self, leads: List[ScrapedLead]) -> None:
-        """Push leads to GoHighLevel."""
-        if not self.ghl_client:
-            self.logger.warning("ghl_push_skipped_no_client")
-            return
-            
-        self.logger.info("pushing_leads_to_ghl", count=len(leads))
-        
-        # Mapping based on user requirements
-        mapping = {
-            "contact_name": "name",           # Standard field
-            "contact_email": "email",         # Standard field
-            "contact_phone": "phone",         # Standard field
-            "source": "Contact Source",       # Custom field
-            "city": "City",                   # Custom field
-            "state": "State",                 # Custom field
-            "country": "Country",             # Custom field
-            "description": "Message",         # Custom field
-            "source_url": "notes"             # Standard field for URL/details
-        }
-        
-        success_count = 0
-        for lead in leads:
-            lead_dict = lead.model_dump()
-            
-            # Additional logic for Nextdoor specific author name
-            if lead_dict.get('source') == 'nextdoor' and not lead_dict.get('contact_name'):
-                lead_dict['contact_name'] = lead_dict.get('author_name')
-            
-            # Default values
-            if not lead_dict.get('contact_name'):
-                lead_dict['contact_name'] = f"Lead from {lead_dict.get('source', 'Web Scraper')}"
-            
-            if not lead_dict.get('country'):
-                lead_dict['country'] = "USA"
-
-            # Hardcode Contact Type if needed
-            lead_dict['Contact Type'] = 'Service Request' if getattr(lead, 'is_service_request', False) else 'Lead'
-
-            ghl_payload = self.ghl_client.map_lead_to_ghl(lead_dict, mapping)
-            
-            # Also add the Contact Type to mapping if not already there
-            ghl_payload['customField'] = ghl_payload.get('customField', {})
-            type_id = self.ghl_client.get_field_id("Contact Type")
-            if type_id:
-                ghl_payload['customField'][type_id] = lead_dict['Contact Type']
-            
-            contact_id = self.ghl_client.create_contact(ghl_payload)
-            if contact_id:
-                success_count += 1
-                
-        self.logger.info("ghl_push_completed", total=len(leads), successful=success_count)
-    
     def sleep(self, seconds: float) -> None:
         """Sleep for specified seconds with logging."""
         self.logger.debug("sleeping", seconds=seconds)

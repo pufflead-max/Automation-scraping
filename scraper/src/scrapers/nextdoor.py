@@ -8,8 +8,10 @@ from playwright.sync_api import sync_playwright
 from .base import BaseScraper
 try:
     from ..models import NextdoorLead, ScrapedLead
+    from ..utils.buyer_intent import BuyerIntentDetector
 except ImportError:
     from models import NextdoorLead, ScrapedLead
+    from utils.buyer_intent import BuyerIntentDetector
 
 
 class NextdoorScraper(BaseScraper):
@@ -93,23 +95,20 @@ class NextdoorScraper(BaseScraper):
     def parse_item(self, raw_data: Dict[str, Any]) -> Optional[NextdoorLead]:
         """Parse raw data into a NextdoorLead model."""
         try:
-            text = f"{raw_data.get('title', '')} {raw_data.get('description', '') or raw_data.get('body', '')}".lower()
+            # Combine title and description for buyer intent analysis
+            text = f"{raw_data.get('title', '')} {raw_data.get('description', '') or raw_data.get('body', '')}"
             
-            high_intent = ["looking for", "need ", "needs ", "in search of", "iso ", "anyone available",
-                          "can someone", "help needed", "help wanted", "urgent", "emergency", "asap",
-                          "today", "tomorrow", "this week", "available near me", "recommendation for", "quote needed"]
+            # Use centralized buyer intent detector
+            is_service_request = BuyerIntentDetector.is_buyer_request(
+                text=text,
+                require_url=True,
+                url=raw_data.get('url')
+            )
             
-            negative = ["free estimate", "i offer", "we offer", "we do", "contact me", "contact us",
-                       "call me", "call us", "my number is", "years experience", "services offered",
-                       "fully insured", "licensed", "discount", "promotion", "book now",
-                       "who do you recommend", "who do you use", "best plumber", "best electrician",
-                       "thoughts on", "anyone know if", "has anyone used", "reviews for",
-                       "shout out", "wanted to share", "highly recommend", "i recommend",
-                       "cannot recommend", "huge thanks", "excellent work", "great job"]
-            
-            is_service_request = (any(k in text for k in high_intent) and 
-                                not any(k in text for k in negative) and 
-                                bool(raw_data.get('url')))
+            # Log detection reason for debugging
+            if not is_service_request:
+                reason = BuyerIntentDetector.get_detection_reason(text, raw_data.get('url'))
+                self.logger.debug("filtered_non_buyer_post", reason=reason, title=raw_data.get('title'))
             
             return NextdoorLead(
                 source_url=raw_data.get('url', ''),

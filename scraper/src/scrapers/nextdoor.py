@@ -186,8 +186,9 @@ class NextdoorScraper(BaseScraper):
             page.on("response", handle_response)
             
             try:
-                self.logger.info("navigating_to_feed")
-                page.goto("https://nextdoor.com/news_feed/", timeout=90000)
+                self.logger.info("navigating_to_url", target=target or "news_feed")
+                url = target if target else "https://nextdoor.com/news_feed/"
+                page.goto(url, timeout=90000)
                 try:
                     page.wait_for_load_state("domcontentloaded", timeout=60000)
                 except:

@@ -1,6 +1,6 @@
 """
-Airflow DAG for Nextdoor lead scraping.
-Runs daily to extract service leads from Nextdoor feed.
+Airflow DAG for Nextdoor lead scraping with dynamic URL loading.
+Reads URLs from text file and creates separate tasks for each neighborhood/feed.
 
 NOTE: Requires Nextdoor authentication cookies to be configured.
 """
@@ -8,9 +8,10 @@ NOTE: Requires Nextdoor authentication cookies to be configured.
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
+from airflow.models import Variable
 import sys
-import json
 import os
+import json
 
 # Add scraper src to path
 sys.path.insert(0, '/opt/airflow/scraper/src')
@@ -25,16 +26,28 @@ default_args = {
     'execution_timeout': timedelta(hours=1),
 }
 
-dag = DAG(
-    'nextdoor_scraper',
-    default_args=default_args,
-    description='Scrape service leads from Nextdoor',
-    schedule_interval='0 3 * * *',  # Run daily at 3 AM
-    start_date=datetime(2026, 1, 15),
-    catchup=False,
-    tags=['scraping', 'nextdoor', 'leads'],
-    max_active_runs=1,
-)
+
+def load_nextdoor_urls():
+    """Load Nextdoor URLs from file or Airflow variable."""
+    from utils.url_loader import get_scraper_urls
+    
+    # Try to get from Airflow variable first
+    try:
+        urls_raw = Variable.get("nextdoor_target_url", default_var="")
+        if urls_raw:
+            urls = [url.strip() for url in urls_raw.replace('\n', ',').split(',') if url.strip()]
+            if urls:
+                return urls
+    except:
+        pass
+    
+    # Load from file
+    urls = get_scraper_urls(
+        "nextdoor",
+        default_url="https://nextdoor.com/news_feed/"
+    )
+    
+    return urls
 
 
 def load_nextdoor_cookies():
@@ -52,6 +65,14 @@ def load_nextdoor_cookies():
         except:
             pass
     
+    # Try to load from Airflow variable as fallback for env
+    try:
+        cookies_str = Variable.get("nextdoor_cookies", default_var="")
+        if cookies_str:
+            return json.loads(cookies_str)
+    except:
+        pass
+    
     # Try to load from file
     cookies_file = os.getenv('NEXTDOOR_COOKIES_FILE', '/opt/airflow/scraper/cookies/nextdoor_cookies.json')
     if os.path.exists(cookies_file):
@@ -63,123 +84,129 @@ def load_nextdoor_cookies():
     
     raise ValueError(
         "Nextdoor cookies not configured. "
-        "Set NEXTDOOR_COOKIES env var or create /opt/airflow/config/nextdoor_cookies.json"
+        "Set NEXTDOOR_COOKIES env var, nextdoor_cookies Airflow Var, or create /opt/airflow/scraper/cookies/nextdoor_cookies.json"
     )
 
 
-def scrape_nextdoor_feed(max_pages: int = 5):
+def scrape_nextdoor_url(target_url: str, url_index: int, max_pages: int = 5):
     """
-    Python callable to scrape Nextdoor feed.
+    Python callable to scrape a specific Nextdoor URL.
     
     Args:
+        target_url: The Nextdoor URL to scrape
+        url_index: Index of the URL (for logging)
         max_pages: Maximum number of pages to scrape
     """
     from main import run_nextdoor_scraper
     
-    print("Starting Nextdoor feed scrape")
+    print(f"Starting Nextdoor scrape for URL #{url_index + 1}: {target_url}")
     print(f"Max pages: {max_pages}")
     
     try:
         # Load cookies
         cookies = load_nextdoor_cookies()
-        print(f"✓ Loaded {len(cookies)} cookies")
+        print(f"✓ Loaded cookies")
         
         # Run scraper
         leads = run_nextdoor_scraper(
+            target=target_url,
             cookies=cookies,
             save_to_db=True,
             max_pages=max_pages
         )
         
-        print(f"✓ Successfully scraped {len(leads)} leads from Nextdoor")
+        print(f"✓ Successfully scraped {len(leads)} leads from {target_url}")
         return len(leads)
         
     except Exception as e:
-        print(f"✗ Failed to scrape Nextdoor: {e}")
+        print(f"✗ Failed to scrape Nextdoor {target_url}: {e}")
         raise
 
 
-# Create scraping task
-scrape_task = PythonOperator(
-    task_id='scrape_nextdoor_feed',
-    python_callable=scrape_nextdoor_feed,
-    op_kwargs={
-        'max_pages': 5,
-    },
-    dag=dag,
-)
+# Define the DAG
+with DAG(
+    'nextdoor_scraper',
+    default_args=default_args,
+    description='Scrape service leads from Nextdoor (multi-URL support)',
+    schedule_interval='0 3 * * *',  # Run daily at 3 AM
+    start_date=datetime(2026, 1, 15),
+    catchup=False,
+    tags=['scraping', 'nextdoor', 'leads'],
+    max_active_runs=1,
+    concurrency=1, # Nextdoor is sensitive to multiple sessions, run sequentially by default or very limited
+) as dag:
 
-def push_nextdoor_leads_to_ghl():
-    """Push Nextdoor leads from MongoDB to GHL."""
-    from push_leads import push_leads
-    print("Starting Nextdoor push to GHL")
-    push_leads(source="nextdoor")
-
-push_task = PythonOperator(
-    task_id='push_nextdoor_to_ghl',
-    python_callable=push_nextdoor_leads_to_ghl,
-    dag=dag,
-)
-
-
-# Optional: Add summary task
-def summarize_nextdoor_results(**context):
-    """
-    Summarize the results from Nextdoor scraping.
-    """
-    from database import get_db_manager
-    from datetime import datetime, timedelta
+    # Load URLs and create dynamic tasks
+    nextdoor_urls = load_nextdoor_urls()
     
-    db = get_db_manager()
-    
-    # Get Nextdoor jobs from the last 24 hours
-    yesterday = datetime.utcnow() - timedelta(days=1)
-    
-    jobs = db.find_many(
-        "scrape_jobs",
-        {
-            "scraper": "nextdoor",
-            "started_at": {"$gte": yesterday}
-        }
+    scrape_tasks = []
+    for idx, url in enumerate(nextdoor_urls):
+        task_id = f'scrape_nextdoor_url_{idx + 1}'
+        
+        task = PythonOperator(
+            task_id=task_id,
+            python_callable=scrape_nextdoor_url,
+            op_kwargs={
+                'target_url': url,
+                'url_index': idx,
+                'max_pages': 5,
+            },
+        )
+        scrape_tasks.append(task)
+
+    # Push to GHL task
+    def push_nextdoor_leads_to_ghl():
+        """Push Nextdoor leads from MongoDB to GHL."""
+        from push_leads import push_leads
+        print("Starting Nextdoor push to GHL")
+        push_leads(source="nextdoor")
+
+    push_task = PythonOperator(
+        task_id='push_nextdoor_to_ghl',
+        python_callable=push_nextdoor_leads_to_ghl,
     )
-    
-    # Get Nextdoor leads from last 24 hours
-    leads = db.find_many(
-        "leads",
-        {
-            "source": "nextdoor",
-            "scraped_date": {"$gte": yesterday}
+
+    # Optional: Add summary task
+    def summarize_nextdoor_results(**context):
+        """
+        Summarize the results from Nextdoor scraping.
+        """
+        from database import get_db_manager
+        from datetime import datetime, timedelta
+        
+        db = get_db_manager()
+        yesterday = datetime.utcnow() - timedelta(days=1)
+        
+        jobs = db.find_many(
+            "scrape_jobs",
+            {"scraper": "nextdoor", "started_at": {"$gte": yesterday}}
+        )
+        
+        total_items = sum(job.get('items_saved', 0) for job in jobs)
+        successful_jobs = sum(1 for job in jobs if job.get('status') == 'completed')
+        failed_jobs = sum(1 for job in jobs if job.get('status') == 'failed')
+        
+        print("\n" + "="*60)
+        print("NEXTDOOR SCRAPING SUMMARY")
+        print("="*60)
+        print(f"Total jobs: {len(jobs)}")
+        print(f"Successful: {successful_jobs}")
+        print(f"Failed: {failed_jobs}")
+        print(f"Total leads scraped: {total_items}")
+        print("="*60 + "\n")
+        
+        return {
+            'total_jobs': len(jobs),
+            'successful': successful_jobs,
+            'failed': failed_jobs,
+            'total_leads': total_items
         }
+
+    summary_task = PythonOperator(
+        task_id='summarize_results',
+        python_callable=summarize_nextdoor_results,
+        provide_context=True,
     )
-    
-    total_items = sum(job.get('items_saved', 0) for job in jobs)
-    successful_jobs = sum(1 for job in jobs if job.get('status') == 'completed')
-    failed_jobs = sum(1 for job in jobs if job.get('status') == 'failed')
-    
-    print("\n" + "="*60)
-    print("NEXTDOOR SCRAPING SUMMARY")
-    print("="*60)
-    print(f"Total jobs: {len(jobs)}")
-    print(f"Successful: {successful_jobs}")
-    print(f"Failed: {failed_jobs}")
-    print(f"Total leads scraped: {total_items}")
-    print(f"Leads in database: {len(leads)}")
-    print("="*60 + "\n")
-    
-    return {
-        'total_jobs': len(jobs),
-        'successful': successful_jobs,
-        'failed': failed_jobs,
-        'total_leads': total_items
-    }
 
-
-summary_task = PythonOperator(
-    task_id='summarize_results',
-    python_callable=summarize_nextdoor_results,
-    provide_context=True,
-    dag=dag,
-)
-
-# Set task dependencies
-scrape_task >> push_task >> summary_task
+    # Set task dependencies
+    scrape_tasks >> push_task >> summary_task

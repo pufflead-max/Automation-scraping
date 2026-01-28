@@ -6,11 +6,8 @@ import sys
 import os
 import json
 
-# Add scraper module to path
-sys.path.append("/opt/airflow/scraper/src")
-
-from scrapers import FacebookScraper
-from config import get_scraper_config
+# Add scraper modules to path
+sys.path.insert(0, "/opt/airflow/scraper/src")
 
 default_args = {
     'owner': 'airflow',
@@ -23,6 +20,7 @@ default_args = {
 
 def run_facebook_unlimited_scraper(**context):
     """Execute the Facebook scraper without limit (scrapes maximum posts)."""
+    from scrapers import FacebookScraper
     # Get configuration from Airflow variables or defaults
     target_urls_raw = Variable.get("facebook_target_url", default_var="https://www.facebook.com/share/g/14Tv25M9ns8/?mibextid=wwXIfr")
     # Support multiple URLs separated by commas or newlines

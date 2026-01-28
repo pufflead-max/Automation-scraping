@@ -1,14 +1,14 @@
 """
-Airflow DAG for Craigslist lead scraping.
-Runs daily to extract service leads from Craigslist across multiple categories.
+Airflow DAG for Craigslist lead scraping with dynamic URL loading.
+Reads URLs from text file and creates separate tasks for each category.
 """
 
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from airflow.operators.bash import BashOperator
 import os
 import sys
+import re
 
 # Add scraper src to path
 sys.path.insert(0, '/opt/airflow/scraper/src')
@@ -24,30 +24,54 @@ default_args = {
     'execution_timeout': timedelta(hours=2),
 }
 
-# Define the DAG
-dag = DAG(
-    'craigslist_scraper',
-    default_args=default_args,
-    description='Scrape service leads from Craigslist',
-    schedule_interval='0 2 * * *',  # Run daily at 2 AM
-    start_date=datetime(2026, 1, 15),
-    catchup=False,
-    tags=['scraping', 'craigslist', 'leads'],
-    max_active_runs=1,
-)
+
+def load_craigslist_urls():
+    """Load Craigslist URLs from file."""
+    from utils.url_loader import get_scraper_urls
+    
+    urls = get_scraper_urls("craigslist")
+    
+    # If no URLs from file, use defaults
+    if not urls:
+        urls = [
+            'https://boston.craigslist.org/search/aos',
+            'https://boston.craigslist.org/search/bts',
+            'https://boston.craigslist.org/search/cps',
+            'https://boston.craigslist.org/search/hss',
+            'https://boston.craigslist.org/search/sks',
+            'https://boston.craigslist.org/search/rts',
+            'https://boston.craigslist.org/search/lbs',
+            'https://boston.craigslist.org/search/lgs',
+            'https://boston.craigslist.org/search/fns',
+            'https://boston.craigslist.org/search/hws',
+        ]
+    
+    return urls
 
 
-def scrape_craigslist_category(category_url: str, category_name: str):
+def extract_category_from_url(url: str) -> str:
+    """Extract category name from Craigslist URL."""
+    # Try to extract category code from URL
+    match = re.search(r'/search/([a-z]+)', url)
+    if match:
+        return match.group(1)
+    
+    # Fallback: use last part of URL
+    return url.rstrip('/').split('/')[-1]
+
+
+def scrape_craigslist_url(category_url: str, category_name: str, url_index: int):
     """
-    Python callable to scrape a specific Craigslist category.
+    Python callable to scrape a specific Craigslist URL.
     
     Args:
-        category_url: URL of the category to scrape
+        category_url: URL to scrape
         category_name: Name of the category for logging
+        url_index: Index of the URL
     """
     from main import run_craigslist_scraper
     
-    print(f"Starting scrape for category: {category_name}")
+    print(f"Starting scrape for URL #{url_index + 1}: {category_name}")
     print(f"Target URL: {category_url}")
     
     try:
@@ -66,32 +90,34 @@ def scrape_craigslist_category(category_url: str, category_name: str):
         raise
 
 
-# Define target categories to scrape
-# Format: (category_name, category_url)
-CATEGORIES = [
-    ('automotive', 'https://boston.craigslist.org/search/aos'),
-    ('beauty', 'https://boston.craigslist.org/search/bts'),
-    ('computer', 'https://boston.craigslist.org/search/cps'),
-    ('household', 'https://boston.craigslist.org/search/hss'),
-    ('skilled_trade', 'https://boston.craigslist.org/search/sks'),
-    ('real_estate', 'https://boston.craigslist.org/search/rts'),
-    ('labor_move', 'https://boston.craigslist.org/search/lbs'),
-    ('legal', 'https://boston.craigslist.org/search/lgs'),
-    ('financial', 'https://boston.craigslist.org/search/fns'),
-    ('health_wellness', 'https://boston.craigslist.org/search/hws'),
-]
+# Define the DAG
+dag = DAG(
+    'craigslist_scraper',
+    default_args=default_args,
+    description='Scrape service leads from Craigslist (multi-URL support)',
+    schedule_interval='0 2 * * *',  # Run daily at 2 AM
+    start_date=datetime(2026, 1, 15),
+    catchup=False,
+    tags=['scraping', 'craigslist', 'leads'],
+    max_active_runs=1,
+)
 
+# Load URLs and create dynamic tasks
+craigslist_urls = load_craigslist_urls()
 
-# Create a task for each category
 scraping_tasks = []
 
-for category_name, category_url in CATEGORIES:
+for idx, url in enumerate(craigslist_urls):
+    category_name = extract_category_from_url(url)
+    task_id = f'scrape_{category_name}_{idx + 1}' if idx > 0 and any(extract_category_from_url(u) == category_name for u in craigslist_urls[:idx]) else f'scrape_{category_name}'
+    
     task = PythonOperator(
-        task_id=f'scrape_{category_name}',
-        python_callable=scrape_craigslist_category,
+        task_id=task_id,
+        python_callable=scrape_craigslist_url,
         op_kwargs={
-            'category_url': category_url,
+            'category_url': url,
             'category_name': category_name,
+            'url_index': idx,
         },
         dag=dag,
     )

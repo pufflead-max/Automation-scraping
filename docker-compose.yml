@@ -49,13 +49,14 @@ services:
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       _AIRFLOW_DB_MIGRATE: "true"
       _AIRFLOW_WWW_USER_CREATE: "true"
-      _AIRFLOW_WWW_USER_USERNAME: admin
-      _AIRFLOW_WWW_USER_PASSWORD: admin
+      _AIRFLOW_WWW_USER_USERNAME: Edno
+      _AIRFLOW_WWW_USER_PASSWORD: "Edno@Puff123"
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
       - ./scraper/src:/opt/airflow/scraper/src
+      - ./scraper/urls:/opt/airflow/scraper/urls
     networks: [ appnet ]
     user: "50000:0"
     command: version
@@ -84,6 +85,7 @@ services:
       - ./airflow/plugins:/opt/airflow/plugins
       - ./scraper/src:/opt/airflow/scraper/src
       - ./scraper/cookies:/opt/airflow/scraper/cookies
+      - ./scraper/urls:/opt/airflow/scraper/urls
       - /var/run/docker.sock:/var/run/docker.sock
     networks: [ appnet ]
     user: "50000:0"
@@ -116,6 +118,7 @@ services:
       - ./airflow/plugins:/opt/airflow/plugins
       - ./scraper/src:/opt/airflow/scraper/src
       - ./scraper/cookies:/opt/airflow/scraper/cookies
+      - ./scraper/urls:/opt/airflow/scraper/urls
       - /var/run/docker.sock:/var/run/docker.sock
     networks: [ appnet ]
     user: "50000:0"

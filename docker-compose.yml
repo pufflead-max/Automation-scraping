@@ -59,8 +59,9 @@ services:
       - ./scraper/src:/opt/airflow/scraper/src
       - ./scraper/urls:/opt/airflow/scraper/urls
     networks: [ appnet ]
-    user: "${AIRFLOW_UID}:${AIRFLOW_GID}"
-    command: bash -c "python /opt/airflow/scripts/init_variables.py && airflow version"
+    user: "0:0"
+    command: >
+      bash -c " mkdir -p /opt/airflow/logs/scheduler /opt/airflow/dags /opt/airflow/plugins chown -R 50000:0 /opt/airflow/logs /opt/airflow/dags /opt/airflow/plugins /opt/airflow/scripts runuser -u airflow -- python /opt/airflow/scripts/init_variables.py runuser -u airflow -- airflow db migrate runuser -u airflow -- airflow users create --username ${_AIRFLOW_WWW_USER_USERNAME} --password ${_AIRFLOW_WWW_USER_PASSWORD} --role Admin --firstname Admin --lastname User --email admin@example.com || true "
 
   airflow-webserver:
     build:

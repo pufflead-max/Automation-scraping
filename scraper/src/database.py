@@ -49,7 +49,15 @@ class DatabaseManager:
         if self._client is not None: self._client.close()
         self._client = self._db = None
     
-    def get_collection(self, name: str) -> Collection: return self.db[name]
+    def ensure_collection(self, name: str):
+        """Ensure a collection exists in the database."""
+        if name not in self.db.list_collection_names():
+            self.db.create_collection(name)
+            logger.info("collection_created", name=name)
+
+    def get_collection(self, name: str) -> Collection:
+        self.ensure_collection(name)
+        return self.db[name]
     
     def insert_one(self, col: str, doc: Dict[str, Any]) -> str:
         res = self.get_collection(col).insert_one(doc)

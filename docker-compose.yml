@@ -21,9 +21,9 @@ services:
     container_name: airflow-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: airflow
-      POSTGRES_PASSWORD: airflow
-      POSTGRES_DB: airflow
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - pg_data:/var/lib/postgresql/data
     networks: [ appnet ]
@@ -45,20 +45,22 @@ services:
       - .env
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN}
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       _AIRFLOW_DB_MIGRATE: "true"
       _AIRFLOW_WWW_USER_CREATE: "true"
-      _AIRFLOW_WWW_USER_USERNAME: admin
-      _AIRFLOW_WWW_USER_PASSWORD: admin
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME}
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD}
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
+      - ./airflow/scripts:/opt/airflow/scripts
       - ./scraper/src:/opt/airflow/scraper/src
+      - ./scraper/urls:/opt/airflow/scraper/urls
     networks: [ appnet ]
-    user: "50000:0"
-    command: version
+    user: "${AIRFLOW_UID}:${AIRFLOW_GID}"
+    command: bash -c "python /opt/airflow/scripts/init_variables.py && airflow version"
 
   airflow-webserver:
     build:
@@ -73,7 +75,7 @@ services:
       - .env
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN}
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
     ports:
@@ -84,9 +86,10 @@ services:
       - ./airflow/plugins:/opt/airflow/plugins
       - ./scraper/src:/opt/airflow/scraper/src
       - ./scraper/cookies:/opt/airflow/scraper/cookies
+      - ./scraper/urls:/opt/airflow/scraper/urls
       - /var/run/docker.sock:/var/run/docker.sock
     networks: [ appnet ]
-    user: "50000:0"
+    user: "${AIRFLOW_UID}:${AIRFLOW_GID}"
     healthcheck:
       test: [ "CMD", "curl", "--fail", "http://localhost:8080/health" ]
       interval: 30s
@@ -108,7 +111,7 @@ services:
       - .env
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN}
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     volumes:
       - ./airflow/dags:/opt/airflow/dags
@@ -116,9 +119,10 @@ services:
       - ./airflow/plugins:/opt/airflow/plugins
       - ./scraper/src:/opt/airflow/scraper/src
       - ./scraper/cookies:/opt/airflow/scraper/cookies
+      - ./scraper/urls:/opt/airflow/scraper/urls
       - /var/run/docker.sock:/var/run/docker.sock
     networks: [ appnet ]
-    user: "50000:0"
+    user: "${AIRFLOW_UID}:${AIRFLOW_GID}"
     healthcheck:
       test: [ "CMD", "airflow", "jobs", "check", "--job-type", "SchedulerJob", "--hostname", "${HOSTNAME}" ]
       interval: 30s

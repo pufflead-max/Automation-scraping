@@ -1,0 +1,12 @@
+{
+    "facebook_target_url": "",
+    "facebook_post_limit": "25",
+    "facebook_headless": "true",
+    "facebook_cookies": "[]",
+    "nextdoor_target_url": "",
+    "nextdoor_max_pages": "5",
+    "nextdoor_cookies": "[]",
+    "craigslist_target_url": "",
+    "craigslist_max_pages": "5",
+    "craigslist_headless": "true"
+}

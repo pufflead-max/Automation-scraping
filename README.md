@@ -50,23 +50,20 @@ docker-compose logs -f airflow-webserver
 
 ### 3. Access Airflow
 
-Open your browser to: http://localhost:18081
+Open your browser to: http://72.60.113.252:18081
 
-- **Username**: admin
-- **Password**: admin (default, change in production)
+- **Username**: Edno
+- **Password**: Edno@Puff123
 
 ### 4. Run Your First Scrape
 
 **Option A: Via Airflow UI**
 1. Navigate to DAGs
-2. Enable `craigslist_scraper` DAG
+2. Enable `craigslist_scraper`, `nextdoor_scraper`, or `facebook_scraper_dag`
 3. Trigger manually or wait for scheduled run
 
 **Option B: Via Command Line**
 ```bash
-# Run smoke tests
-docker-compose exec airflow-webserver airflow dags test scrape_smoke_test
-
 # Run Craigslist scraper
 docker-compose exec airflow-webserver python /opt/airflow/scraper/src/main.py \
   --scraper craigslist \
@@ -85,42 +82,78 @@ Automation-scraping/
 ├── README.md                     # This file
 │
 ├── scraper/                      # Scraper application
-│   ├── Dockerfile                # Scraper container config
-│   ├── requirements.txt          # Python dependencies
-│   └── src/
-│       ├── __init__.py
-│       ├── config.py             # Configuration management
-│       ├── logger.py             # Structured logging
-│       ├── database.py           # MongoDB operations
-│       ├── models.py             # Data models (Pydantic)
-│       ├── main.py               # CLI entry point
-│       │
-│       ├── scrapers/             # Scraper implementations
-│       │   ├── __init__.py
-│       │   ├── base.py           # Base scraper class
-│       │   ├── craigslist.py     # Craigslist scraper
-│       │   └── nextdoor.py       # Nextdoor scraper (TODO)
-│       │
-│       └── processors/           # Data processing
-│           ├── __init__.py
-│           ├── validator.py      # Data validation
-│           └── deduplicator.py   # Duplicate detection
+│   ├── src/
+│   │   ├── scrapers/             # Scraper implementations
+│   │   └── utils/                # Utility modules (url_loader, etc.)
+│   ├── cookies/                  # Authentication cookies
+│   └── urls/                     # URL Configuration files
+│       ├── facebook_urls.txt
+│       ├── craigslist_urls.txt
+│       └── nextdoor_urls.txt
 │
 ├── airflow/                      # Airflow configuration
-│   ├── Dockerfile                # Airflow container with Chrome
-│   ├── dags/
-│   │   ├── craigslist_dag.py     # Production Craigslist DAG
-│   │   └── scrape_smoke_test.py  # Infrastructure tests
-│   ├── logs/                     # Airflow logs
-│   └── plugins/                  # Custom Airflow plugins
-│
-├── development_pipelines/        # Original notebooks (reference)
-│   ├── Craigslist.ipynb
-│   └── testing_nextdoor_1_jan_2026.ipynb
-│
-└── mongo-init/                   # MongoDB initialization
-    └── init.js                   # Database setup script
+│   ├── dags/                     # Scraper DAGs
+│   └── logs/                     # Scraper & Airflow logs
 ```
+
+## 🔗 URL Configuration & Dynamic Workers
+
+The system uses a dynamic worker architecture where each URL defined in the configuration files is processed by a separate Airflow task in parallel.
+
+### Configuration Files (`scraper/urls/`)
+
+- **`facebook_urls.txt`**: List of Facebook group/page URLs.
+- **`craigslist_urls.txt`**: List of Craigslist category URLs.
+- **`nextdoor_urls.txt`**: List of Nextdoor neighborhood/city URLs.
+
+### File Format
+- **One URL per line**
+- Lines starting with `#` are comments
+- Empty lines are ignored
+
+### How It Works
+1. **Dynamic Loading**: DAGs read these files at runtime.
+2. **Parallel Tasks**: For each URL, a dedicated task (e.g., `scrape_facebook_url_1`) is created.
+3. **Scalability**: Add or remove URLs without modifying Python code.
+4. **Fault Isolation**: If one URL fails, other tasks continue.
+
+## ⚙️ Admin Configuration (No-Code)
+
+Admins can manage URLs and scraper settings directly from the **Airflow UI** without touching any code.
+
+### Managing via Airflow Variables
+1. Login to Airflow UI (e.g., `http://72.60.113.252:18081`).
+2. Navigate to **Admin** -> **Variables**.
+3. Create or Edit the following keys as needed:
+
+#### 1. Facebook Configuration
+| Variable Key | Description | Example Value |
+| :--- | :--- | :--- |
+| `facebook_target_url` | Comma-separated or newline-separated URLs | `https://fb.com/groups/1, https://fb.com/groups/2` |
+| `facebook_post_limit` | Max posts to scrape per URL | `50` |
+| `facebook_headless` | Browser visibility | `true` or `false` |
+| `facebook_cookies` | JSON-format cookies string | `[{"name": "c_user", ...}]` |
+
+#### 2. Nextdoor Configuration
+| Variable Key | Description | Example Value |
+| :--- | :--- | :--- |
+| `nextdoor_target_url` | URLs to scrape | `https://nextdoor.com/news_feed/` |
+| `nextdoor_max_pages` | How many pages to scroll | `10` |
+| `nextdoor_cookies` | JSON-format cookies string | `[{"name": "nd_session", ...}]` |
+
+#### 3. Craigslist Configuration
+| Variable Key | Description | Example Value |
+| :--- | :--- | :--- |
+| `craigslist_target_url`| Specific category URLs | `https://boston.craigslist.org/search/sks` |
+| `craigslist_max_pages` | Number of result pages to read | `5` |
+| `craigslist_headless`  | Browser visibility | `true` |
+
+### Configuration Priority
+The system checks for settings in this specific order:
+1. **Airflow Variables** (Highest Priority - Good for temporary/quick changes)
+2. **MongoDB** (Stored in `scraper_config` collection)
+3. **Local Files** (Stored in `scraper/urls/*.txt`)
+4. **Static Defaults** (Built-in values in the code)
 
 ## 🔧 Configuration
 

@@ -97,12 +97,14 @@ class FacebookScraper(BaseScraper):
         if os.path.exists(chromium_path) and os.path.exists(chromedriver_path):
             self.logger.info("using_system_chromium_binaries", chromium=chromium_path, driver=chromedriver_path)
             options.binary_location = chromium_path
-            service = Service(chromedriver_path)
+            service = Service(chromedriver_path, service_args=['--verbose'])
         else:
             self.logger.info("system_binaries_not_found_falling_back_to_webdriver_manager")
-            service = Service(ChromeDriverManager().install())
-            
+            service = Service(ChromeDriverManager().install(), service_args=['--verbose'])
+        
+        # Increase timeout for Chrome startup (especially when running multiple instances)
         self.driver = webdriver.Chrome(service=service, options=options)
+        self.driver.set_page_load_timeout(300)  # 5 minutes for page loads
         
         # Inject anti-detection scripts
         self._inject_stealth_scripts()

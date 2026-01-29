@@ -6,26 +6,17 @@
     "path": "/",
     "sameSite": "Lax",
     "secure": true,
-    "value": "C%7B%22t3%22%3A%5B%5D%2C%22utc3%22%3A1769596470727%2C%22v%22%3A1%7D"
+    "value": "C%7B%22t3%22%3A%5B%5D%2C%22utc3%22%3A1769668075544%2C%22v%22%3A1%7D"
   },
   {
     "domain": ".facebook.com",
-    "expiry": 1777372464,
+    "expiry": 1777444068,
     "httpOnly": true,
     "name": "fr",
     "path": "/",
     "sameSite": "None",
     "secure": true,
-    "value": "1vWJdpWaOYUKj4qOu.AWfnG_hMZdaj-T5M6QfmSLnnAFAL9prIGg0kHkzM68p9uegX2OU.BpeeOR..AAA.0.0.BpeeYw.AWfHFXM_JhrnDDu8RxpylrSOxCE"
-  },
-  {
-    "domain": ".facebook.com",
-    "httpOnly": false,
-    "name": "xs",
-    "path": "/",
-    "sameSite": "Lax",
-    "secure": true,
-    "value": "48%3AGude__2NMuEzzQ%3A2%3A1768907856%3A-1%3A-1%3A%3AAcxXnARO6HqjmeT9hKWJxFUk1_H78lS2sV6VZ6azLMI"
+    "value": "14VgvlhFmVQ0UQ0o1.AWesEDPdv0e4CF-2ArPHknmw9e73A5RUF6jWTsEEdlkM3fqrLgk.BpevbZ..AAA.0.0.Bpev3k.AWdc4IwAzz_MBV673pMpHgGQK64"
   },
   {
     "domain": ".facebook.com",
@@ -48,7 +39,7 @@
   {
     "domain": ".facebook.com",
     "httpOnly": false,
-    "name": "ps_l",
+    "name": "ar_debug",
     "path": "/",
     "sameSite": "Lax",
     "secure": true,
@@ -57,7 +48,7 @@
   {
     "domain": ".facebook.com",
     "httpOnly": false,
-    "name": "ar_debug",
+    "name": "ps_n",
     "path": "/",
     "sameSite": "Lax",
     "secure": true,
@@ -75,11 +66,20 @@
   {
     "domain": ".facebook.com",
     "httpOnly": false,
-    "name": "ps_n",
+    "name": "ps_l",
     "path": "/",
     "sameSite": "Lax",
     "secure": true,
     "value": "1"
+  },
+  {
+    "domain": ".facebook.com",
+    "httpOnly": false,
+    "name": "xs",
+    "path": "/",
+    "sameSite": "Lax",
+    "secure": true,
+    "value": "48%3AGude__2NMuEzzQ%3A2%3A1768907856%3A-1%3A-1%3A%3AAczpuHhXj76IqZHUPKC9IWLT3NqsGIEWhBCmY2bMhmQ"
   },
   {
     "domain": ".facebook.com",
@@ -92,7 +92,7 @@
   },
   {
     "domain": ".facebook.com",
-    "expiry": 1770201270,
+    "expiry": 1770272875,
     "httpOnly": false,
     "name": "wd",
     "path": "/",

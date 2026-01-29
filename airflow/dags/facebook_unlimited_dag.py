@@ -21,10 +21,18 @@ default_args = {
 def run_facebook_unlimited_scraper(**context):
     """Execute the Facebook scraper without limit (scrapes maximum posts)."""
     from scrapers import FacebookScraper
-    # Get configuration from Airflow variables or defaults
-    target_urls_raw = Variable.get("facebook_target_url", default_var="https://www.facebook.com/share/g/14Tv25M9ns8/?mibextid=wwXIfr")
-    # Support multiple URLs separated by commas or newlines
-    target_urls = [url.strip() for url in target_urls_raw.replace('\n', ',').split(',') if url.strip()]
+    from utils.url_loader import get_scraper_urls
+    
+    # Get configuration from centralized loader (checks Var, DB, then File)
+    # We check the Var here first to maintain compatibility with existing setup
+    try:
+        urls_raw = Variable.get("facebook_target_url", default_var="")
+        if urls_raw:
+            target_urls = [url.strip() for url in urls_raw.replace('\n', ',').split(',') if url.strip()]
+        else:
+            target_urls = get_scraper_urls("facebook", default_url="https://www.facebook.com/share/g/14Tv25M9ns8/?mibextid=wwXIfr")
+    except:
+        target_urls = get_scraper_urls("facebook", default_url="https://www.facebook.com/share/g/14Tv25M9ns8/?mibextid=wwXIfr")
     
     # Setting limit to 0 means "unlimited" in our updated scraper
     limit = 0

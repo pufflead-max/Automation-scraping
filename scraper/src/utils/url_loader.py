@@ -69,6 +69,22 @@ class URLLoader:
         return URLLoader.load_urls_from_file(file_path, scraper_type)
     
     @staticmethod
+    def load_urls_from_db(scraper_type: str) -> List[str]:
+        """Load URLs from MongoDB config collection."""
+        try:
+            from database import get_db_manager
+            db = get_db_manager()
+            config = db.find_one("scraper_config", {"type": "urls", "scraper": scraper_type})
+            if config and "urls" in config:
+                urls = config["urls"]
+                if isinstance(urls, str):
+                    return [u.strip() for u in urls.replace('\n', ',').split(',') if u.strip()]
+                return urls
+        except Exception:
+            pass
+        return []
+
+    @staticmethod
     def create_url_file_template(scraper_type: str, base_dir: str = "/opt/airflow/scraper"):
         """
         Create a template URL file for a scraper type.
@@ -114,18 +130,23 @@ class URLLoader:
 
 def get_scraper_urls(scraper_type: str, default_url: Optional[str] = None) -> List[str]:
     """
-    Get URLs for a scraper, either from file or default.
+    Get URLs for a scraper, checking DB, file, then default.
     
     Args:
         scraper_type: Type of scraper
-        default_url: Default URL if no file exists
+        default_url: Default URL if no other source found
         
     Returns:
         List of URLs to scrape
     """
-    urls = URLLoader.load_urls_for_scraper(scraper_type)
+    # 1. Try DB first
+    urls = URLLoader.load_urls_from_db(scraper_type)
     
-    # If no URLs from file and default provided, use default
+    # 2. Try file if DB is empty
+    if not urls:
+        urls = URLLoader.load_urls_for_scraper(scraper_type)
+    
+    # 3. Use default if still empty
     if not urls and default_url:
         urls = [default_url]
     

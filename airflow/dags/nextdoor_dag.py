@@ -139,6 +139,9 @@ with DAG(
     # Load URLs and create dynamic tasks
     nextdoor_urls = load_nextdoor_urls()
     
+    # Allow admin to change max pages via Airflow Variable
+    max_pages = int(Variable.get("nextdoor_max_pages", default_var="5"))
+    
     scrape_tasks = []
     for idx, url in enumerate(nextdoor_urls):
         task_id = f'scrape_nextdoor_url_{idx + 1}'
@@ -149,7 +152,7 @@ with DAG(
             op_kwargs={
                 'target_url': url,
                 'url_index': idx,
-                'max_pages': 5,
+                'max_pages': max_pages,
             },
         )
         scrape_tasks.append(task)

@@ -6,6 +6,7 @@ Reads URLs from text file and creates separate tasks for each category.
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
+from airflow.models import Variable
 import os
 import sys
 import re
@@ -26,8 +27,18 @@ default_args = {
 
 
 def load_craigslist_urls():
-    """Load Craigslist URLs from file."""
+    """Load Craigslist URLs from file or Airflow variable."""
     from utils.url_loader import get_scraper_urls
+    
+    # Try to get from Airflow variable first
+    try:
+        urls_raw = Variable.get("craigslist_target_url", default_var="")
+        if urls_raw:
+            urls = [url.strip() for url in urls_raw.replace('\n', ',').split(',') if url.strip()]
+            if urls:
+                return urls
+    except:
+        pass
     
     urls = get_scraper_urls("craigslist")
     
@@ -60,26 +71,26 @@ def extract_category_from_url(url: str) -> str:
     return url.rstrip('/').split('/')[-1]
 
 
-def scrape_craigslist_url(category_url: str, category_name: str, url_index: int):
+def scrape_craigslist_url(category_url: str, category_name: str, url_index: int, **kwargs):
     """
     Python callable to scrape a specific Craigslist URL.
-    
-    Args:
-        category_url: URL to scrape
-        category_name: Name of the category for logging
-        url_index: Index of the URL
     """
     from main import run_craigslist_scraper
     
+    max_pages = int(Variable.get("craigslist_max_pages", default_var="5"))
+    headless = Variable.get("craigslist_headless", default_var="true").lower() == "true"
+    
     print(f"Starting scrape for URL #{url_index + 1}: {category_name}")
     print(f"Target URL: {category_url}")
+    print(f"Max pages: {max_pages}, Headless: {headless}")
     
     try:
         leads = run_craigslist_scraper(
             target=category_url,
             category=category_name,
             save_to_db=True,
-            headless=True
+            headless=headless,
+            max_pages=max_pages
         )
         
         print(f"✓ Successfully scraped {len(leads)} leads from {category_name}")

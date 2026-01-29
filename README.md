@@ -117,6 +117,44 @@ The system uses a dynamic worker architecture where each URL defined in the conf
 3. **Scalability**: Add or remove URLs without modifying Python code.
 4. **Fault Isolation**: If one URL fails, other tasks continue.
 
+## ⚙️ Admin Configuration (No-Code)
+
+Admins can manage URLs and scraper settings directly from the **Airflow UI** without touching any code.
+
+### Managing via Airflow Variables
+1. Login to Airflow UI (e.g., `http://72.60.113.252:18081`).
+2. Navigate to **Admin** -> **Variables**.
+3. Create or Edit the following keys as needed:
+
+#### 1. Facebook Configuration
+| Variable Key | Description | Example Value |
+| :--- | :--- | :--- |
+| `facebook_target_url` | Comma-separated or newline-separated URLs | `https://fb.com/groups/1, https://fb.com/groups/2` |
+| `facebook_post_limit` | Max posts to scrape per URL | `50` |
+| `facebook_headless` | Browser visibility | `true` or `false` |
+| `facebook_cookies` | JSON-format cookies string | `[{"name": "c_user", ...}]` |
+
+#### 2. Nextdoor Configuration
+| Variable Key | Description | Example Value |
+| :--- | :--- | :--- |
+| `nextdoor_target_url` | URLs to scrape | `https://nextdoor.com/news_feed/` |
+| `nextdoor_max_pages` | How many pages to scroll | `10` |
+| `nextdoor_cookies` | JSON-format cookies string | `[{"name": "nd_session", ...}]` |
+
+#### 3. Craigslist Configuration
+| Variable Key | Description | Example Value |
+| :--- | :--- | :--- |
+| `craigslist_target_url`| Specific category URLs | `https://boston.craigslist.org/search/sks` |
+| `craigslist_max_pages` | Number of result pages to read | `5` |
+| `craigslist_headless`  | Browser visibility | `true` |
+
+### Configuration Priority
+The system checks for settings in this specific order:
+1. **Airflow Variables** (Highest Priority - Good for temporary/quick changes)
+2. **MongoDB** (Stored in `scraper_config` collection)
+3. **Local Files** (Stored in `scraper/urls/*.txt`)
+4. **Static Defaults** (Built-in values in the code)
+
 ## 🔧 Configuration
 
 ### Environment Variables

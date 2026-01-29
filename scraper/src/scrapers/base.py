@@ -59,7 +59,8 @@ class BaseScraper(ABC):
     
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(1, 2, 10), retry=retry_if_exception_type((RequestException, Timeout)), reraise=True)
     def make_request(self, url, method="GET", headers=None, cookies=None, **kw) -> requests.Response:
-        proxies = {"http": f"http://{p}", "https": f"http://{p}"} if (p := self.cfg.get('scraperapi_proxy')) and kw.get('use_proxy', True) else None
+        use_proxy = kw.pop('use_proxy', True)
+        proxies = {"http": f"http://{p}", "https": f"http://{p}"} if (p := self.cfg.get('scraperapi_proxy')) and use_proxy else None
         res = requests.request(method, url, headers=headers, cookies=cookies, proxies=proxies, timeout=self.cfg.get('timeout', 30), verify=False, **kw)
         res.raise_for_status()
         return res

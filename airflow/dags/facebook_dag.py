@@ -124,5 +124,47 @@ with DAG(
         python_callable=push_facebook_leads_to_ghl,
     )
     
-    # Set dependencies: all scrape tasks run in parallel, then push
-    scrape_tasks >> push_task
+    # Summary task
+    def summarize_facebook_results(**context):
+        """
+        Summarize the results from Facebook scraping.
+        """
+        from database import get_db_manager
+        from datetime import datetime, timedelta
+        
+        db = get_db_manager()
+        yesterday = datetime.utcnow() - timedelta(days=1)
+        
+        jobs = db.find_many(
+            "scrape_jobs",
+            {"scraper": "facebook", "started_at": {"$gte": yesterday}}
+        )
+        
+        total_items = sum(job.get('items_saved', 0) for job in jobs)
+        successful_jobs = sum(1 for job in jobs if job.get('status') == 'completed')
+        failed_jobs = sum(1 for job in jobs if job.get('status') == 'failed')
+        
+        print("\n" + "="*60)
+        print("FACEBOOK SCRAPING SUMMARY")
+        print("="*60)
+        print(f"Total jobs: {len(jobs)}")
+        print(f"Successful: {successful_jobs}")
+        print(f"Failed: {failed_jobs}")
+        print(f"Total leads scraped: {total_items}")
+        print("="*60 + "\n")
+        
+        return {
+            'total_jobs': len(jobs),
+            'successful': successful_jobs,
+            'failed': failed_jobs,
+            'total_leads': total_items
+        }
+
+    summary_task = PythonOperator(
+        task_id='summarize_results',
+        python_callable=summarize_facebook_results,
+        provide_context=True,
+    )
+
+    # Set dependencies: all scrape tasks run in parallel, then push, then summary
+    scrape_tasks >> push_task >> summary_task

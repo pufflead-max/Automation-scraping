@@ -98,7 +98,7 @@ secrets/
 *.pem
 *.key
 *.crt
-nextdoor_cookies.json
+
 airflow/logs/scraped_data/*.json
 
 # Node modules (if any)

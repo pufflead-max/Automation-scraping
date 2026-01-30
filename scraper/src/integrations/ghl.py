@@ -79,8 +79,21 @@ class GHLClient:
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            logger.error("ghl_api_request_failed", method=method, endpoint=endpoint,
-                        status=getattr(e.response, 'status_code', None), error=str(e))
+            status_code = getattr(e.response, 'status_code', None)
+            error_msg = str(e)
+            
+            if status_code == 403:
+                logger.error("ghl_permission_denied", 
+                           method=method, 
+                           endpoint=endpoint, 
+                           hint="Check if your Private Integration Token has the required scopes.",
+                           error=error_msg)
+            else:
+                logger.error("ghl_api_request_failed", 
+                           method=method, 
+                           endpoint=endpoint,
+                           status=status_code, 
+                           error=error_msg)
             return None
 
     # ===== CUSTOM OBJECTS =====

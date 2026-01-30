@@ -1,12 +1,12 @@
 {
-    "facebook_target_url": "",
+    "facebook_target_url": "https://www.facebook.com/groups/bostonlandscapers,https://www.facebook.com/groups/bostoncontractors,https://www.facebook.com/groups/bostonhandyman,https://www.facebook.com/groups/bostonhomeimprovement,https://www.facebook.com/groups/bostonlocalservices",
     "facebook_post_limit": "25",
     "facebook_headless": "true",
     "facebook_cookies": "[]",
-    "nextdoor_target_url": "",
+    "nextdoor_target_url": "https://nextdoor.com/city/hingham–ma,https://nextdoor.com/city/cohasset–ma,https://nextdoor.com/city/cambridge–ma,https://nextdoor.com/city/hanover–ma,https://nextdoor.com/city/scituate–ma",
     "nextdoor_max_pages": "5",
     "nextdoor_cookies": "[]",
-    "craigslist_target_url": "",
+    "craigslist_target_url": "https://boston.craigslist.org/search/fgs,https://boston.craigslist.org/search/lbg,https://boston.craigslist.org/search/hss,https://boston.craigslist.org/search/bbb,https://boston.craigslist.org/search/lbs",
     "craigslist_max_pages": "5",
     "craigslist_headless": "true"
 }

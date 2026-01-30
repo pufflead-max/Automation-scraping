@@ -27,18 +27,10 @@ class NextdoorScraper(BaseScraper):
             with open(self.cookies, 'r') as f:
                 self.cookies = json.load(f)
         
-        # If no cookies passed, try to load from default location
-        if not self.cookies:
-            import json
-            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            cookie_path = os.path.join(project_root, 'cookies', 'nextdoor_cookies.json')
-            if os.path.exists(cookie_path):
-                try:
-                    with open(cookie_path, 'r') as f:
-                        self.cookies = json.load(f)
-                    self.logger.info("loaded_cookies_from_file", path=cookie_path)
-                except Exception as e:
-                    self.logger.warning("failed_to_load_cookie_file", error=str(e))
+        if self.cookies:
+            self.logger.info("using_provided_cookies", source="argument_or_variable", count=len(self.cookies) if isinstance(self.cookies, list) else "dict")
+        else:
+            self.logger.warning("no_cookies_provided_scraper_will_likely_fail")
     
     def parse_post(self, post_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Parse a single post from the feed."""
@@ -194,6 +186,11 @@ class NextdoorScraper(BaseScraper):
                 except:
                     pass
                 page.wait_for_timeout(5000)
+
+                # Check for login wall immediately
+                if "login" in page.url or "signup" in page.url or page.get_by_role("button", name="Log in").is_visible():
+                    self.logger.error("session_invalid_redirected_to_login")
+                    raise ValueError("Nextdoor session invalid. Please update cookies in Airflow Variables.")
                 
                 previous_height = 0
                 for i in range(max_pages):
@@ -223,10 +220,6 @@ class NextdoorScraper(BaseScraper):
                         self.logger.warning("scroll_iteration_error", error=str(e))
                 
                 self.logger.info("scrolling_complete", gathered=len(collected_posts))
-                
-                # Save cookies if session was successful
-                if len(collected_posts) > 0:
-                    self._save_cookies(context.cookies())
                     
             except Exception as e:
                 self.logger.error("playwright_execution_failed", error=str(e))
@@ -235,21 +228,4 @@ class NextdoorScraper(BaseScraper):
         
         return [lead for post_data in collected_posts.values() if (lead := self.parse_item(post_data))]
 
-    def _save_cookies(self, cookies):
-        """Save current cookies back to the file."""
-        import json
-        try:
-            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            cookie_dir = os.path.join(project_root, 'cookies')
-            cookie_path = os.path.join(cookie_dir, 'nextdoor_cookies.json')
-            
-            # Use /tmp if project directory is read-only
-            if not os.access(os.path.dirname(project_root), os.W_OK):
-                cookie_path = '/tmp/nextdoor_cookies.json'
-                
-            os.makedirs(os.path.dirname(cookie_path), exist_ok=True)
-            with open(cookie_path, 'w', encoding='utf-8') as f:
-                json.dump(cookies, f, ensure_ascii=False, indent=2)
-            self.logger.info("cookies_saved", path=cookie_path)
-        except Exception as e:
-            self.logger.warning("failed_to_save_cookies", error=str(e))
+

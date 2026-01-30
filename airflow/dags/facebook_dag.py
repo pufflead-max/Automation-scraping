@@ -35,17 +35,12 @@ def load_facebook_urls():
         if urls_raw:
             urls = [url.strip() for url in urls_raw.replace('\n', ',').split(',') if url.strip()]
             if urls:
+                print(f"✓ Successfully loaded {len(urls)} URLs from Airflow Variable 'facebook_target_url'")
                 return urls
-    except:
-        pass
+    except Exception as e:
+        print(f"Error loading facebook_target_url variable: {e}")
     
-    # Load from file
-    urls = get_scraper_urls(
-        "facebook",
-        default_url="https://www.facebook.com/share/g/14Tv25M9ns8/?mibextid=wwXIfr"
-    )
-    
-    return urls
+    raise ValueError("No Facebook URLs specified. Please set 'facebook_target_url' Airflow Variable.")
 
 
 def scrape_facebook_url(target_url: str, url_index: int, **context):
@@ -68,7 +63,7 @@ def scrape_facebook_url(target_url: str, url_index: int, **context):
         if cookies_str:
             cookies = json.loads(cookies_str)
     except:
-        print("Could not load cookies from Airflow Variable, using file if available")
+        print("Could not load cookies from Airflow Variable")
 
     print(f"Starting Facebook scrape for URL #{url_index + 1}: {target_url}")
     

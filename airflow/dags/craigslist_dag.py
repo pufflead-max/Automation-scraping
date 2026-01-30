@@ -36,28 +36,12 @@ def load_craigslist_urls():
         if urls_raw:
             urls = [url.strip() for url in urls_raw.replace('\n', ',').split(',') if url.strip()]
             if urls:
+                print(f"✓ Successfully loaded {len(urls)} URLs from Airflow Variable 'craigslist_target_url'")
                 return urls
-    except:
-        pass
+    except Exception as e:
+        print(f"Error loading craigslist_target_url variable: {e}")
     
-    urls = get_scraper_urls("craigslist")
-    
-    # If no URLs from file, use defaults
-    if not urls:
-        urls = [
-            'https://boston.craigslist.org/search/aos',
-            'https://boston.craigslist.org/search/bts',
-            'https://boston.craigslist.org/search/cps',
-            'https://boston.craigslist.org/search/hss',
-            'https://boston.craigslist.org/search/sks',
-            'https://boston.craigslist.org/search/rts',
-            'https://boston.craigslist.org/search/lbs',
-            'https://boston.craigslist.org/search/lgs',
-            'https://boston.craigslist.org/search/fns',
-            'https://boston.craigslist.org/search/hws',
-        ]
-    
-    return urls
+    raise ValueError("No Craigslist URLs specified. Please set 'craigslist_target_url' Airflow Variable.")
 
 
 def extract_category_from_url(url: str) -> str:

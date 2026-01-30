@@ -51,6 +51,8 @@ services:
       _AIRFLOW_WWW_USER_CREATE: "true"
       _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME}
       _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY:-automation_secret_key_123}
+      LOGS_DIR: /opt/airflow/logs/backups
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
@@ -58,6 +60,7 @@ services:
       - ./airflow/scripts:/opt/airflow/scripts
       - ./scraper/src:/opt/airflow/scraper/src
       - ./scraper/urls:/opt/airflow/scraper/urls
+      - ./logs:/opt/airflow/logs/backups
     networks: [ appnet ]
     user: "${AIRFLOW_UID}:${AIRFLOW_GID}"
     command: bash -c "python /opt/airflow/scripts/init_variables.py && airflow version"
@@ -78,6 +81,8 @@ services:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN}
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY:-automation_secret_key_123}
+      LOGS_DIR: /opt/airflow/logs/backups
     ports:
       - "18081:8080"
     volumes:
@@ -87,6 +92,7 @@ services:
       - ./scraper/src:/opt/airflow/scraper/src
       - ./scraper/cookies:/opt/airflow/scraper/cookies
       - ./scraper/urls:/opt/airflow/scraper/urls
+      - ./logs:/opt/airflow/logs/backups
       - /var/run/docker.sock:/var/run/docker.sock
     networks: [ appnet ]
     user: "${AIRFLOW_UID}:${AIRFLOW_GID}"
@@ -113,6 +119,8 @@ services:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN}
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY:-automation_secret_key_123}
+      LOGS_DIR: /opt/airflow/logs/backups
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
@@ -120,6 +128,7 @@ services:
       - ./scraper/src:/opt/airflow/scraper/src
       - ./scraper/cookies:/opt/airflow/scraper/cookies
       - ./scraper/urls:/opt/airflow/scraper/urls
+      - ./logs:/opt/airflow/logs/backups
       - /var/run/docker.sock:/var/run/docker.sock
     networks: [ appnet ]
     user: "${AIRFLOW_UID}:${AIRFLOW_GID}"

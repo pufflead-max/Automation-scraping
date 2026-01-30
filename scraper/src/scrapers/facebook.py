@@ -41,14 +41,10 @@ class FacebookScraper(BaseScraper):
             with open(self.cookies, 'r') as f:
                 self.cookies = json.load(f)
         
-        # If no cookies passed, try to load from default location
-        if not self.cookies:
-            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            cookie_path = os.path.join(project_root, 'cookies', 'facebook_cookies.json')
-            if os.path.exists(cookie_path):
-                 with open(cookie_path, 'r') as f:
-                    self.cookies = json.load(f)
-                 self.logger.info("loaded_cookies_from_file", path=cookie_path)
+        if self.cookies:
+            self.logger.info("using_provided_cookies", source="argument_or_variable", count=len(self.cookies) if isinstance(self.cookies, list) else "dict")
+        else:
+            self.logger.warning("no_cookies_provided_scraper_will_likely_fail")
         
         self.seen_urls = set()
         self.seen_texts = set()
@@ -170,6 +166,7 @@ class FacebookScraper(BaseScraper):
             else:
                 cookie_list = [{'name': k, 'value': v, 'domain': '.facebook.com'} for k, v in self.cookies.items()]
 
+            added_count = 0
             for cookie in cookie_list:
                 try:
                     c = {
@@ -178,45 +175,37 @@ class FacebookScraper(BaseScraper):
                         'domain': cookie.get('domain', '.facebook.com'),
                         'path': cookie.get('path', '/')
                     }
-                    if 'secure' in cookie: 
-                        c['secure'] = cookie['secure']
+                    if 'expiry' in cookie: c['expiry'] = int(cookie['expiry'])
+                    elif 'expirationDate' in cookie: c['expiry'] = int(cookie['expirationDate'])
+                    
+                    if 'secure' in cookie: c['secure'] = cookie['secure']
+                    
                     self.driver.add_cookie(c)
+                    added_count += 1
                 except:
                     continue
             
+            self.logger.info("cookies_injected_to_browser", count=added_count)
             self.driver.refresh()
-            time.sleep(3)
-            return True
+            time.sleep(5)
+            
+            # Log final count of cookies in browser
+            browser_cookies = self.driver.get_cookies()
+            self.logger.info("browser_cookie_count_after_refresh", count=len(browser_cookies))
+            
+            if self._is_logged_in():
+                self.logger.info("facebook_session_verified_logged_in")
+                return True
+            else:
+                self.logger.warning("facebook_session_invalid_after_cookie_injection", 
+                                  url=self.driver.current_url, 
+                                  title=self.driver.title)
+                return False
         except Exception as e:
             self.logger.error("failed_to_load_cookies", error=str(e))
             return False
 
-    def _save_cookies(self):
-        """Save current cookies back to the file with fallback for read-only environments."""
-        try:
-            cookies = self.driver.get_cookies()
-            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            cookie_path = os.path.join(project_root, 'cookies', 'facebook_cookies.json')
-            
-            # If default path is not writable, try /tmp
-            directory = os.path.dirname(cookie_path)
-            if not os.path.exists(directory):
-                try:
-                    os.makedirs(directory, exist_ok=True)
-                except:
-                    pass
-                    
-            if not os.access(directory, os.W_OK):
-                cookie_path = '/tmp/facebook_cookies.json'
-                self.logger.warning("using_tmp_for_cookies_due_to_permissions", path=cookie_path)
-            else:
-                os.makedirs(os.path.dirname(cookie_path), exist_ok=True)
-                
-            with open(cookie_path, 'w', encoding='utf-8') as f:
-                json.dump(cookies, f, ensure_ascii=False, indent=2)
-            self.logger.info("cookies_saved", path=cookie_path)
-        except Exception as e:
-            self.logger.warning("failed_to_save_cookies", error=str(e))
+
 
     def _close_popups(self):
         """Close common Facebook popups."""
@@ -311,6 +300,8 @@ class FacebookScraper(BaseScraper):
                     'div[data-ad-comet-preview="message"]',
                     'div.xdj266r.x11i5rnm.xat24cr.x1mh8g0r',  # Common post text class
                     'div[dir="auto"][style*="text-align"]',
+                    'div[data-testid="post_message"]',
+                    'div.x1iorvi4.x1pi30zi.x1l90r2v.x1swvt1m', # New FB container class
                 ]
                 
                 for selector in selectors:
@@ -600,29 +591,55 @@ class FacebookScraper(BaseScraper):
     def _is_logged_in(self):
         """Check if session is authenticated."""
         try:
-            # Check current URL first
+            # Log state for debugging
             current_url = self.driver.current_url.lower()
-            if "login" in current_url or "checkpoint" in current_url:
+            page_title = self.driver.title
+            
+            # Check current URL first
+            if "login" in current_url or "checkpoint" in current_url or "confirmemail" in current_url:
+                self.logger.debug("login_check_failed_due_to_url", url=current_url)
                 return False
 
-            # Check for profile link or account menu
+            # Check for profile link, account menu, or home feed indicators
             indicators = [
                 'div[aria-label*="Account"]',
                 'div[aria-label*="Your profile"]',
                 'a[href*="/me/"]',
-                'svg[aria-label="Your profile"]'
+                'svg[aria-label="Your profile"]',
+                'a[aria-label="Home"]',
+                'div[aria-label*="Stories"]',
+                '[role="feed"]',
+                'a[href="/"]'
             ]
             for inc in indicators:
                 if self.driver.find_elements(By.CSS_SELECTOR, inc):
+                    self.logger.debug("login_confirmed_via_indicator", selector=inc)
                     return True
+            
+            # Fallback: check if the "Log In" button exists (if it does, we are NOT logged in)
+            login_buttons = [
+                'button[name="login"]',
+                'a[href*="/login"]',
+                'button:contains("Log In")' # This won't work with By.CSS_SELECTOR directly but good reference
+            ]
+            for btn_sel in login_buttons[:2]: # Only first two for CSS
+                 if self.driver.find_elements(By.CSS_SELECTOR, btn_sel):
+                     return False
+                     
             return False
-        except:
+        except Exception as e:
+            self.logger.debug("is_logged_in_check_error", error=str(e))
             return False
 
     def scrape(self, target: str = None, **kwargs) -> List[ScrapedLead]:
         """Main scraping method using Selenium."""
         limit = kwargs.get('limit', 25)
-        target_posts = limit if limit and limit > 0 else 999999
+        # Handle limit -1 as unlimited
+        if limit == -1:
+            target_posts = 999999
+        else:
+            target_posts = limit if limit and limit > 0 else 999999
+            
         headless = kwargs.get('headless', self.headless_default)
         extracted_leads = []
         
@@ -645,7 +662,8 @@ class FacebookScraper(BaseScraper):
                 session_ok = self.login(email, password)
             
             if not session_ok:
-                self.logger.warning("continuing_without_authenticated_session")
+                self.logger.error("failed_to_establish_authenticated_session_cookies_likely_expired")
+                raise ValueError("Facebook authentication failed. Please update cookies in Airflow Variables.")
             
             self.logger.info("navigating_to_target", url=target)
             self.driver.get(target)
@@ -682,16 +700,36 @@ class FacebookScraper(BaseScraper):
                 # Wait for content to load - Facebook is heavy
                 time.sleep(2.5)
                 
-                # More restrictive selectors to avoid sidebar/footer clutter
-                # In groups/pages, posts are usually inside a specific main container or role="feed"
-                articles = self.driver.find_elements(By.CSS_SELECTOR, 'div[role="feed"] div[role="article"], div[role="main"] div[role="article"]')
+                # Broadened selectors for Facebook's dynamic UI
+                selectors = [
+                    'div[role="feed"] div[role="article"]',
+                    'div[role="main"] div[role="article"]',
+                    'div[role="article"]',
+                    'div[aria-posinset]', # Very reliable for FB posts
+                    'div[data-testid="fbfeed_story"]',
+                    'div.x1yztpqf.x17906v1', # Common feed item container
+                    'div[data-ad-preview="message"]'
+                ]
                 
+                articles = []
+                for selector in selectors:
+                    articles = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    if articles:
+                        self.logger.debug("articles_found_with_selector", selector=selector, count=len(articles))
+                        break
+                    
                 if not articles:
-                    articles = self.driver.find_elements(By.CSS_SELECTOR, 'div[role="article"]')
-                
-                # If no articles with role, try message-specific ones
-                if not articles:
-                    articles = self.driver.find_elements(By.CSS_SELECTOR, 'div[data-ad-preview="message"]')
+                    # Debug: Log what IS in the feed if nothing was found
+                    try:
+                        feed_content = self.driver.execute_script("return document.body.innerText.substring(0, 500);")
+                        self.logger.debug("no_articles_found_body_preview", preview=feed_content)
+                        # Try to find any div with substantial text
+                        divs = self.driver.find_elements(By.CSS_SELECTOR, 'div[dir="auto"]')
+                        if divs:
+                            self.logger.debug("found_generic_divs_instead", count=len(divs))
+                            # Fallback to these divs if they look like posts
+                            articles = [d for d in divs[:20] if len(d.text) > 50]
+                    except: pass
                     
                 self.logger.info("articles_found_in_dom", count=len(articles))
                 
@@ -877,11 +915,11 @@ class FacebookScraper(BaseScraper):
                     break
                 
             self.logger.info("scraping_completed", total_posts=len(extracted_leads))
-            self._save_cookies()
             
         except Exception as e:
             self.logger.error("scraping_failed", error=str(e))
             traceback.print_exc()
+            raise # Re-raise to ensure Airflow sees the failure
         finally:
             if self.driver:
                 self.driver.quit()

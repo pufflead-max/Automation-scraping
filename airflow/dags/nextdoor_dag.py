@@ -37,17 +37,12 @@ def load_nextdoor_urls():
         if urls_raw:
             urls = [url.strip() for url in urls_raw.replace('\n', ',').split(',') if url.strip()]
             if urls:
+                print(f"✓ Successfully loaded {len(urls)} URLs from Airflow Variable 'nextdoor_target_url'")
                 return urls
-    except:
-        pass
+    except Exception as e:
+        print(f"Error loading nextdoor_target_url variable: {e}")
     
-    # Load from file
-    urls = get_scraper_urls(
-        "nextdoor",
-        default_url="https://nextdoor.com/news_feed/"
-    )
-    
-    return urls
+    raise ValueError("No Nextdoor URLs specified. Please set 'nextdoor_target_url' Airflow Variable.")
 
 
 def load_nextdoor_cookies():
@@ -62,29 +57,24 @@ def load_nextdoor_cookies():
     if cookies_json:
         try:
             return json.loads(cookies_json)
-        except:
-            pass
+        except json.JSONDecodeError:
+            print("Could not parse NEXTDOOR_COOKIES environment variable as JSON.")
+        except Exception as e:
+            print(f"An unexpected error occurred loading NEXTDOOR_COOKIES env var: {e}")
     
     # Try to load from Airflow variable as fallback for env
     try:
         cookies_str = Variable.get("nextdoor_cookies", default_var="")
         if cookies_str:
             return json.loads(cookies_str)
-    except:
-        pass
-    
-    # Try to load from file
-    cookies_file = os.getenv('NEXTDOOR_COOKIES_FILE', '/opt/airflow/scraper/cookies/nextdoor_cookies.json')
-    if os.path.exists(cookies_file):
-        try:
-            with open(cookies_file, 'r') as f:
-                return json.load(f)
-        except:
-            pass
+    except json.JSONDecodeError:
+        print("Could not parse 'nextdoor_cookies' Airflow Variable as JSON.")
+    except Exception as e:
+        print(f"An unexpected error occurred loading 'nextdoor_cookies' Airflow Variable: {e}")
     
     raise ValueError(
         "Nextdoor cookies not configured. "
-        "Set NEXTDOOR_COOKIES env var, nextdoor_cookies Airflow Var, or create /opt/airflow/scraper/cookies/nextdoor_cookies.json"
+        "Set NEXTDOOR_COOKIES env var or nextdoor_cookies Airflow Var."
     )
 
 

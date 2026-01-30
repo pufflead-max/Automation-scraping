@@ -18,6 +18,16 @@ class Settings(BaseSettings):
     log_format: str = "json"
     ghl_api_key: Optional[str] = None
     ghl_location_id: Optional[str] = None
+    
+    # Environment based GHL
+    ghl_environment: str = Field(default="sandbox")
+    ghl_sandbox_api_key: Optional[str] = None
+    ghl_sandbox_location_id: Optional[str] = None
+    ghl_sandbox_crm_url: str = "https://services.leadconnectorhq.com"
+    ghl_live_api_key: Optional[str] = None
+    ghl_live_location_id: Optional[str] = None
+    ghl_live_crm_url: str = "https://services.leadconnectorhq.com"
+
     airflow_executor: str = "LocalExecutor"
 
     @field_validator('log_level')
@@ -55,7 +65,19 @@ def get_mongo_uri() -> str: return get_settings().mongo_uri
 def get_mongo_db() -> str: return get_settings().mongo_db
 def get_ghl_config() -> dict:
     s = get_settings()
-    return {"api_key": s.ghl_api_key, "location_id": s.ghl_location_id}
+    if s.ghl_environment.lower() == "live":
+        return {
+            "api_key": s.ghl_live_api_key or s.ghl_api_key, 
+            "location_id": s.ghl_live_location_id or s.ghl_location_id,
+            "crm_url": s.ghl_live_crm_url,
+            "environment": "live"
+        }
+    return {
+        "api_key": s.ghl_sandbox_api_key or s.ghl_api_key, 
+        "location_id": s.ghl_sandbox_location_id or s.ghl_location_id,
+        "crm_url": s.ghl_sandbox_crm_url,
+        "environment": "sandbox"
+    }
 
 def get_scraper_config() -> dict:
     s = get_settings()

@@ -34,7 +34,8 @@ def push_leads(source: str, limit: int = None, force: bool = False):
         print("❌ Error: GHL config missing (.env: GHL_API_KEY, GHL_LOCATION_ID)")
         return
 
-    ghl = GHLClient(ghl_cfg['api_key'], ghl_cfg['location_id'])
+    # Initialize GHL Client
+    ghl = GHLClient(**ghl_cfg)
     query = {} if force else {"pushed_to_ghl": {"$ne": True}}
     
     logger.info("fetching_leads", col=col, query=query)
@@ -63,7 +64,9 @@ def push_leads(source: str, limit: int = None, force: bool = False):
             success += 1
             db.update_one(col, {"_id": lead["_id"]}, {"$set": {"pushed_to_ghl": True, "ghl_record_id": record_id, "pushed_at": datetime.utcnow()}})
             name = lead.get('author_name') or lead.get('title') or "Unknown"
+            contact_url = ghl.get_contact_url(record_id)
             print(f"✅ [{i+1}/{len(buyer_leads)}] Pushed: {name[:50]}")
+            print(f"   🔗 Link: {contact_url}")
         else:
             print(f"⚠️ [{i+1}/{len(buyer_leads)}] Failed: {lead.get('title', 'Unknown')[:50]}")
 

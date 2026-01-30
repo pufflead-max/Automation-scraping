@@ -55,6 +55,7 @@ class GHLClient:
         """Initialize GHL client."""
         self.api_key = api_key
         self.location_id = location_id
+        self.crm_url = kwargs.get("crm_url", "https://services.leadconnectorhq.com").rstrip("/")
         self.headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
@@ -204,6 +205,10 @@ class GHLClient:
         contact_id = result.get('contact', {}).get('id')
         logger.info("ghl_contact_upserted", contact_id=contact_id)
         return contact_id
+
+    def get_contact_url(self, contact_id: str) -> str:
+        """Get the direct CRM link for a GHL contact."""
+        return f"{self.crm_url}/v2/location/{self.location_id}/contacts/detail/{contact_id}"
 
     def get_contact_by_email(self, email: str) -> Optional[Dict[str, Any]]:
         """Search for a contact by email address."""

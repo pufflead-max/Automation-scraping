@@ -588,6 +588,28 @@ class FacebookScraper(BaseScraper):
             self.logger.error("login_failed", error=str(e))
             return False
 
+    def _save_cookies(self):
+        """Save current driver cookies to file and return them."""
+        try:
+            cookies = self.driver.get_cookies()
+            if not cookies:
+                self.logger.warning("no_cookies_found_in_browser_nothing_to_save")
+                return None
+            
+            # Save to local file for persistence within the container
+            cookie_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 
+                                     "cookies", "facebook_cookies.json")
+            
+            os.makedirs(os.path.dirname(cookie_file), exist_ok=True)
+            with open(cookie_file, 'w') as f:
+                json.dump(cookies, f, indent=2)
+            
+            self.logger.info("cookies_saved_to_file", path=cookie_file, count=len(cookies))
+            return cookies
+        except Exception as e:
+            self.logger.error("failed_to_save_cookies", error=str(e))
+            return None
+
     def _is_logged_in(self):
         """Check if session is authenticated."""
         try:

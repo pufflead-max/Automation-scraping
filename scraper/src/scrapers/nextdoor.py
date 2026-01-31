@@ -228,4 +228,3 @@ class NextdoorScraper(BaseScraper):
         
         return [lead for post_data in collected_posts.values() if (lead := self.parse_item(post_data))]
 
-

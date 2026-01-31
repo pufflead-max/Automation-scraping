@@ -22,15 +22,31 @@ def initialize():
 
     print("Checking and initializing Airflow Variables...")
     
+    # Define keys that represent secrets/credentials
+    credential_keys = ["facebook_email", "facebook_password", "nextdoor_email", "nextdoor_password"]
+    
     for key, value in vars_to_set.items():
+        # Check if the value itself is an environment variable name
+        env_val = os.getenv(value) if value in ["FACEBOOK_EMAIL", "FACEBOOK_PASSWORD", "NEXTDOOR_EMAIL", "NEXTDOOR_PASSWORD"] else None
+        
+        if env_val:
+            value = env_val
+            print(f"⚙️ Loaded '{key}' from environment variable.")
+
         try:
             # Check if variable already exists
             existing_val = Variable.get(key)
-            print(f"✓ Variable '{key}' already exists. Skipping initialization.")
+            
+            # For credentials, if they are blank or default, update them
+            if key in credential_keys and (not existing_val or existing_val in ["ENTER_YOUR_EMAIL", "ENTER_YOUR_PASSWORD", "FACEBOOK_EMAIL", "FACEBOOK_PASSWORD", "NEXTDOOR_EMAIL", "NEXTDOOR_PASSWORD"]):
+                Variable.set(key, value)
+                print(f"↻ Updated credential '{key}' in Airflow Variables.")
+            else:
+                print(f"✓ Variable '{key}' already exists. Skipping.")
         except Exception:
             # If it doesn't exist, create it
             Variable.set(key, value)
-            print(f"+ Initialized Variable '{key}' with default value.")
+            print(f"+ Initialized Variable '{key}' with value.")
 
 if __name__ == "__main__":
     initialize()

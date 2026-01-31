@@ -12,6 +12,7 @@ from airflow.models import Variable
 import sys
 import os
 import json
+from airflow_utils.callbacks import trigger_cookie_rotation
 
 # Add scraper src to path
 sys.path.insert(0, '/opt/airflow/scraper/src')
@@ -24,6 +25,7 @@ default_args = {
     'retries': 2,
     'retry_delay': timedelta(minutes=5),
     'execution_timeout': timedelta(hours=1),
+    'on_failure_callback': trigger_cookie_rotation,
 }
 
 

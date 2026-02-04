@@ -67,16 +67,44 @@ def rotate_nextdoor_cookies(**context):
 
             # Wait for email field specifically - this confirms we are on the right page
             print("Checking for login form...")
-            page.wait_for_selector('input[name="email"], input#id_email', timeout=20000)
-            page.type('input[name="email"], input#id_email', email, delay=100)
+            email_field = page.locator('input[name="email"], input#id_email').first
+            email_field.wait_for(timeout=20000)
+            
+            # Clear and fill email
+            email_field.click()
+            email_field.fill('')  # Clear first
+            page.wait_for_timeout(500)
+            email_field.type(email, delay=100)
+            print(f"Filled email field")
             
             # Fill password with human-like delay
-            page.type('input[name="password"], input#id_password', password, delay=100)
+            password_field = page.locator('input[name="password"], input#id_password').first
+            password_field.click()
+            password_field.fill('')  # Clear first
+            page.wait_for_timeout(500)
+            password_field.type(password, delay=100)
+            print(f"Filled password field")
             
-            # Click login
-            print("Clicking login button...")
-            login_button = page.locator('button[type="submit"], button#signin_button, button:has-text("Log in")').first
-            login_button.click()
+            # Wait a moment for any client-side validation
+            page.wait_for_timeout(1000)
+            
+            # Check for immediate error messages (e.g., "Invalid email format")
+            immediate_error = page.locator('.error-message, [role="alert"], .alert-danger, #id_errors, .FormErrorText').first
+            if immediate_error.is_visible():
+                error_text = immediate_error.inner_text()
+                print(f"✗ Form validation error: {error_text}")
+                raise ValueError(f"Login form validation failed: {error_text}")
+            
+            # Submit the form - try button click first, then Enter key as fallback
+            print("Submitting login form...")
+            login_button = page.locator('button[type="submit"], button#signin_button').first
+            if login_button.is_visible():
+                login_button.click()
+                print("Clicked login button")
+            else:
+                # Fallback: press Enter on password field
+                password_field.press('Enter')
+                print("Pressed Enter on password field")
             
             # Wait for navigation or a change in URL
             print("Waiting for navigation after login...")
@@ -87,6 +115,14 @@ def rotate_nextdoor_cookies(**context):
                 print("Navigation timeout - checking page state...")
                 print(f"Current URL: {page.url}")
                 print(f"Page Title: {page.title()}")
+                
+                # Debug: Check if form fields still have values (might indicate form wasn't submitted)
+                try:
+                    email_value = page.locator('input[name="email"], input#id_email').first.input_value()
+                    has_email = len(email_value) > 0
+                    print(f"Email field has value: {has_email}")
+                except:
+                    pass
             
             # Check for common error messages with expanded selectors
             error_selectors = [
@@ -95,13 +131,17 @@ def rotate_nextdoor_cookies(**context):
                 '.alert-danger', 
                 '#id_errors', 
                 '.FormErrorText',
-                '.AuthenticationError'
+                '.AuthenticationError',
+                '.signin-error',
+                '[data-testid="error-message"]'
             ]
+            error_found = False
             for selector in error_selectors:
                 error_feedback = page.locator(selector).first
                 if error_feedback.is_visible():
                     error_text = error_feedback.inner_text()
                     print(f"✗ Nextdoor login error detected ({selector}): {error_text}")
+                    error_found = True
             
             # Check if logged in (url shouldn't contain login/signup)
             current_url = page.url.lower()

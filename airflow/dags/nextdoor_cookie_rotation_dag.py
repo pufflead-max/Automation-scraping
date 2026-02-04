@@ -23,8 +23,8 @@ def rotate_nextdoor_cookies(**context):
     from playwright.sync_api import sync_playwright
     
     # These are now initialized from .env -> variables.json -> Airflow Variable at startup
-    email = Variable.get("nextdoor_email", default_var="ENTER_YOUR_EMAIL")
-    password = Variable.get("nextdoor_password", default_var="ENTER_YOUR_PASSWORD")
+    email = Variable.get("nextdoor_email", default_var="ENTER_YOUR_EMAIL").strip()
+    password = Variable.get("nextdoor_password", default_var="ENTER_YOUR_PASSWORD").strip()
     
     if email == "ENTER_YOUR_EMAIL" or password == "ENTER_YOUR_PASSWORD":
         print("✗ Nextdoor credentials are not set in Airflow Variables.")
@@ -54,6 +54,17 @@ def rotate_nextdoor_cookies(**context):
             except Exception as e:
                 print(f"Initial navigation warning: {e}. Attempting to proceed...")
             
+            # Check for actual bot detection challenges (not just meta tags)
+            # Look for visible CAPTCHA iframes or challenge text in the body
+            page_text = page.inner_text('body') if page.locator('body').count() > 0 else ""
+            has_captcha_iframe = page.locator('iframe[src*="captcha"], iframe[src*="hcaptcha"], iframe[src*="recaptcha"]').count() > 0
+            has_challenge_text = "Verify you are human" in page_text or "Pardon Our Interruption" in page_text or "Security check" in page_text
+            
+            if has_captcha_iframe or has_challenge_text:
+                print("✗ Bot detection triggered (CAPTCHA or security challenge detected).")
+                print(f"Page text snippet: {page_text[:500]}")
+                raise ValueError("Anti-bot wall detected. Cannot proceed with automatic rotation.")
+
             # Wait for email field specifically - this confirms we are on the right page
             print("Checking for login form...")
             page.wait_for_selector('input[name="email"], input#id_email', timeout=20000)
@@ -63,24 +74,38 @@ def rotate_nextdoor_cookies(**context):
             page.type('input[name="password"], input#id_password', password, delay=100)
             
             # Click login
-            login_button = page.locator('button[type="submit"], button:has-text("Log in")').first
+            print("Clicking login button...")
+            login_button = page.locator('button[type="submit"], button#signin_button, button:has-text("Log in")').first
             login_button.click()
             
             # Wait for navigation or a change in URL
+            print("Waiting for navigation after login...")
             try:
-                page.wait_for_url(lambda url: "login" not in url.lower() and "signup" not in url.lower(), timeout=15000)
+                # Wait for either the dashboard/newsfeed or a known error state
+                page.wait_for_url(lambda url: "login" not in url.lower() and "signup" not in url.lower(), timeout=30000)
             except Exception:
                 print("Navigation timeout - checking page state...")
+                print(f"Current URL: {page.url}")
+                print(f"Page Title: {page.title()}")
             
-            # Check for common error messages
-            error_feedback = page.locator('.error-message, [role="alert"], .alert-danger').first
-            if error_feedback.is_visible():
-                error_text = error_feedback.inner_text()
-                print(f"Nextdoor login error on page: {error_text}")
+            # Check for common error messages with expanded selectors
+            error_selectors = [
+                '.error-message', 
+                '[role="alert"]', 
+                '.alert-danger', 
+                '#id_errors', 
+                '.FormErrorText',
+                '.AuthenticationError'
+            ]
+            for selector in error_selectors:
+                error_feedback = page.locator(selector).first
+                if error_feedback.is_visible():
+                    error_text = error_feedback.inner_text()
+                    print(f"✗ Nextdoor login error detected ({selector}): {error_text}")
             
             # Check if logged in (url shouldn't contain login/signup)
             current_url = page.url.lower()
-            if "login" not in current_url and "signup" not in current_url:
+            if "login" not in current_url and "signup" not in current_url and "news_feed" in current_url or "nextdoor.com/home" in current_url or "nextdoor.com/feed" in current_url:
                 print(f"Nextdoor login successful! Final URL: {current_url}")
                 cookies = browser_context.cookies()
                 
@@ -96,8 +121,22 @@ def rotate_nextdoor_cookies(**context):
                 print("✓ Successfully rotated Nextdoor cookies.")
                 return "Success"
             else:
+                # One last check: maybe we are logged in but URL still has login (unlikely but...)
+                # Check for profile icon or news feed elements
+                if page.locator('[data-testid="user-profile-menu"], .user-profile-menu').is_visible():
+                     print("✓ Detected logged-in state via UI elements despite URL.")
+                     cookies = browser_context.cookies()
+                     Variable.set("nextdoor_cookies", json.dumps(cookies))
+                     return "Success"
+                     
                 print(f"✗ Nextdoor login failed. Current URL: {current_url}")
-                raise ValueError("Nextdoor login failed.")
+                # Log some of the page text to help debug
+                try:
+                    body_text = page.inner_text('body')
+                    print(f"Page snippet: {body_text[:500]}...")
+                except:
+                    pass
+                raise ValueError(f"Nextdoor login failed. Current URL: {current_url}")
         except Exception as e:
             print(f"✗ Error during Nextdoor rotation: {e}")
             raise

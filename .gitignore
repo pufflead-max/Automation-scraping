@@ -93,6 +93,10 @@ scraped_data/
 output/
 downloads/
 
+# Browser Profiles & Cookies
+scraper/browser_profiles/
+scraper/cookies/*.json
+!scraper/cookies/.gitkeep
 # Secrets
 secrets/
 *.pem

@@ -21,7 +21,7 @@ default_args = {
 def rotate_nextdoor_cookies(**context):
     """Log in to Nextdoor directly from DAG and update cookies in Airflow Variable."""
     from playwright.sync_api import sync_playwright
-    from playwright_stealth import stealth
+    from playwright_stealth import stealth_sync
     
     # These are now initialized from .env -> variables.json -> Airflow Variable at startup
     email = Variable.get("nextdoor_email", default_var="ENTER_YOUR_EMAIL").strip()
@@ -62,7 +62,7 @@ def rotate_nextdoor_cookies(**context):
         )
         
         page = browser_context.pages[0] if browser_context.pages else browser_context.new_page()
-        stealth(page) # Apply stealth evasions
+        stealth_sync(page) # Apply stealth evasions
         
         try:
             # STEP 1: Check if already logged in! (Bypasses login completely if session is valid)

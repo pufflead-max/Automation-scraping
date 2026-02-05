@@ -109,9 +109,6 @@ def rotate_nextdoor_cookies(**context):
                 page.wait_for_url(lambda url: "login" not in url.lower(), timeout=30000)
             except:
                 pass
-                    print(f"Email field has value: {has_email}")
-                except:
-                    pass
             
             # Check for 2FA email verification challenge
             page_text = page.inner_text('body') if page.locator('body').count() > 0 else ""

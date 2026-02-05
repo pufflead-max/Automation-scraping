@@ -124,6 +124,19 @@ def rotate_nextdoor_cookies(**context):
                 except:
                     pass
             
+            # Check for 2FA email verification challenge
+            page_text = page.inner_text('body') if page.locator('body').count() > 0 else ""
+            if "login code has been sent" in page_text.lower() or "enter login code" in page_text.lower():
+                print("🔐 2FA EMAIL VERIFICATION DETECTED")
+                # Save a screenshot for debugging even in headless mode
+                screenshot_path = "/opt/airflow/logs/nextdoor_2fa_challenge.png"
+                try:
+                    page.screenshot(path=screenshot_path)
+                    print(f"📸 Screenshot saved to: {screenshot_path}")
+                except:
+                    pass
+                raise ValueError("2FA email verification required. Automatic rotation cannot proceed.")
+
             # Check for common error messages with expanded selectors
             error_selectors = [
                 '.error-message', 

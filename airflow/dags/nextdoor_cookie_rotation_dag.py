@@ -35,8 +35,8 @@ def rotate_nextdoor_cookies(**context):
     print(f"Starting Stealth Nextdoor cookie rotation for {printable_email}")
     
     with sync_playwright() as p:
-        # Browser profile directory (MUST be persistent to bypass 2FA)
-        user_data_dir = "/opt/airflow/scraper/browser_profiles/nextdoor"
+        # Browser profile directory (MUST be persistent inside an existing volume)
+        user_data_dir = "/opt/airflow/scraper/cookies/browser_profiles/nextdoor"
         os.makedirs(user_data_dir, exist_ok=True)
 
         launch_args = {

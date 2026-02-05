@@ -12,5 +12,6 @@
     "facebook_email": "FACEBOOK_EMAIL",
     "facebook_password": "FACEBOOK_PASSWORD",
     "nextdoor_email": "NEXTDOOR_EMAIL",
-    "nextdoor_password": "NEXTDOOR_PASSWORD"
+    "nextdoor_password": "NEXTDOOR_PASSWORD",
+    "nextdoor_2fa_code": ""
 }

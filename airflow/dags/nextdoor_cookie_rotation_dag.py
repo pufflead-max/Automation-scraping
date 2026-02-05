@@ -128,14 +128,70 @@ def rotate_nextdoor_cookies(**context):
             page_text = page.inner_text('body') if page.locator('body').count() > 0 else ""
             if "login code has been sent" in page_text.lower() or "enter login code" in page_text.lower():
                 print("🔐 2FA EMAIL VERIFICATION DETECTED")
-                # Save a screenshot for debugging even in headless mode
+                
+                # Save a screenshot to help the user see where to enter
                 screenshot_path = "/opt/airflow/logs/nextdoor_2fa_challenge.png"
                 try:
                     page.screenshot(path=screenshot_path)
                     print(f"📸 Screenshot saved to: {screenshot_path}")
                 except:
                     pass
-                raise ValueError("2FA email verification required. Automatic rotation cannot proceed.")
+                
+                print("="*60)
+                print("👉 ACTION REQUIRED: Nextdoor sent a code to your email.")
+                print("👉 Please check your email and set the result in Airflow Variables.")
+                print("👉 KEY: nextdoor_2fa_code")
+                print("👉 The DAG will wait for 5 minutes...")
+                print("="*60)
+                
+                # Clear any old code first
+                Variable.set("nextdoor_2fa_code", "")
+                
+                import time
+                wait_start = time.time()
+                timeout = 300 # 5 minutes
+                otp_code = ""
+                
+                while time.time() - wait_start < timeout:
+                    otp_code = Variable.get("nextdoor_2fa_code", default_var="").strip()
+                    if otp_code and len(otp_code) >= 6:
+                        print(f"✅ Received code: {otp_code[:2]}****")
+                        break
+                    
+                    if int(time.time() - wait_start) % 30 == 0:
+                        elapsed = int(time.time() - wait_start)
+                        print(f"Still waiting for code... ({elapsed}s elapsed)")
+                    
+                    time.sleep(5)
+                
+                if not otp_code:
+                    print("❌ Timeout waiting for 2FA code.")
+                    raise ValueError("2FA email verification required but no code provided via 'nextdoor_2fa_code' variable.")
+                
+                # Try to fill the code
+                try:
+                    code_field = page.locator('input[name="otp_code"], input[name="login_code"], input#id_login_code, input#id_otp_code').first
+                    code_field.wait_for(timeout=10000)
+                    code_field.fill(otp_code)
+                    print("Filled 2FA code")
+                    
+                    # Click submit or press enter
+                    submit_button = page.locator('button[type="submit"], button:has-text("Login"), button:has-text("Submit")').first
+                    if submit_button.is_visible():
+                        submit_button.click()
+                    else:
+                        code_field.press('Enter')
+                    
+                    print("Submitted 2FA form")
+                    
+                    # Clear the variable now that it's used
+                    Variable.set("nextdoor_2fa_code", "")
+                    
+                    # Wait for news feed
+                    page.wait_for_url(lambda url: "login" not in url.lower() and "signup" not in url.lower(), timeout=30000)
+                except Exception as e:
+                    print(f"❌ Error entering/submitting 2FA code: {e}")
+                    raise
 
             # Check for common error messages with expanded selectors
             error_selectors = [

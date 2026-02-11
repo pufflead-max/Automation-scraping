@@ -243,17 +243,59 @@ class GHLClient:
 
     def save_scraped_lead(self, scraped_lead: Dict[str, Any]) -> Optional[str]:
         """Save a scraped lead as a Custom Object record (fallback to Contact)."""
-        # Try custom objects first
+        user_detail = scraped_lead.get('extra_data', {}).get('user_detail')
+        contact_id = None
+
+        # 1. If user_detail exists, we should associate this lead with the TEST USER contact
+        if user_detail:
+            logger.info("associating_with_test_user", user=user_detail.get('email'))
+            # Use upsert to get/create contact for the test user
+            contact_payload = {
+                "name": user_detail.get('name'),
+                "email": user_detail.get('email'),
+                "phone": user_detail.get('phone'),
+                "tags": ["test_user_automation"]
+            }
+            contact_id = self.upsert_contact(contact_payload)
+        
+        # 2. Try custom objects first
         schema_id = self.ensure_scraped_leads_schema()
         if schema_id:
             record_data = self._map_to_custom_object(scraped_lead)
+            # If we have a contact_id, associate the record
+            if contact_id:
+                record_data['contactId'] = contact_id
+                
             record_id = self.create_custom_object_record(schema_id, record_data)
             if record_id:
                 return record_id
         
-        # Fallback to contacts
+        # 3. Fallback to contacts or notes
+        if contact_id:
+            # If we couldn't use custom objects but have a contact_id (the test user),
+            # we should add the lead info as a NOTE instead of overwriting the contact.
+            logger.info("falling_back_to_notes_for_test_user", contact_id=contact_id)
+            return self.add_contact_note(contact_id, scraped_lead)
+        
         logger.info("falling_back_to_contacts", lead=scraped_lead.get('title'))
         return self._save_as_contact(scraped_lead)
+
+    def add_contact_note(self, contact_id: str, lead: Dict[str, Any]) -> Optional[str]:
+        """Add a note to a GHL contact."""
+        note_body = (
+            f"NEW SCRAPED LEAD FOUND:\n"
+            f"Title: {lead.get('title')}\n"
+            f"Source: {lead.get('source')} ({lead.get('source_url')})\n"
+            f"Author: {lead.get('author_name')}\n"
+            f"Description: {lead.get('description')}\n"
+            f"Vertical: {lead.get('vertical')}\n"
+            f"Phone: {lead.get('phone')}\n"
+            f"City: {lead.get('city')}\n"
+            f"Date: {lead.get('posted_date')}"
+        )
+        endpoint = f"/contacts/{contact_id}/notes"
+        result = self._make_request("POST", endpoint, data={"body": note_body})
+        return result.get('note', {}).get('id') if result else None
     
     def _map_to_custom_object(self, lead: Dict[str, Any]) -> Dict[str, Any]:
         """Map scraped lead to custom object record."""

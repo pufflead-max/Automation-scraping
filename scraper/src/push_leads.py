@@ -64,8 +64,12 @@ def push_leads(source: str, limit: int = None, force: bool = False):
             success += 1
             db.update_one(col, {"_id": lead["_id"]}, {"$set": {"pushed_to_ghl": True, "ghl_record_id": record_id, "pushed_at": datetime.utcnow()}})
             name = lead.get('author_name') or lead.get('title') or "Unknown"
+            user_info = ""
+            if ud := lead.get('extra_data', {}).get('user_detail'):
+                user_info = f" (for User: {ud.get('name')})"
+            
             contact_url = ghl.get_contact_url(record_id)
-            print(f"✅ [{i+1}/{len(buyer_leads)}] Pushed: {name[:50]}")
+            print(f"✅ [{i+1}/{len(buyer_leads)}] Pushed: {name[:50]}{user_info}")
             print(f"   🔗 Link: {contact_url}")
         else:
             print(f"⚠️ [{i+1}/{len(buyer_leads)}] Failed: {lead.get('title', 'Unknown')[:50]}")

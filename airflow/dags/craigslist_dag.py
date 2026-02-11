@@ -1,3 +1,4 @@
+# airflow DAG
 """
 Airflow DAG for Craigslist lead scraping with dynamic URL loading.
 Reads URLs from text file and creates separate tasks for each category.
@@ -10,6 +11,7 @@ from airflow.models import Variable
 import os
 import sys
 import re
+import json
 
 # Add scraper src to path
 sys.path.insert(0, '/opt/airflow/scraper/src')
@@ -25,12 +27,31 @@ default_args = {
     'execution_timeout': timedelta(hours=2),
 }
 
+def get_user_details(email: str):
+    """Fetch user details from MongoDB by email."""
+    from pymongo import MongoClient
+    mongo_uri = os.getenv("MONGO_URI", "mongodb://mongo:27017")
+    client = MongoClient(mongo_uri)
+    db = client["PUFF"]
+    user_doc = db["ghl_onboarding_test"].find_one({"user.email": email})
+    if user_doc:
+        return user_doc.get("user")
+    return None
 
-def load_craigslist_urls():
-    """Load Craigslist URLs from file or Airflow variable."""
-    from utils.url_loader import get_scraper_urls
-    
-    # Try to get from Airflow variable first
+
+def load_craigslist_urls(**context):
+    """Load Craigslist URLs from context conf or Airflow variable."""
+    # Try to get from dag_run.conf first
+    dag_run = context.get('dag_run')
+    if dag_run and dag_run.conf and 'urls' in dag_run.conf:
+        urls = dag_run.conf['urls']
+        if isinstance(urls, str):
+            urls = [url.strip() for url in urls.replace('\n', ',').split(',') if url.strip()]
+        if urls:
+            print(f"✓ Successfully loaded {len(urls)} URLs from DAG configuration")
+            return urls
+            
+    # Try to get from Airflow variable fallback
     try:
         urls_raw = Variable.get("craigslist_target_url", default_var="")
         if urls_raw:
@@ -41,7 +62,7 @@ def load_craigslist_urls():
     except Exception as e:
         print(f"Error loading craigslist_target_url variable: {e}")
     
-    raise ValueError("No Craigslist URLs specified. Please set 'craigslist_target_url' Airflow Variable.")
+    raise ValueError("No Craigslist URLs specified. Please set 'craigslist_target_url' Airflow Variable or provide in DAG conf.")
 
 
 def extract_category_from_url(url: str) -> str:
@@ -55,7 +76,7 @@ def extract_category_from_url(url: str) -> str:
     return url.rstrip('/').split('/')[-1]
 
 
-def scrape_craigslist_url(category_url: str, category_name: str, url_index: int, **kwargs):
+def scrape_craigslist_url(category_url: str, category_name: str, url_index: int, **context):
     """
     Python callable to scrape a specific Craigslist URL.
     """
@@ -64,17 +85,32 @@ def scrape_craigslist_url(category_url: str, category_name: str, url_index: int,
     max_pages = int(Variable.get("craigslist_max_pages", default_var="5"))
     headless = Variable.get("craigslist_headless", default_var="true").lower() == "true"
     
+    # Check for custom keywords in context
+    dag_run = context.get('dag_run')
+    custom_keywords = None
+    if dag_run and dag_run.conf and 'keywords' in dag_run.conf:
+        custom_keywords = dag_run.conf['keywords']
+        print(f"Using custom keywords for intent detection: {custom_keywords}")
+
     print(f"Starting scrape for URL #{url_index + 1}: {category_name}")
     print(f"Target URL: {category_url}")
     print(f"Max pages: {max_pages}, Headless: {headless}")
     
+    # Fetch user details
+    user_email = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
+    user_data = get_user_details(user_email) if user_email else None
+    if user_data:
+        print(f"✓ Linked to test user: {user_data.get('name')} ({user_email})")
+
     try:
         leads = run_craigslist_scraper(
             target=category_url,
             category=category_name,
             save_to_db=True,
             headless=headless,
-            max_pages=max_pages
+            max_pages=max_pages,
+            keywords=custom_keywords,
+            user_data=user_data
         )
         
         print(f"✓ Successfully scraped {len(leads)} leads from {category_name}")
@@ -87,7 +123,7 @@ def scrape_craigslist_url(category_url: str, category_name: str, url_index: int,
 
 # Define the DAG
 dag = DAG(
-    'craigslist_scraper',
+    'craigslist_lead_scraper',
     default_args=default_args,
     description='Scrape service leads from Craigslist (multi-URL support)',
     schedule_interval='0 2 * * *',  # Run daily at 2 AM
@@ -95,25 +131,29 @@ dag = DAG(
     catchup=False,
     tags=['scraping', 'craigslist', 'leads'],
     max_active_runs=1,
+    max_active_tasks=1,
 )
 
-# Load URLs and create dynamic tasks
-craigslist_urls = load_craigslist_urls()
-
+# Handle dynamic tasks based on configuration or variables
 scraping_tasks = []
 
-for idx, url in enumerate(craigslist_urls):
-    category_name = extract_category_from_url(url)
-    task_id = f'scrape_{category_name}_{idx + 1}' if idx > 0 and any(extract_category_from_url(u) == category_name for u in craigslist_urls[:idx]) else f'scrape_{category_name}'
+for idx in range(10): # Create 10 potential task slots
+    task_id = f'scrape_craigslist_url_{idx + 1}'
     
+    def dynamic_scrape_task(url_index, **context):
+        urls = load_craigslist_urls(**context)
+        if url_index >= len(urls):
+            print(f"Skipping task {url_index + 1} as only {len(urls)} URLs provided.")
+            return 0
+        url = urls[url_index]
+        category_name = extract_category_from_url(url)
+        return scrape_craigslist_url(url, category_name, url_index, **context)
+
     task = PythonOperator(
         task_id=task_id,
-        python_callable=scrape_craigslist_url,
-        op_kwargs={
-            'category_url': url,
-            'category_name': category_name,
-            'url_index': idx,
-        },
+        python_callable=dynamic_scrape_task,
+        op_kwargs={'url_index': idx},
+        provide_context=True,
         dag=dag,
     )
     scraping_tasks.append(task)

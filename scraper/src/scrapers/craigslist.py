@@ -90,7 +90,7 @@ class CraigslistScraper(BaseScraper):
             self.logger.error("scraping_page_failed", url=page_url, error=str(e))
             raise
 
-    def parse_item(self, raw_data: Dict[str, Any]) -> Optional[CraigslistLead]:
+    def parse_item(self, raw_data: Dict[str, Any], custom_keywords: Optional[str] = None) -> Optional[CraigslistLead]:
         """Parse raw scraped data into a CraigslistLead model."""
         try:
             posting_id = None
@@ -106,7 +106,8 @@ class CraigslistScraper(BaseScraper):
             is_buyer_request = BuyerIntentDetector.is_buyer_request(
                 text=text,
                 require_url=True,
-                url=raw_data.get('url')
+                url=raw_data.get('url'),
+                custom_keywords=custom_keywords
             )
             
             # Log detection reason for debugging
@@ -169,7 +170,7 @@ class CraigslistScraper(BaseScraper):
                             break
                         
                         for raw in raw_items:
-                            if lead := self.parse_item(raw):
+                            if (lead := self.parse_item(raw, custom_keywords=kwargs.get('keywords'))):
                                 all_leads.append(lead)
                         
                         if offset + len(raw_items) >= self.get_total_count(soup) or len(raw_items) == 0:

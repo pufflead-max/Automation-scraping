@@ -39,6 +39,15 @@ def rotate_nextdoor_cookies(**context):
         user_data_dir = "/opt/airflow/scraper/cookies/browser_profiles/nextdoor"
         os.makedirs(user_data_dir, exist_ok=True)
 
+        # Fix for "Failed to create a ProcessSingleton" error
+        lock_file = os.path.join(user_data_dir, "SingletonLock")
+        if os.path.exists(lock_file):
+            print(f"⚠️ Found stale lock file: {lock_file}. Removing it...")
+            try:
+                os.remove(lock_file)
+            except Exception as e:
+                print(f"Failed to remove lock: {e}")
+
         launch_args = {
             "headless": True,
             "args": [

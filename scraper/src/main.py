@@ -14,7 +14,12 @@ def run_scraper(name: str, target: Optional[str], **kwargs):
     scraper_logger.info(f"starting_{name}_scraper", target=target, **kwargs)
     
     try:
-        common = {"save": kwargs.get('save', kwargs.get('save_to_db', True)), "category": kwargs.get('category')}
+        common = {
+            "save": kwargs.get('save', kwargs.get('save_to_db', True)), 
+            "category": kwargs.get('category'),
+            "keywords": kwargs.get('keywords'),
+            "user_data": kwargs.get('user_data')
+        }
         if name == "craigslist":
             from scrapers.craigslist import CraigslistScraper
             leads = CraigslistScraper(headless=kwargs.get('headless', True)).run(target=target, **common)

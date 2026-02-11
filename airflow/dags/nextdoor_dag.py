@@ -1,3 +1,4 @@
+# airflow DAG
 """
 Airflow DAG for Nextdoor lead scraping with dynamic URL loading.
 Reads URLs from text file and creates separate tasks for each neighborhood/feed.
@@ -19,7 +20,7 @@ sys.path.insert(0, '/opt/airflow/scraper/src')
 
 default_args = {
     'owner': 'automation-scraping',
-    'depends_on_past': False,
+    'start_date': datetime(2024, 1, 1),
     'email_on_failure': False,
     'email_on_retry': False,
     'retries': 2,
@@ -28,12 +29,31 @@ default_args = {
     'on_failure_callback': trigger_cookie_rotation,
 }
 
+def get_user_details(email: str):
+    """Fetch user details from MongoDB by email."""
+    from pymongo import MongoClient
+    mongo_uri = os.getenv("MONGO_URI", "mongodb://mongo:27017")
+    client = MongoClient(mongo_uri)
+    db = client["PUFF"]
+    user_doc = db["ghl_onboarding_test"].find_one({"user.email": email})
+    if user_doc:
+        return user_doc.get("user")
+    return None
 
-def load_nextdoor_urls():
-    """Load Nextdoor URLs from file or Airflow variable."""
-    from utils.url_loader import get_scraper_urls
-    
-    # Try to get from Airflow variable first
+
+def load_nextdoor_urls(**context):
+    """Load Nextdoor URLs from context conf or Airflow variable."""
+    # Try to get from dag_run.conf first
+    dag_run = context.get('dag_run')
+    if dag_run and dag_run.conf and 'urls' in dag_run.conf:
+        urls = dag_run.conf['urls']
+        if isinstance(urls, str):
+            urls = [url.strip() for url in urls.replace('\n', ',').split(',') if url.strip()]
+        if urls:
+            print(f"✓ Successfully loaded {len(urls)} URLs from DAG configuration")
+            return urls
+
+    # Try to get from Airflow variable fallback
     try:
         urls_raw = Variable.get("nextdoor_target_url", default_var="")
         if urls_raw:
@@ -44,7 +64,7 @@ def load_nextdoor_urls():
     except Exception as e:
         print(f"Error loading nextdoor_target_url variable: {e}")
     
-    raise ValueError("No Nextdoor URLs specified. Please set 'nextdoor_target_url' Airflow Variable.")
+    raise ValueError("No Nextdoor URLs specified. Please set 'nextdoor_target_url' Airflow Variable or provide in DAG conf.")
 
 
 def load_nextdoor_cookies():
@@ -80,31 +100,41 @@ def load_nextdoor_cookies():
     )
 
 
-def scrape_nextdoor_url(target_url: str, url_index: int, max_pages: int = 5):
+def scrape_nextdoor_url(target_url: str, url_index: int, max_pages: int = 5, **context):
     """
     Python callable to scrape a specific Nextdoor URL.
-    
-    Args:
-        target_url: The Nextdoor URL to scrape
-        url_index: Index of the URL (for logging)
-        max_pages: Maximum number of pages to scrape
     """
     from main import run_nextdoor_scraper
     
     print(f"Starting Nextdoor scrape for URL #{url_index + 1}: {target_url}")
     print(f"Max pages: {max_pages}")
     
+    # Check for custom keywords in context
+    dag_run = context.get('dag_run')
+    custom_keywords = None
+    if dag_run and dag_run.conf and 'keywords' in dag_run.conf:
+        custom_keywords = dag_run.conf['keywords']
+        print(f"Using custom keywords for intent detection: {custom_keywords}")
+
     try:
         # Load cookies
         cookies = load_nextdoor_cookies()
         print(f"✓ Loaded cookies")
         
+        # Fetch user details
+        user_email = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
+        user_data = get_user_details(user_email) if user_email else None
+        if user_data:
+            print(f"✓ Linked to test user: {user_data.get('name')} ({user_email})")
+
         # Run scraper
         leads = run_nextdoor_scraper(
             target=target_url,
             cookies=cookies,
             save_to_db=True,
-            max_pages=max_pages
+            max_pages=max_pages,
+            keywords=custom_keywords,
+            user_data=user_data
         )
         
         print(f"✓ Successfully scraped {len(leads)} leads from {target_url}")
@@ -117,35 +147,37 @@ def scrape_nextdoor_url(target_url: str, url_index: int, max_pages: int = 5):
 
 # Define the DAG
 with DAG(
-    'nextdoor_scraper',
+    'nextdoor_lead_scraper',
     default_args=default_args,
     description='Scrape service leads from Nextdoor (multi-URL support)',
-    schedule_interval='0 3 * * *',  # Run daily at 3 AM
-    start_date=datetime(2026, 1, 15),
+    schedule_interval='@daily',
     catchup=False,
     tags=['scraping', 'nextdoor', 'leads'],
     max_active_runs=1,
-    concurrency=1, # Nextdoor is sensitive to multiple sessions, run sequentially by default or very limited
+    max_active_tasks=1,
 ) as dag:
 
-    # Load URLs and create dynamic tasks
-    nextdoor_urls = load_nextdoor_urls()
+    # To support truly dynamic tasks based on conf, we use a fixed number of task slots
+    # each checking if an actual URL is provided in the configuration.
     
-    # Allow admin to change max pages via Airflow Variable
     max_pages = int(Variable.get("nextdoor_max_pages", default_var="5"))
     
     scrape_tasks = []
-    for idx, url in enumerate(nextdoor_urls):
+    for idx in range(10): # Create 10 potential task slots
         task_id = f'scrape_nextdoor_url_{idx + 1}'
         
+        def dynamic_scrape_task(url_index, max_pages_val, **context):
+            urls = load_nextdoor_urls(**context)
+            if url_index >= len(urls):
+                print(f"Skipping task {url_index + 1} as only {len(urls)} URLs provided.")
+                return 0
+            return scrape_nextdoor_url(urls[url_index], url_index, max_pages_val, **context)
+
         task = PythonOperator(
             task_id=task_id,
-            python_callable=scrape_nextdoor_url,
-            op_kwargs={
-                'target_url': url,
-                'url_index': idx,
-                'max_pages': max_pages,
-            },
+            python_callable=dynamic_scrape_task,
+            op_kwargs={'url_index': idx, 'max_pages_val': max_pages},
+            provide_context=True,
         )
         scrape_tasks.append(task)
 

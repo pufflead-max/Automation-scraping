@@ -75,6 +75,7 @@ class BaseScraper(ABC):
             self.logger.error("save_failed", col=col, error=str(e)); raise
     
     def run(self, target: str, save: bool = True, **kw) -> List[ScrapedLead]:
+        user_data = kw.get('user_data')
         self.start_job(target, kw.get('category'))
         try:
             leads = self.scrape(target, **kw)
@@ -88,6 +89,11 @@ class BaseScraper(ABC):
                     text = f"{l.title or ''} {l.description or ''}"
                     l.vertical, l.phone = LeadEnricher.extract_vertical(text), LeadEnricher.extract_phone(text)
                     if not l.city: l.city = LeadEnricher.extract_city(text, l.location)
+                    
+                    # Attach user metadata if available
+                    if user_data:
+                        l.extra_data = l.extra_data or {}
+                        l.extra_data['user_detail'] = user_data
                 
                 # JSON Backup
                 path = os.path.join(os.getcwd(), "scraped_data")

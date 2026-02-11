@@ -434,7 +434,7 @@ class FacebookScraper(BaseScraper):
         except:
             return "Date not found"
 
-    def parse_item(self, raw_data: Dict[str, Any]) -> Optional[FacebookLead]:
+    def parse_item(self, raw_data: Dict[str, Any], custom_keywords: Optional[str] = None) -> Optional[FacebookLead]:
         """Parse raw data into a FacebookLead model."""
         try:
             post_date_str = raw_data.get('post_date')
@@ -455,7 +455,8 @@ class FacebookScraper(BaseScraper):
             is_buyer_request = BuyerIntentDetector.is_buyer_request(
                 text=text,
                 require_url=False,  # Facebook posts may not always have stable URLs
-                url=raw_data.get('link')
+                url=raw_data.get('link'),
+                custom_keywords=custom_keywords
             )
             
             # Log detection reason for debugging
@@ -837,7 +838,7 @@ class FacebookScraper(BaseScraper):
                             'scraped_at': datetime.now().isoformat()
                         }
                         
-                        if lead := self.parse_item(raw_item):
+                        if (lead := self.parse_item(raw_item, custom_keywords=kwargs.get('keywords'))):
                             extracted_leads.append(lead)
                             self.logger.debug("post_extracted", 
                                             total=len(extracted_leads),

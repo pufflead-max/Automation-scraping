@@ -84,7 +84,7 @@ class NextdoorScraper(BaseScraper):
             self.logger.warning("failed_to_parse_nextdoor_post", error=str(e))
             return None
     
-    def parse_item(self, raw_data: Dict[str, Any]) -> Optional[NextdoorLead]:
+    def parse_item(self, raw_data: Dict[str, Any], custom_keywords: Optional[str] = None) -> Optional[NextdoorLead]:
         """Parse raw data into a NextdoorLead model."""
         try:
             # Combine title and description for buyer intent analysis
@@ -94,7 +94,8 @@ class NextdoorScraper(BaseScraper):
             is_service_request = BuyerIntentDetector.is_buyer_request(
                 text=text,
                 require_url=True,
-                url=raw_data.get('url')
+                url=raw_data.get('url'),
+                custom_keywords=custom_keywords
             )
             
             # Log detection reason for debugging
@@ -226,5 +227,5 @@ class NextdoorScraper(BaseScraper):
             finally:
                 browser.close()
         
-        return [lead for post_data in collected_posts.values() if (lead := self.parse_item(post_data))]
+        return [lead for post_data in collected_posts.values() if (lead := self.parse_item(post_data, custom_keywords=kwargs.get('keywords')))]
 

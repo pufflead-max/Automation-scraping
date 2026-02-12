@@ -23,9 +23,11 @@ from .base import BaseScraper
 try:
     from ..models import FacebookLead, ScrapedLead
     from ..utils.buyer_intent import BuyerIntentDetector
+    from ..user_credential_manager import UserCredentialManager
 except ImportError:
     from models import FacebookLead, ScrapedLead
     from utils.buyer_intent import BuyerIntentDetector
+    from user_credential_manager import UserCredentialManager
 
 
 class FacebookScraper(BaseScraper):
@@ -434,7 +436,9 @@ class FacebookScraper(BaseScraper):
         except:
             return "Date not found"
 
-    def parse_item(self, raw_data: Dict[str, Any], custom_keywords: Optional[str] = None) -> Optional[FacebookLead]:
+    def parse_item(self, raw_data: Dict[str, Any], custom_keywords: Optional[str] = None, 
+                   exclude_keywords: Optional[list] = None,
+                   custom_indicators: Optional[list] = None) -> Optional[FacebookLead]:
         """Parse raw data into a FacebookLead model."""
         try:
             post_date_str = raw_data.get('post_date')
@@ -456,7 +460,9 @@ class FacebookScraper(BaseScraper):
                 text=text,
                 require_url=False,  # Facebook posts may not always have stable URLs
                 url=raw_data.get('link'),
-                custom_keywords=custom_keywords
+                custom_keywords=custom_keywords,
+                exclude_keywords=exclude_keywords,
+                custom_indicators=custom_indicators
             )
             
             # Log detection reason for debugging
@@ -590,22 +596,28 @@ class FacebookScraper(BaseScraper):
             return False
 
     def _save_cookies(self):
-        """Save current driver cookies to file and return them."""
+        """Save current driver cookies to MongoDB using UserCredentialManager."""
         try:
             cookies = self.driver.get_cookies()
             if not cookies:
                 self.logger.warning("no_cookies_found_in_browser_nothing_to_save")
                 return None
             
-            # Save to local file for persistence within the container
-            cookie_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 
-                                     "cookies", "facebook_cookies.json")
-            
-            os.makedirs(os.path.dirname(cookie_file), exist_ok=True)
-            with open(cookie_file, 'w') as f:
-                json.dump(cookies, f, indent=2)
-            
-            self.logger.info("cookies_saved_to_file", path=cookie_file, count=len(cookies))
+            if self.user_email:
+                manager = UserCredentialManager()
+                # Remove existing (as per "remove then save" preference for efficiency/cleanliness)
+                manager.delete_cookies(self.user_email, 'facebook')
+                manager.save_cookies(self.user_email, 'facebook', cookies)
+                self.logger.info("cookies_saved_to_mongodb", user=self.user_email)
+            else:
+                # Fallback to local file if no user context
+                cookie_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 
+                                         "cookies", "facebook_cookies.json")
+                os.makedirs(os.path.dirname(cookie_file), exist_ok=True)
+                with open(cookie_file, 'w') as f:
+                    json.dump(cookies, f, indent=2)
+                self.logger.info("cookies_saved_to_file_fallback", path=cookie_file)
+                
             return cookies
         except Exception as e:
             self.logger.error("failed_to_save_cookies", error=str(e))
@@ -680,13 +692,19 @@ class FacebookScraper(BaseScraper):
             # Try loading cookies first
             session_ok = self._load_cookies()
             
-            # If cookies fail but we have credentials, try to login
+            # Handle expired cookies: If loaded but not logged in, clear them
+            if not session_ok and self.cookies and self.user_email:
+                self.logger.warning("facebook_cookies_expired_removing_stale_record", user=self.user_email)
+                UserCredentialManager().delete_cookies(self.user_email, 'facebook')
+            
+            # If cookies fail but we have credentials, try to login (Automatic Rotation)
             if not session_ok and email and password:
+                self.logger.info("attempting_automatic_session_rotation", user=self.user_email)
                 session_ok = self.login(email, password)
             
             if not session_ok:
-                self.logger.error("failed_to_establish_authenticated_session_cookies_likely_expired")
-                raise ValueError("Facebook authentication failed. Please update cookies in Airflow Variables.")
+                self.logger.error("failed_to_establish_authenticated_session")
+                raise ValueError("Facebook authentication failed. Please update credentials or cookies.")
             
             self.logger.info("navigating_to_target", url=target)
             self.driver.get(target)
@@ -838,7 +856,10 @@ class FacebookScraper(BaseScraper):
                             'scraped_at': datetime.now().isoformat()
                         }
                         
-                        if (lead := self.parse_item(raw_item, custom_keywords=kwargs.get('keywords'))):
+                        if (lead := self.parse_item(raw_item, 
+                                                   custom_keywords=kwargs.get('keywords'),
+                                                   exclude_keywords=kwargs.get('exclude_keywords'),
+                                                   custom_indicators=kwargs.get('custom_indicators'))):
                             extracted_leads.append(lead)
                             self.logger.debug("post_extracted", 
                                             total=len(extracted_leads),

@@ -29,6 +29,7 @@ class BaseScraper(ABC):
         self.ghl = GHLClient(self.ghl_cfg['api_key'], self.ghl_cfg['location_id']) if self.ghl_cfg.get('api_key') else None
         self.current_job = None
         self.scraped_items = []
+        self.user_email = None  # Store current user context
         self.logger.info("init", scraper=scraper_name)
     
     @abstractmethod
@@ -76,6 +77,9 @@ class BaseScraper(ABC):
     
     def run(self, target: str, save: bool = True, **kw) -> List[ScrapedLead]:
         user_data = kw.get('user_data')
+        if user_data:
+            self.user_email = user_data.get('email')
+            
         self.start_job(target, kw.get('category'))
         try:
             leads = self.scrape(target, **kw)
@@ -94,6 +98,12 @@ class BaseScraper(ABC):
                     if user_data:
                         l.extra_data = l.extra_data or {}
                         l.extra_data['user_detail'] = user_data
+                        
+                        # Extract user data to top-level fields for easier querying and GHL mapping
+                        self.user_email = user_data.get('email')
+                        l.user_email = self.user_email
+                        l.user_name = user_data.get('name')
+                        l.user_phone = user_data.get('phone')
                 
                 # JSON Backup
                 path = os.path.join(os.getcwd(), "scraped_data")

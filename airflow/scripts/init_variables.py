@@ -48,5 +48,28 @@ def initialize():
             Variable.set(key, value)
             print(f"+ Initialized Variable '{key}' with value.")
 
+    # Initialize a pool for sequential scraping (1 slot)
+    try:
+        from airflow.models import Pool
+        from airflow.utils.session import create_session
+        
+        with create_session() as session:
+            pool = session.query(Pool).filter(Pool.pool == 'scraper_pool').first()
+            if not pool:
+                print("⚒ Creating 'scraper_pool' for sequential execution...")
+                # include_deferred=False is required for Airflow 2.7+
+                new_pool = Pool(
+                    pool='scraper_pool', 
+                    slots=1, 
+                    description='Pool to ensure sequential scraping/browser tasks',
+                    include_deferred=False
+                )
+                session.add(new_pool)
+                session.commit()
+            else:
+                print("✓ 'scraper_pool' already exists.")
+    except Exception as e:
+        print(f"⚠️ Could not initialize pool: {e}")
+
 if __name__ == "__main__":
     initialize()

@@ -29,6 +29,27 @@ class ScrapedLead(BaseModel):
     extra_data: dict = Field(default_factory=dict)
     phone: Optional[str] = None
     vertical: Optional[str] = None
+    
+    @field_validator('posted_date', mode='before')
+    @classmethod
+    def parse_posted_date(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                # Handle Craigslist format: "2024-02-11 12:34:56"
+                return datetime.fromisoformat(v.split('.')[0])
+            except (ValueError, TypeError):
+                try:
+                    # Try simpler format if isoformat fails
+                    from dateutil import parser
+                    return parser.parse(v)
+                except:
+                    return None
+        return v
+    
+    # User association fields for multi-user support
+    user_email: Optional[str] = Field(None, description="Email of the user who owns this lead")
+    user_name: Optional[str] = Field(None, description="Name of the user who owns this lead")
+    user_phone: Optional[str] = Field(None, description="Phone of the user who owns this lead")
 
 
 class CraigslistLead(ScrapedLead):

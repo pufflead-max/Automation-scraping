@@ -1,11 +1,7 @@
 # airflow DAG
 """
 Airflow DAG for Nextdoor lead scraping with dynamic URL loading.
-Reads URLs from text file and creates separate tasks for each neighborhood/feed.
-
-NOTE: Requires Nextdoor authentication cookies to be configured.
 """
-
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
@@ -15,7 +11,6 @@ import os
 import json
 from airflow_utils.callbacks import trigger_cookie_rotation
 
-# Add scraper src to path
 sys.path.insert(0, '/opt/airflow/scraper/src')
 
 default_args = {
@@ -30,104 +25,88 @@ default_args = {
 }
 
 def get_user_details(email: str):
-    """Fetch user details from MongoDB by email."""
-    from pymongo import MongoClient
-    mongo_uri = os.getenv("MONGO_URI", "mongodb://mongo:27017")
-    client = MongoClient(mongo_uri)
-    db = client["PUFF"]
-    user_doc = db["ghl_onboarding_test"].find_one({"user.email": email})
+    from user_credential_manager import UserCredentialManager
+    manager = UserCredentialManager()
+    user_doc = manager.db.find_one(manager.collection, {"user.email": email})
     if user_doc:
-        return user_doc.get("user")
+        creds = manager.get_user_credentials(email)
+        return {"user": user_doc.get("user"), "credentials": creds, "scraping_config": user_doc.get("scraping_config", {})}
     return None
 
-
 def load_nextdoor_urls(**context):
-    """Load Nextdoor URLs from context conf or Airflow variable."""
-    # Try to get from dag_run.conf first
     dag_run = context.get('dag_run')
     if dag_run and dag_run.conf and 'urls' in dag_run.conf:
         urls = dag_run.conf['urls']
         if isinstance(urls, str):
             urls = [url.strip() for url in urls.replace('\n', ',').split(',') if url.strip()]
-        if urls:
-            print(f"✓ Successfully loaded {len(urls)} URLs from DAG configuration")
-            return urls
+        if urls: return urls
 
-    # Try to get from Airflow variable fallback
-    try:
-        urls_raw = Variable.get("nextdoor_target_url", default_var="")
-        if urls_raw:
-            urls = [url.strip() for url in urls_raw.replace('\n', ',').split(',') if url.strip()]
-            if urls:
-                print(f"✓ Successfully loaded {len(urls)} URLs from Airflow Variable 'nextdoor_target_url'")
-                return urls
-    except Exception as e:
-        print(f"Error loading nextdoor_target_url variable: {e}")
-    
-    raise ValueError("No Nextdoor URLs specified. Please set 'nextdoor_target_url' Airflow Variable or provide in DAG conf.")
+    user_email = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
+    if not user_email: raise ValueError("No user_email provided.")
 
+    user_details = get_user_details(user_email)
+    if not user_details: raise ValueError(f"User details for {user_email} not found.")
 
-def load_nextdoor_cookies():
-    """
-    Load Nextdoor cookies from environment or file.
-    
-    Returns:
-        dict: Cookies dictionary
-    """
-    # Try to load from environment variable
+    nd_onboarding = user_details.get("nextdoor", {})
+    page_urls = nd_onboarding.get("page_urls", "")
+    group_urls = nd_onboarding.get("group_urls", "")
+    urls_list = []
+    if page_urls: urls_list.extend([u.strip() for u in (page_urls.split(',') if isinstance(page_urls, str) else page_urls) if u.strip()])
+    if group_urls: urls_list.extend([u.strip() for u in (group_urls.split(',') if isinstance(group_urls, str) else group_urls) if u.strip()])
+    urls = urls_list
+
+    if not urls:
+        config = user_details.get("scraping_config", {}).get("nextdoor", {})
+        urls = config.get("urls")
+        
+    if urls:
+        if isinstance(urls, str):
+            urls = [u.strip() for u in urls.replace('\n', ',').split(',') if u.strip()]
+        return urls
+
+    raise ValueError(f"No Nextdoor URLs configured for user: {user_email}")
+
+def load_nextdoor_cookies(user_details=None):
+    if user_details:
+        user_email = user_details.get("user", {}).get("email")
+        if user_email:
+            from user_credential_manager import UserCredentialManager
+            manager = UserCredentialManager()
+            cookies = manager.load_cookies(user_email, 'nextdoor')
+            if cookies: return cookies
+
     cookies_json = os.getenv('NEXTDOOR_COOKIES')
     if cookies_json:
-        try:
-            return json.loads(cookies_json)
-        except json.JSONDecodeError:
-            print("Could not parse NEXTDOOR_COOKIES environment variable as JSON.")
-        except Exception as e:
-            print(f"An unexpected error occurred loading NEXTDOOR_COOKIES env var: {e}")
+        try: return json.loads(cookies_json)
+        except: pass
     
-    # Try to load from Airflow variable as fallback for env
     try:
         cookies_str = Variable.get("nextdoor_cookies", default_var="")
-        if cookies_str:
-            return json.loads(cookies_str)
-    except json.JSONDecodeError:
-        print("Could not parse 'nextdoor_cookies' Airflow Variable as JSON.")
-    except Exception as e:
-        print(f"An unexpected error occurred loading 'nextdoor_cookies' Airflow Variable: {e}")
+        if cookies_str: return json.loads(cookies_str)
+    except: pass
     
-    raise ValueError(
-        "Nextdoor cookies not configured. "
-        "Set NEXTDOOR_COOKIES env var or nextdoor_cookies Airflow Var."
-    )
+    raise ValueError("Nextdoor cookies not configured.")
 
-
-def scrape_nextdoor_url(target_url: str, url_index: int, max_pages: int = 5, **context):
-    """
-    Python callable to scrape a specific Nextdoor URL.
-    """
+def scrape_nextdoor_url(target_url: str, url_index: int, default_max_pages: int = 5, **context):
     from main import run_nextdoor_scraper
-    
-    print(f"Starting Nextdoor scrape for URL #{url_index + 1}: {target_url}")
-    print(f"Max pages: {max_pages}")
-    
-    # Check for custom keywords in context
     dag_run = context.get('dag_run')
-    custom_keywords = None
+    user_email = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
+    user_details = get_user_details(user_email) if user_email else None
+    
+    nd_onboarding = user_details.get("nextdoor", {})
+    custom_keywords = nd_onboarding.get("target_keywords")
+    
+    user_nd_config = user_details.get("scraping_config", {}).get("nextdoor", {}) if user_details else {}
+    max_pages = user_nd_config.get("max_pages", default_max_pages)
+    
+    if not custom_keywords: custom_keywords = user_nd_config.get("keywords")
     if dag_run and dag_run.conf and 'keywords' in dag_run.conf:
         custom_keywords = dag_run.conf['keywords']
-        print(f"Using custom keywords for intent detection: {custom_keywords}")
 
     try:
-        # Load cookies
-        cookies = load_nextdoor_cookies()
-        print(f"✓ Loaded cookies")
+        user_data = user_details.get("user") if user_details else None
+        cookies = load_nextdoor_cookies(user_details)
         
-        # Fetch user details
-        user_email = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
-        user_data = get_user_details(user_email) if user_email else None
-        if user_data:
-            print(f"✓ Linked to test user: {user_data.get('name')} ({user_email})")
-
-        # Run scraper
         leads = run_nextdoor_scraper(
             target=target_url,
             cookies=cookies,
@@ -136,41 +115,40 @@ def scrape_nextdoor_url(target_url: str, url_index: int, max_pages: int = 5, **c
             keywords=custom_keywords,
             user_data=user_data
         )
-        
-        print(f"✓ Successfully scraped {len(leads)} leads from {target_url}")
         return len(leads)
-        
     except Exception as e:
-        print(f"✗ Failed to scrape Nextdoor {target_url}: {e}")
+        error_msg = str(e)
+        if "session invalid" in error_msg.lower() or "cookie rotation required" in error_msg.lower():
+            if user_email:
+                try:
+                    from airflow.api.common.trigger_dag import trigger_dag
+                    trigger_dag(
+                        dag_id='nextdoor_multi_user_cookie_rotation',
+                        run_id=f'auto_rotate_{user_email.replace("@", "_")}_{datetime.now().strftime("%Y%m%d%H%M%S")}',
+                        conf={'user_email': user_email},
+                        replace_microseconds=False
+                    )
+                except: pass
         raise
 
-
-# Define the DAG
 with DAG(
     'nextdoor_lead_scraper',
     default_args=default_args,
-    description='Scrape service leads from Nextdoor (multi-URL support)',
+    description='Scrape service leads from Nextdoor',
     schedule_interval='@daily',
     catchup=False,
     tags=['scraping', 'nextdoor', 'leads'],
     max_active_runs=1,
-    max_active_tasks=1,
 ) as dag:
 
-    # To support truly dynamic tasks based on conf, we use a fixed number of task slots
-    # each checking if an actual URL is provided in the configuration.
-    
     max_pages = int(Variable.get("nextdoor_max_pages", default_var="5"))
-    
     scrape_tasks = []
-    for idx in range(10): # Create 10 potential task slots
+    for idx in range(10):
         task_id = f'scrape_nextdoor_url_{idx + 1}'
         
         def dynamic_scrape_task(url_index, max_pages_val, **context):
             urls = load_nextdoor_urls(**context)
-            if url_index >= len(urls):
-                print(f"Skipping task {url_index + 1} as only {len(urls)} URLs provided.")
-                return 0
+            if url_index >= len(urls): return 0
             return scrape_nextdoor_url(urls[url_index], url_index, max_pages_val, **context)
 
         task = PythonOperator(
@@ -178,56 +156,31 @@ with DAG(
             python_callable=dynamic_scrape_task,
             op_kwargs={'url_index': idx, 'max_pages_val': max_pages},
             provide_context=True,
+            pool='scraper_pool',
         )
         scrape_tasks.append(task)
 
-    # Push to GHL task
-    def push_nextdoor_leads_to_ghl():
-        """Push Nextdoor leads from MongoDB to GHL."""
+    def push_nextdoor_leads_to_ghl(**context):
         from push_leads import push_leads
-        print("Starting Nextdoor push to GHL")
-        push_leads(source="nextdoor")
+        dag_run = context.get('dag_run')
+        user_email = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
+        push_leads(source="nextdoor", user_email=user_email)
 
     push_task = PythonOperator(
         task_id='push_nextdoor_to_ghl',
         python_callable=push_nextdoor_leads_to_ghl,
+        provide_context=True,
     )
 
-    # Optional: Add summary task
     def summarize_nextdoor_results(**context):
-        """
-        Summarize the results from Nextdoor scraping.
-        """
         from database import get_db_manager
-        from datetime import datetime, timedelta
-        
         db = get_db_manager()
         yesterday = datetime.utcnow() - timedelta(days=1)
-        
-        jobs = db.find_many(
-            "scrape_jobs",
-            {"scraper": "nextdoor", "started_at": {"$gte": yesterday}}
-        )
-        
+        jobs = db.find_many("scrape_jobs", {"scraper": "nextdoor", "started_at": {"$gte": yesterday}})
         total_items = sum(job.get('items_saved', 0) for job in jobs)
         successful_jobs = sum(1 for job in jobs if job.get('status') == 'completed')
         failed_jobs = sum(1 for job in jobs if job.get('status') == 'failed')
-        
-        print("\n" + "="*60)
-        print("NEXTDOOR SCRAPING SUMMARY")
-        print("="*60)
-        print(f"Total jobs: {len(jobs)}")
-        print(f"Successful: {successful_jobs}")
-        print(f"Failed: {failed_jobs}")
-        print(f"Total leads scraped: {total_items}")
-        print("="*60 + "\n")
-        
-        return {
-            'total_jobs': len(jobs),
-            'successful': successful_jobs,
-            'failed': failed_jobs,
-            'total_leads': total_items
-        }
+        return {'total_jobs': len(jobs), 'successful': successful_jobs, 'failed': failed_jobs, 'total_leads': total_items}
 
     summary_task = PythonOperator(
         task_id='summarize_results',
@@ -235,5 +188,5 @@ with DAG(
         provide_context=True,
     )
 
-    # Set task dependencies
     scrape_tasks >> push_task >> summary_task
+

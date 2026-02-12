@@ -30,23 +30,26 @@ def load_craigslist_urls():
     """Load Craigslist URLs from file or Airflow variable."""
     from utils.url_loader import get_scraper_urls
     
-    # Try to get from Airflow variable first
-    try:
-        urls_raw = Variable.get("craigslist_target_url", default_var="")
-        if urls_raw:
-            urls = [url.strip() for url in urls_raw.replace('\n', ',').split(',') if url.strip()]
-            if urls:
-                print(f"✓ Successfully loaded {len(urls)} URLs from Airflow Variable 'craigslist_target_url'")
-                return urls
-    except Exception as e:
-        print(f"Error loading craigslist_target_url variable: {e}")
+    # Load from file (scraper/urls/craigslist_urls.txt) via URLLoader
+    # This respects the new Hingham-specific URLs we added
+    urls = get_scraper_urls("craigslist")
     
-    raise ValueError("No Craigslist URLs specified. Please set 'craigslist_target_url' Airflow Variable.")
+    if not urls:
+        print("⚠ No specific URLs found in file/DB, falling back to default Boston search")
+        return ["https://boston.craigslist.org/search/sss"]
+        
+    print(f"✓ Loaded Configuration: {len(urls)} URLs")
+    return urls
 
 
 def extract_category_from_url(url: str) -> str:
     """Extract category name from Craigslist URL."""
-    # Try to extract category code from URL
+    # Try to extract area and category code from URL (e.g., /sob/lbg)
+    match = re.search(r'/search/([a-z]+)/([a-z]+)', url)
+    if match:
+        return f"{match.group(1)}_{match.group(2)}"
+    
+    # Fallback: extract category code from URL
     match = re.search(r'/search/([a-z]+)', url)
     if match:
         return match.group(1)
@@ -75,6 +78,7 @@ def scrape_craigslist_url(category_url: str, category_name: str, url_index: int,
             save_to_db=True,
             headless=headless,
             max_pages=max_pages
+            # Keywords are now embedded in the URL query param for precision
         )
         
         print(f"✓ Successfully scraped {len(leads)} leads from {category_name}")

@@ -97,6 +97,7 @@ downloads/
 scraper/browser_profiles/
 scraper/cookies/*.json
 !scraper/cookies/.gitkeep
+scraper/cookies/
 # Secrets
 secrets/
 *.pem

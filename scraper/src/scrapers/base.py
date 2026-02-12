@@ -84,18 +84,35 @@ class BaseScraper(ABC):
             self.logger.info("filtered", total=len(leads), buyers=len(buyers))
             
             if buyers:
+                final_leads = []
+                required_verticals = kw.get('required_verticals')
+                if isinstance(required_verticals, str):
+                    required_verticals = [v.strip() for v in required_verticals.split(',')]
+                
                 for l in buyers:
                     text = f"{l.title or ''} {l.description or ''}"
                     l.vertical, l.phone = LeadEnricher.extract_vertical(text), LeadEnricher.extract_phone(text)
                     if not l.city: l.city = LeadEnricher.extract_city(text, l.location)
+                    
+                    # Filter by vertical if required
+                    if required_verticals:
+                        if l.vertical in required_verticals:
+                            final_leads.append(l)
+                        else:
+                            self.logger.debug("filtered_wrong_vertical", vertical=l.vertical, required=required_verticals, title=l.title)
+                    else:
+                        final_leads.append(l)
                 
-                # JSON Backup
-                path = os.path.join(os.getcwd(), "scraped_data")
-                os.makedirs(path, exist_ok=True)
-                fname = os.path.join(path, f"{self.name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
-                with open(fname, 'w') as f: json.dump([l.model_dump(mode='json') for l in buyers], f, indent=2)
+                buyers = final_leads
                 
-                if save: self.save_leads(buyers, f"{self.name.capitalize()}_final_data")
+                if buyers:
+                    # JSON Backup
+                    path = os.path.join(os.getcwd(), "scraped_data")
+                    os.makedirs(path, exist_ok=True)
+                    fname = os.path.join(path, f"{self.name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+                    with open(fname, 'w') as f: json.dump([l.model_dump(mode='json') for l in buyers], f, indent=2)
+                    
+                    if save: self.save_leads(buyers, f"{self.name.capitalize()}_final_data")
             
             self.complete_job("completed")
             return buyers

@@ -67,13 +67,18 @@ class CraigslistScraper(BaseScraper):
         except Exception:
             return 0
 
-    def scrape_search_page(self, search_url: str, offset: int = 0, category: Optional[str] = None) -> tuple:
+    def scrape_search_page(self, search_url: str, offset: int = 0, category: Optional[str] = None, query: Optional[str] = None) -> tuple:
         """Scrape a single search results page at a specific offset."""
-        page_url = f"{search_url}{'&' if '?' in search_url else '?'}s={offset}"
+        connector = '&' if '?' in search_url else '?'
+        page_url = f"{search_url}{connector}s={offset}"
+        if query:
+            page_url += f"&query={query}"
         self.logger.info("scraping_page", url=page_url, offset=offset)
         
         try:
-            response = self.make_request(page_url, headers=self.headers, use_proxy=True)
+            # Disable proxy for Craigslist - they now use JavaScript rendering
+            # and ScraperAPI proxy returns raw HTML without executing JS
+            response = self.make_request(page_url, headers=self.headers, use_proxy=False)
             soup = bs(response.text, "html.parser")
             items = soup.select("li.cl-static-search-result, [class*='cl-search-result'] > div.result-node, .result-row") or soup.select(".cl-search-result")
             
@@ -94,7 +99,9 @@ class CraigslistScraper(BaseScraper):
         """Parse raw scraped data into a CraigslistLead model."""
         try:
             posting_id = None
-            if url := raw_data.get('url'):
+            url = raw_data.get('url')
+            
+            if url:
                 if parts := url.split('/'):
                     if (clean_part := parts[-1].replace('.html', '')).isdigit():
                         posting_id = clean_part
@@ -106,12 +113,12 @@ class CraigslistScraper(BaseScraper):
             is_buyer_request = BuyerIntentDetector.is_buyer_request(
                 text=text,
                 require_url=True,
-                url=raw_data.get('url')
+                url=url
             )
             
             # Log detection reason for debugging
             if not is_buyer_request:
-                reason = BuyerIntentDetector.get_detection_reason(text, raw_data.get('url'))
+                reason = BuyerIntentDetector.get_detection_reason(text, url)
                 self.logger.debug("filtered_non_buyer_post", reason=reason, title=raw_data.get('title'))
             
             return CraigslistLead(
@@ -135,7 +142,7 @@ class CraigslistScraper(BaseScraper):
     def get_subcategories(self, location_url: str) -> List[Dict[str, str]]:
         """Get subcategories using requests."""
         try:
-            response = self.make_request(location_url, headers=self.headers, use_proxy=True)
+            response = self.make_request(location_url, headers=self.headers, use_proxy=False)
             soup = bs(response.text, "html.parser")
             if not (services_section := soup.select_one("#bbb")):
                 return []
@@ -164,7 +171,7 @@ class CraigslistScraper(BaseScraper):
                 
                 for page in range(max_pages):
                     try:
-                        raw_items, soup = self.scrape_search_page(sub_url, offset, category)
+                        raw_items, soup = self.scrape_search_page(sub_url, offset, category, query=kwargs.get('query'))
                         if not raw_items:
                             break
                         

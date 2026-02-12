@@ -31,7 +31,13 @@ def load_facebook_urls():
     """Load Facebook URLs from file or Airflow variable."""
     from utils.url_loader import get_scraper_urls
     
-    # Try to get from Airflow variable first
+    # 1. Try DB and File (scraper/urls/facebook_urls.txt)
+    urls = get_scraper_urls("facebook")
+    if urls:
+        print(f"✓ Successfully loaded {len(urls)} URLs from file/DB")
+        return urls
+
+    # 2. Fallback to Airflow variable
     try:
         urls_raw = Variable.get("facebook_target_url", default_var="")
         if urls_raw:
@@ -42,7 +48,8 @@ def load_facebook_urls():
     except Exception as e:
         print(f"Error loading facebook_target_url variable: {e}")
     
-    raise ValueError("No Facebook URLs specified. Please set 'facebook_target_url' Airflow Variable.")
+    # If using search URLs, we might not have a variable set, so fail if nothing found
+    raise ValueError("No Facebook URLs specified. Please check scraper/urls/facebook_urls.txt or 'facebook_target_url' Airflow Variable.")
 
 
 def scrape_facebook_url(target_url: str, url_index: int, **context):

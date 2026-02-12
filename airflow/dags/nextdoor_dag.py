@@ -33,7 +33,13 @@ def load_nextdoor_urls():
     """Load Nextdoor URLs from file or Airflow variable."""
     from utils.url_loader import get_scraper_urls
     
-    # Try to get from Airflow variable first
+    # 1. Try DB and File (scraper/urls/nextdoor_urls.txt)
+    urls = get_scraper_urls("nextdoor")
+    if urls:
+        print(f"✓ Successfully loaded {len(urls)} URLs from file/DB")
+        return urls
+    
+    # 2. Backwards compatibility: Try Airflow variable
     try:
         urls_raw = Variable.get("nextdoor_target_url", default_var="")
         if urls_raw:
@@ -44,7 +50,7 @@ def load_nextdoor_urls():
     except Exception as e:
         print(f"Error loading nextdoor_target_url variable: {e}")
     
-    raise ValueError("No Nextdoor URLs specified. Please set 'nextdoor_target_url' Airflow Variable.")
+    raise ValueError("No Nextdoor URLs specified. Please check scraper/urls/nextdoor_urls.txt or 'nextdoor_target_url' Airflow Variable.")
 
 
 def load_nextdoor_cookies():

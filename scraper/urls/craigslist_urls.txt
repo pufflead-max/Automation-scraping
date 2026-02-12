@@ -1,5 +1,10 @@
-https://boston.craigslist.org/search/fgs
-https://boston.craigslist.org/search/lbg
-https://boston.craigslist.org/search/hss
-https://boston.craigslist.org/search/bbb
-https://boston.craigslist.org/search/lbs
+# South Shore Boston (sob) - Hingham area
+# Removed query parameter to get all posts, then filter with our keyword logic
+https://boston.craigslist.org/search/sob/lbg
+https://boston.craigslist.org/search/sob/hss
+https://boston.craigslist.org/search/sob/fgs
+
+# Greater Boston (gbs) - Backup coverage
+https://boston.craigslist.org/search/gbs/lbg
+https://boston.craigslist.org/search/gbs/hss
+https://boston.craigslist.org/search/gbs/fgs

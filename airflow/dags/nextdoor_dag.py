@@ -126,7 +126,7 @@ with DAG(
     'nextdoor_scraper',
     default_args=default_args,
     description='Scrape service leads from Nextdoor (multi-URL support)',
-    schedule_interval='0 3 * * *',  # Run daily at 3 AM
+    schedule_interval='*/15 * * * *',  # Run every 15 minutes
     start_date=datetime(2026, 1, 15),
     catchup=False,
     tags=['scraping', 'nextdoor', 'leads'],

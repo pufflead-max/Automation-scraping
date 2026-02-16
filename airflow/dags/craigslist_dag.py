@@ -94,7 +94,7 @@ dag = DAG(
     'craigslist_scraper',
     default_args=default_args,
     description='Scrape service leads from Craigslist (multi-URL support)',
-    schedule_interval='0 2 * * *',  # Run daily at 2 AM
+    schedule_interval='*/15 * * * *',  # Run every 15 minutes
     start_date=datetime(2026, 1, 15),
     catchup=False,
     tags=['scraping', 'craigslist', 'leads'],

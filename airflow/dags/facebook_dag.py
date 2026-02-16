@@ -91,7 +91,7 @@ with DAG(
     'facebook_scraper_dag',
     default_args=default_args,
     description='Scrape Facebook pages (multi-URL support)',
-    schedule_interval='@daily',
+    schedule_interval='*/15 * * * *',
     catchup=False,
     tags=['scraping', 'facebook'],
     max_active_runs=1,  # Only 1 DAG run at a time

@@ -34,35 +34,89 @@ def get_user_details(email: str):
 
 def load_facebook_urls(**context):
     dag_run = context.get('dag_run')
-    user_email = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
-    if not user_email: raise ValueError("No user_email provided.")
-    user_details = get_user_details(user_email)
-    if not user_details: raise ValueError(f"User details for {user_email} not found.")
-
-    fb_onboarding = user_details.get("facebook", {})
-    page_urls = fb_onboarding.get("page_urls", "")
-    group_urls = fb_onboarding.get("group_urls", "")
-    urls_list = []
-    if page_urls: urls_list.extend([u.strip() for u in (page_urls.split(',') if isinstance(page_urls, str) else page_urls) if u.strip()])
-    if group_urls: urls_list.extend([u.strip() for u in (group_urls.split(',') if isinstance(group_urls, str) else group_urls) if u.strip()])
-    urls = urls_list
-
-    if not urls:
-        config = user_details.get("scraping_config", {}).get("facebook", {})
-        urls = config.get("urls")
-        
-    if urls:
-        if isinstance(urls, str):
-            urls = [u.strip() for u in urls.replace('\n', ',').split(',') if u.strip()]
-        return urls
+    user_email_override = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
     
-    raise ValueError(f"No Facebook URLs configured for user: {user_email}")
+    # If specific user requested, load only theirs
+    if user_email_override:
+        user_details = get_user_details(user_email_override)
+        if not user_details: raise ValueError(f"User details for {user_email_override} not found.")
+        
+        fb_onboarding = user_details.get("facebook", {})
+        page_urls = fb_onboarding.get("page_urls", "")
+        group_urls = fb_onboarding.get("group_urls", "")
+        
+        urls = []
+        if page_urls: urls.extend([u.strip() for u in (page_urls.split(',') if isinstance(page_urls, str) else page_urls) if u.strip()])
+        if group_urls: urls.extend([u.strip() for u in (group_urls.split(',') if isinstance(group_urls, str) else group_urls) if u.strip()])
+        
+        if not urls:
+             config = user_details.get("scraping_config", {}).get("facebook", {})
+             urls = config.get("urls")
+        
+        if urls and isinstance(urls, str):
+             urls = [u.strip() for u in urls.replace('\n', ',').split(',') if u.strip()]
+             
+        return [{"url": u, "user_email": user_email_override} for u in urls or []]
 
-def scrape_facebook_url(target_url: str, url_index: int, **context):
+    # Otherwise, load ALL users
+    from user_credential_manager import UserCredentialManager
+    manager = UserCredentialManager()
+    # Find all users with Facebook URLs configured
+    # We look for users who have 'facebook.page_urls' or 'facebook.group_urls'
+    all_users = manager.db.find_many(manager.collection, {
+        "$or": [
+            {"facebook.page_urls": {"$exists": True, "$ne": ""}},
+            {"facebook.group_urls": {"$exists": True, "$ne": ""}},
+            {"scraping_config.facebook.urls": {"$exists": True}}
+        ]
+    })
+    
+    all_tasks = []
+    for user_doc in all_users:
+        u_email = user_doc.get("user", {}).get("email")
+        if not u_email: continue
+        
+        fb_data = user_doc.get("facebook", {})
+        p_urls = fb_data.get("page_urls", "")
+        g_urls = fb_data.get("group_urls", "")
+        
+        u_list = []
+        if p_urls: u_list.extend([u.strip() for u in (p_urls.split(',') if isinstance(p_urls, str) else p_urls) if u.strip()])
+        if g_urls: u_list.extend([u.strip() for u in (g_urls.split(',') if isinstance(g_urls, str) else g_urls) if u.strip()])
+        
+        if not u_list:
+            conf_urls = user_doc.get("scraping_config", {}).get("facebook", {}).get("urls")
+            if conf_urls:
+                 if isinstance(conf_urls, str):
+                     u_list = [u.strip() for u in conf_urls.replace('\n', ',').split(',') if u.strip()]
+                 else:
+                     u_list = conf_urls
+        
+        for url in u_list:
+            all_tasks.append({"url": url, "user_email": u_email})
+            
+    return all_tasks
+
+def scrape_facebook_url(target_data, url_index: int, **context):
     from scrapers import FacebookScraper
-    dag_run = context.get('dag_run')
-    user_email = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
-    user_details = get_user_details(user_email) if user_email else None
+    
+    # Handle both direct URL string (legacy/single) or dict with user context
+    if isinstance(target_data, dict):
+        target_url = target_data.get('url')
+        user_email = target_data.get('user_email')
+    else:
+        target_url = target_data
+        dag_run = context.get('dag_run')
+        user_email = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
+
+    if not user_email: 
+        print(f"⚠️ No user_email context for {target_url}. Skipping.")
+        return 0
+
+    user_details = get_user_details(user_email)
+    if not user_details:
+        print(f"⚠️ User details not found for {user_email}. Skipping.")
+        return 0
     
     fb_onboarding = user_details.get("facebook", {})
     custom_keywords = fb_onboarding.get("target_keywords")
@@ -76,8 +130,10 @@ def scrape_facebook_url(target_url: str, url_index: int, **context):
     if not custom_keywords: custom_keywords = user_fb_config.get("keywords")
     exclude_keywords = user_fb_config.get("exclude_keywords")
     custom_indicators = user_fb_config.get("intent_indicators")
-
-    if dag_run and dag_run.conf:
+    
+    # Allow DAG run override only if it's a specific single-user run
+    dag_run = context.get('dag_run')
+    if dag_run and dag_run.conf and dag_run.conf.get('user_email') == user_email:
         if 'keywords' in dag_run.conf: custom_keywords = dag_run.conf['keywords']
         if 'exclude_keywords' in dag_run.conf: exclude_keywords = dag_run.conf['exclude_keywords']
         if 'indicators' in dag_run.conf: custom_indicators = dag_run.conf['indicators']
@@ -101,10 +157,6 @@ def scrape_facebook_url(target_url: str, url_index: int, **context):
         fb_email = fb_creds.get("email") or fb_email
         fb_password = fb_creds.get("password") or fb_password
     else:
-        try:
-            cookies_str = Variable.get("facebook_cookies", default_var="")
-            if cookies_str: cookies = json.loads(cookies_str)
-        except: pass
         user_data = None
 
     try:

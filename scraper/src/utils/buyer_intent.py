@@ -113,11 +113,17 @@ class BuyerIntentDetector:
         if len(text_lower) < 20 and not service_pattern.search(text):
             return False
         
+        # STRICT RELEVANCE CHECK:
+        # Must match at least one service keyword (e.g. landscaping, pavers) 
+        # OR a provided custom keyword.
         custom_kw_match = False
         if custom_keywords:
             kw_regex = '|'.join([re.escape(k.strip()) for k in custom_keywords if k.strip()])
             if kw_regex and re.search(kw_regex, text_lower):
                 custom_kw_match = True
+        
+        if not custom_kw_match and not service_pattern.search(text):
+            return False
 
         buyer_indicators = custom_indicators if custom_indicators else ['?', 'anyone', 'someone', 'who', 'canceled', 'urgent', 'asap']
         

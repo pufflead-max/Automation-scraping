@@ -103,7 +103,7 @@ secrets/
 *.pem
 *.key
 *.crt
-
+test.json
 airflow/logs/scraped_data/*.json
 
 # Node modules (if any)

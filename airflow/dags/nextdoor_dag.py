@@ -35,36 +35,75 @@ def get_user_details(email: str):
 
 def load_nextdoor_urls(**context):
     dag_run = context.get('dag_run')
+    # If specific user requested or specific URLs provided manually
+    user_email_override = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
+    
     if dag_run and dag_run.conf and 'urls' in dag_run.conf:
         urls = dag_run.conf['urls']
         if isinstance(urls, str):
             urls = [url.strip() for url in urls.replace('\n', ',').split(',') if url.strip()]
-        if urls: return urls
+        if urls: 
+             # If manual URLs but no user email, we can't attach user data easily.
+             # This case is legacy/debug mostly.
+             return [{"url": u, "user_email": user_email_override} for u in urls]
 
-    user_email = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
-    if not user_email: raise ValueError("No user_email provided.")
+    if user_email_override:
+        user_details = get_user_details(user_email_override)
+        if not user_details: raise ValueError(f"User details for {user_email_override} not found.")
 
-    user_details = get_user_details(user_email)
-    if not user_details: raise ValueError(f"User details for {user_email} not found.")
-
-    nd_onboarding = user_details.get("nextdoor", {})
-    page_urls = nd_onboarding.get("page_urls", "")
-    group_urls = nd_onboarding.get("group_urls", "")
-    urls_list = []
-    if page_urls: urls_list.extend([u.strip() for u in (page_urls.split(',') if isinstance(page_urls, str) else page_urls) if u.strip()])
-    if group_urls: urls_list.extend([u.strip() for u in (group_urls.split(',') if isinstance(group_urls, str) else group_urls) if u.strip()])
-    urls = urls_list
-
-    if not urls:
-        config = user_details.get("scraping_config", {}).get("nextdoor", {})
-        urls = config.get("urls")
+        nd_onboarding = user_details.get("nextdoor", {})
+        page_urls = nd_onboarding.get("page_urls", "")
+        group_urls = nd_onboarding.get("group_urls", "")
         
-    if urls:
-        if isinstance(urls, str):
+        urls = []
+        if page_urls: urls.extend([u.strip() for u in (page_urls.split(',') if isinstance(page_urls, str) else page_urls) if u.strip()])
+        if group_urls: urls.extend([u.strip() for u in (group_urls.split(',') if isinstance(group_urls, str) else group_urls) if u.strip()])
+        
+        if not urls:
+            config = user_details.get("scraping_config", {}).get("nextdoor", {})
+            urls = config.get("urls")
+            
+        if urls and isinstance(urls, str):
             urls = [u.strip() for u in urls.replace('\n', ',').split(',') if u.strip()]
-        return urls
+            
+        return [{"url": u, "user_email": user_email_override} for u in urls or []]
 
-    raise ValueError(f"No Nextdoor URLs configured for user: {user_email}")
+    # Load ALL users
+    from user_credential_manager import UserCredentialManager
+    manager = UserCredentialManager()
+    all_users = manager.db.find_many(manager.collection, {
+        "$or": [
+            {"nextdoor.page_urls": {"$exists": True, "$ne": ""}},
+            {"nextdoor.group_urls": {"$exists": True, "$ne": ""}},
+            {"scraping_config.nextdoor.urls": {"$exists": True}}
+        ]
+    })
+
+    all_tasks = []
+    for user_doc in all_users:
+        u_email = user_doc.get("user", {}).get("email")
+        if not u_email: continue
+        
+        nd_data = user_doc.get("nextdoor", {})
+        p_urls = nd_data.get("page_urls", "")
+        g_urls = nd_data.get("group_urls", "")
+        
+        u_list = []
+        if p_urls: u_list.extend([u.strip() for u in (p_urls.split(',') if isinstance(p_urls, str) else p_urls) if u.strip()])
+        if g_urls: u_list.extend([u.strip() for u in (g_urls.split(',') if isinstance(g_urls, str) else g_urls) if u.strip()])
+        
+        if not u_list:
+            conf_urls = user_doc.get("scraping_config", {}).get("nextdoor", {}).get("urls")
+            if conf_urls:
+                 if isinstance(conf_urls, str):
+                     u_list = [u.strip() for u in conf_urls.replace('\n', ',').split(',') if u.strip()]
+                 else:
+                     u_list = conf_urls
+        
+        for url in u_list:
+            all_tasks.append({"url": url, "user_email": u_email})
+            
+    return all_tasks
 
 def load_nextdoor_cookies(user_details=None):
     if user_details:
@@ -87,11 +126,26 @@ def load_nextdoor_cookies(user_details=None):
     
     raise ValueError("Nextdoor cookies not configured.")
 
-def scrape_nextdoor_url(target_url: str, url_index: int, default_max_pages: int = 5, **context):
+def scrape_nextdoor_url(target_data, url_index: int, default_max_pages: int = 5, **context):
     from main import run_nextdoor_scraper
-    dag_run = context.get('dag_run')
-    user_email = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
-    user_details = get_user_details(user_email) if user_email else None
+    
+    # Handle both direct URL string (legacy/single) or dict with user context
+    if isinstance(target_data, dict):
+        target_url = target_data.get('url')
+        user_email = target_data.get('user_email')
+    else:
+        target_url = target_data
+        dag_run = context.get('dag_run')
+        user_email = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
+
+    if not user_email: 
+        print(f"⚠️ No user_email context for {target_url}. Skipping.")
+        return 0
+
+    user_details = get_user_details(user_email)
+    if not user_details:
+        print(f"⚠️ User details not found for {user_email}. Skipping.")
+        return 0
     
     nd_onboarding = user_details.get("nextdoor", {})
     custom_keywords = nd_onboarding.get("target_keywords")
@@ -100,8 +154,11 @@ def scrape_nextdoor_url(target_url: str, url_index: int, default_max_pages: int 
     max_pages = user_nd_config.get("max_pages", default_max_pages)
     
     if not custom_keywords: custom_keywords = user_nd_config.get("keywords")
-    if dag_run and dag_run.conf and 'keywords' in dag_run.conf:
-        custom_keywords = dag_run.conf['keywords']
+    
+    # Allow DAG run override only if it's a specific single-user run
+    dag_run = context.get('dag_run')
+    if dag_run and dag_run.conf and dag_run.conf.get('user_email') == user_email:
+        if 'keywords' in dag_run.conf: custom_keywords = dag_run.conf['keywords']
 
     try:
         user_data = user_details.get("user") if user_details else None

@@ -33,14 +33,14 @@ def get_user_details(email: str):
 
 def load_craigslist_urls(**context):
     dag_run = context.get('dag_run')
-    user_email = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
+    user_email_override = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
     
-    if user_email:
+    if user_email_override:
         from pymongo import MongoClient
         mongo_uri = os.getenv("MONGO_URI", "mongodb://mongo:27017")
         client = MongoClient(mongo_uri)
         db = client["PUFF"]
-        user_doc = db["users"].find_one({"user.email": user_email})
+        user_doc = db["users"].find_one({"user.email": user_email_override})
         
         if user_doc:
             cl_onboarding = user_doc.get("craigslist", {})
@@ -51,46 +51,94 @@ def load_craigslist_urls(**context):
                 urls = config.get("urls")
                 
             if urls:
-                if isinstance(urls, list): return urls
-                return [url.strip() for url in urls.replace('\n', ',').split(',') if url.strip()]
+                if isinstance(urls, list): u_list = urls
+                else: u_list = [url.strip() for url in urls.replace('\n', ',').split(',') if url.strip()]
+                return [{"url": u, "user_email": user_email_override} for u in u_list]
             
     if dag_run and dag_run.conf and 'urls' in dag_run.conf:
         urls = dag_run.conf['urls']
         if isinstance(urls, str):
             urls = [url.strip() for url in urls.replace('\n', ',').split(',') if url.strip()]
-        if urls: return urls
+        if urls: return [{"url": u, "user_email": user_email_override} for u in urls]
             
+    # If no specific user requested, check if it's a manual run via Variable or scheduled run for ALL users
     try:
         urls_raw = Variable.get("craigslist_target_url", default_var="")
         if urls_raw:
-            return [url.strip() for url in urls_raw.replace('\n', ',').split(',') if url.strip()]
+            u_list = [url.strip() for url in urls_raw.replace('\n', ',').split(',') if url.strip()]
+            if u_list: return [{"url": u, "user_email": None} for u in u_list] # Variable-based runs have no user context
     except:
         pass
     
+    # Load ALL users for scheduled run
+    if not user_email_override:
+        from pymongo import MongoClient
+        mongo_uri = os.getenv("MONGO_URI", "mongodb://mongo:27017")
+        client = MongoClient(mongo_uri)
+        db = client["PUFF"]
+        
+        all_users = db["users"].find({
+            "$or": [
+                {"craigslist.group_urls": {"$exists": True, "$ne": ""}},
+                {"scraping_config.craigslist.urls": {"$exists": True}}
+            ]
+        })
+        
+        all_tasks = []
+        for user_doc in all_users:
+            u_email = user_doc.get("user", {}).get("email")
+            if not u_email: continue
+            
+            cl_data = user_doc.get("craigslist", {})
+            urls = cl_data.get("group_urls")
+            
+            u_list = []
+            if urls:
+                if isinstance(urls, list): u_list = urls
+                else: u_list = [url.strip() for url in urls.replace('\n', ',').split(',') if url.strip()]
+            
+            if not u_list:
+                conf_urls = user_doc.get("scraping_config", {}).get("craigslist", {}).get("urls")
+                if conf_urls:
+                    if isinstance(conf_urls, str):
+                        u_list = [u.strip() for u in conf_urls.replace('\n', ',').split(',') if u.strip()]
+                    else:
+                        u_list = conf_urls
+            
+            for url in u_list:
+                all_tasks.append({"url": url, "user_email": u_email})
+        
+        if all_tasks: return all_tasks
+
     raise ValueError("No Craigslist URLs found.")
 
 def extract_category_from_url(url: str) -> str:
     match = re.search(r'/search/([a-z]+)', url)
     return match.group(1) if match else url.rstrip('/').split('/')[-1]
 
-def scrape_craigslist_url(category_url: str, category_name: str, url_index: int, **context):
+def scrape_craigslist_url(target_data, category_name: str, url_index: int, **context):
     from main import run_craigslist_scraper
     
+    # Handle dict or string
+    if isinstance(target_data, dict):
+        category_url = target_data.get('url')
+        user_email = target_data.get('user_email')
+        # Re-extract category if needed or trust passed name (which might be wrong if url changed)
+        # But category_name passed from dynamic_scrape_task depends on the url there.
+    else:
+        category_url = target_data
+        dag_run = context.get('dag_run')
+        user_email = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
+
+    # Redetermine category_name to be safe if it came from a list index
+    category_name = extract_category_from_url(category_url)
+
     max_pages = int(Variable.get("craigslist_max_pages", default_var="5"))
     headless = Variable.get("craigslist_headless", default_var="true").lower() == "true"
     
-    dag_run = context.get('dag_run')
     custom_keywords = None
-    if dag_run and dag_run.conf and 'keywords' in dag_run.conf:
-        custom_keywords = dag_run.conf['keywords']
     
-    if not custom_keywords:
-        custom_keywords = ["landscaping", "lawn care", "snow removal", "yard cleanup", "leaf removal"]
-    
-    if isinstance(custom_keywords, str):
-        custom_keywords = [kw.strip() for kw in custom_keywords.replace(',', '\n').split('\n') if kw.strip()]
-
-    user_email = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
+    # Load user specific config
     from pymongo import MongoClient
     mongo_uri = os.getenv("MONGO_URI", "mongodb://mongo:27017")
     client = MongoClient(mongo_uri)
@@ -103,16 +151,21 @@ def scrape_craigslist_url(category_url: str, category_name: str, url_index: int,
     
     if user_doc:
         cl_onboarding = user_doc.get("craigslist", {})
-        custom_keywords = cl_onboarding.get("target_keywords") or custom_keywords
+        custom_keywords = cl_onboarding.get("target_keywords")
         
-        if not cl_onboarding.get("target_keywords"):
-            cl_config = user_doc.get("scraping_config", {}).get("craigslist", {})
-            custom_keywords = cl_config.get("keywords") or custom_keywords
-            exclude_keywords = cl_config.get("exclude_keywords")
-            custom_indicators = cl_config.get("intent_indicators")
-            max_pages = cl_config.get("max_pages", max_pages)
+        cl_config = user_doc.get("scraping_config", {}).get("craigslist", {})
+        if not custom_keywords: custom_keywords = cl_config.get("keywords")
+        
+        exclude_keywords = cl_config.get("exclude_keywords")
+        custom_indicators = cl_config.get("intent_indicators")
+        max_pages = cl_config.get("max_pages", max_pages)
 
-    if dag_run and dag_run.conf:
+    # Defaults
+    if not custom_keywords:
+        custom_keywords = ["landscaping", "lawn care", "snow removal", "yard cleanup", "leaf removal"]
+
+    dag_run = context.get('dag_run')
+    if dag_run and dag_run.conf and dag_run.conf.get('user_email') == user_email:
         if 'keywords' in dag_run.conf: custom_keywords = dag_run.conf['keywords']
         if 'exclude_keywords' in dag_run.conf: exclude_keywords = dag_run.conf['exclude_keywords']
         if 'indicators' in dag_run.conf: custom_indicators = dag_run.conf['indicators']

@@ -62,8 +62,8 @@ def sync_ghl_onboarding():
         if contact.get('type') != 'Customer':
             continue
 
-        has_scraping = any("target keywords" in k.lower() or "urls" in k.lower() for k in cf_values.keys())
-        if not has_scraping and "onboarding" not in [t.lower() for t in contact.get('tags', [])]: continue
+        # has_scraping = any("target keywords" in k.lower() or "urls" in k.lower() for k in cf_values.keys())
+        # if not has_scraping and "onboarding" not in [t.lower() for t in contact.get('tags', [])]: continue
 
         onboarding_doc = {
             "user": {

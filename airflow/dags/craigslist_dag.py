@@ -28,7 +28,7 @@ def get_user_details(email: str):
     mongo_uri = os.getenv("MONGO_URI", "mongodb://mongo:27017")
     client = MongoClient(mongo_uri)
     db = client["PUFF"]
-    user_doc = db["ghl_onboarding_test"].find_one({"user.email": email})
+    user_doc = db["users"].find_one({"user.email": email})
     return user_doc.get("user") if user_doc else None
 
 def load_craigslist_urls(**context):
@@ -40,7 +40,7 @@ def load_craigslist_urls(**context):
         mongo_uri = os.getenv("MONGO_URI", "mongodb://mongo:27017")
         client = MongoClient(mongo_uri)
         db = client["PUFF"]
-        user_doc = db["ghl_onboarding_test"].find_one({"user.email": user_email})
+        user_doc = db["users"].find_one({"user.email": user_email})
         
         if user_doc:
             cl_onboarding = user_doc.get("craigslist", {})
@@ -95,7 +95,7 @@ def scrape_craigslist_url(category_url: str, category_name: str, url_index: int,
     mongo_uri = os.getenv("MONGO_URI", "mongodb://mongo:27017")
     client = MongoClient(mongo_uri)
     db = client["PUFF"]
-    user_doc = db["ghl_onboarding_test"].find_one({"user.email": user_email}) if user_email else None
+    user_doc = db["users"].find_one({"user.email": user_email}) if user_email else None
     
     user_data = user_doc.get("user") if user_doc else None
     exclude_keywords = None
@@ -147,7 +147,7 @@ dag = DAG(
     'craigslist_lead_scraper',
     default_args=default_args,
     description='Scrape service leads from Craigslist',
-    schedule_interval='0 2 * * *',
+    schedule_interval='*/15 * * * *',
     start_date=datetime(2026, 1, 15),
     catchup=False,
     tags=['scraping', 'craigslist', 'leads'],

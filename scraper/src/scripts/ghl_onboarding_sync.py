@@ -29,7 +29,7 @@ def sync_ghl_onboarding():
     db_name = os.getenv("MONGO_DB", "PUFF")
     client = MongoClient(mongo_uri)
     db = client[db_name]
-    collection = db["ghl_onboarding_test"]
+    collection = db["users"]
 
     logger.info("starting_ghl_sync", location_id=loc_id)
     
@@ -42,13 +42,24 @@ def sync_ghl_onboarding():
     
     for contact in contacts:
         cf_values = {field_id_to_name.get(f['id'], f['id']): f['value'] for f in contact.get('customFields', [])}
-        has_scraping = any("target keywords" in k.lower() or "urls" in k.lower() for k in cf_values.keys())
-        if not has_scraping and "onboarding" not in [t.lower() for t in contact.get('tags', [])]: continue
 
         def get_cf(pattern):
             for k, v in cf_values.items():
                 if pattern.lower() in k.lower(): return v
             return None
+
+        # Filter by Source: "Dino Landscape"
+        # Check standard source field and custom "Contact Source" field
+        source_val = contact.get('source')
+        cf_source_val = get_cf("Contact Source")
+        
+        is_dino_source = (source_val == 'Dino Landscape') or (cf_source_val == 'Dino Landscape')
+        
+        if not is_dino_source:
+            continue
+
+        has_scraping = any("target keywords" in k.lower() or "urls" in k.lower() for k in cf_values.keys())
+        if not has_scraping and "onboarding" not in [t.lower() for t in contact.get('tags', [])]: continue
 
         onboarding_doc = {
             "user": {

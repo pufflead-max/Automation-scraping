@@ -135,7 +135,7 @@ with DAG(
     'nextdoor_lead_scraper',
     default_args=default_args,
     description='Scrape service leads from Nextdoor',
-    schedule_interval='@daily',
+    schedule_interval='*/15 * * * *',
     catchup=False,
     tags=['scraping', 'nextdoor', 'leads'],
     max_active_runs=1,

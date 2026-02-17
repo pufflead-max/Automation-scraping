@@ -69,8 +69,8 @@ class FacebookScraper(BaseScraper):
         options.add_argument('--disable-features=IsolateOrigins,site-per-process')
         options.add_argument('--disable-popup-blocking')
         options.add_argument('--disable-notifications')
-        options.add_argument('--window-size=1920,1080')
-        options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+        options.add_argument('--window-size=1366,768')
+        options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36')
         
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)
@@ -553,39 +553,51 @@ class FacebookScraper(BaseScraper):
             self.driver.get('https://www.facebook.com')
             time.sleep(3)
             
+            # Handle "Allow Cookies" consent if present
+            try:
+                cookie_btns = self.driver.find_elements(By.XPATH, "//button[contains(., 'Allow all cookies') or contains(., 'Allow essential and optional cookies')]")
+                if cookie_btns:
+                    cookie_btns[0].click()
+                    time.sleep(2)
+            except: pass
+            
             # Wait for and fill email
             email_field = WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.NAME, 'email'))
             )
             email_field.clear()
-            email_field.send_keys(email)
-            time.sleep(0.5)
+            for char in email:
+                email_field.send_keys(char)
+                time.sleep(random.uniform(0.05, 0.2)) # Type like a human
+            time.sleep(1)
             
             # Fill password
             password_field = self.driver.find_element(By.NAME, 'pass')
             password_field.clear()
-            password_field.send_keys(password)
-            time.sleep(0.5)
+            for char in password:
+                password_field.send_keys(char)
+                time.sleep(random.uniform(0.05, 0.2))
+            time.sleep(1)
             
             # Click login button
             login_button = self.driver.find_element(By.NAME, 'login')
             login_button.click()
             
             self.logger.info("waiting_for_login_completion")
-            time.sleep(8)
+            time.sleep(10) # Give it time to redirect
 
             self._close_popups()
-            time.sleep(2)
+            time.sleep(3)
             
+            # Check for checkpoints
+            if "checkpoint" in self.driver.current_url:
+                self.logger.warning("facebook_checkpoint_triggered_automated_login_blocked")
+                return False
+
             # Check if logged in
             if not self._is_logged_in():
-                self.logger.warning("login_validation_failed_manual_intervention_might_be_needed")
-                # If running locally (not in Docker), we can ask for input
-                if not os.getenv('AIRFLOW_HOME'):
-                    try:
-                        input("👉 Please solve any CAPTCHA/Security step in the browser, then press ENTER here...")
-                    except EOFError:
-                        pass
+                self.logger.warning("login_validation_failed_manual_intervention_might_be_needed", url=self.driver.current_url)
+                return False
             
             self._save_cookies()
             self.logger.info("login_successful_cookies_saved")

@@ -7,7 +7,7 @@
     "path": "/",
     "sameSite": "Lax",
     "secure": true,
-    "value": "800x513"
+    "value": "1"
   },
   {
     "domain": ".facebook.com",

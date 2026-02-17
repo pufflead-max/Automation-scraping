@@ -25,13 +25,13 @@ def run_scraper(name: str, target: Optional[str], **kwargs):
         }
         if name == "craigslist":
             from scrapers.craigslist import CraigslistScraper
-            leads = CraigslistScraper(headless=kwargs.get('headless', True)).run(target=target, **common)
+            leads = CraigslistScraper(headless=kwargs.get('headless', True)).run(target=target, **kwargs)
         elif name == "nextdoor":
             from scrapers.nextdoor import NextdoorScraper
-            leads = NextdoorScraper(cookies=kwargs.get('cookies')).run(target=target, max_pages=kwargs.get('max_pages', 5), **common)
+            leads = NextdoorScraper(cookies=kwargs.get('cookies')).run(target=target, **kwargs)
         elif name == "facebook":
             from scrapers.facebook import FacebookScraper
-            leads = FacebookScraper(cookies=kwargs.get('cookies'), headless=kwargs.get('headless', True)).run(target=target, limit=kwargs.get('limit', 25), **common)
+            leads = FacebookScraper(cookies=kwargs.get('cookies'), headless=kwargs.get('headless', True)).run(target=target, **kwargs)
         else:
             raise ValueError(f"Unknown scraper: {name}")
             

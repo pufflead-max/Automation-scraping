@@ -15,8 +15,9 @@ class LeadEnricher:
     # Vertical Keywords Mapping (condensed)
     VERTICALS = {
         "Landscaping": ["landscap", "lawn", "mow", "grass", "yard work", "garden", "mulch", "leaf removal", 
-                        "weeding", "trimming bushes", "hedge", "tree service", "stump", "sprinkler"],
-        "Snow Removal": ["snow", "plow", "shovel", "ice", "salting", "driveway clearing", "snowblow"],
+                        "weeding", "trimming bushes", "hedge", "tree service", "stump", "sprinkler", "yard cleanup", "yard",
+                        "branch removal", "clean up", "cleanup", "brush removal", "leaves"],
+        "Snow Removal": ["snow", "plow", "shovel", "ice", "salting", "driveway clearing", "snowblow", "hiring"],
         "Cleaning": ["clean", "maid", "housekeeping", "house keeping", "deep clean", "move out clean", 
                      "janitor", "commercial cleaning", "office cleaning", "carpet clean", "window wash"],
         "Handyman": ["handyman", "handy man", "small repairs", "fix it", "assembly", "mounting", 

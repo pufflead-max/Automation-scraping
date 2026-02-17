@@ -26,7 +26,7 @@ class UserCredentialManager:
     
     def __init__(self):
         self.db = get_db_manager()
-        self.collection = "ghl_onboarding_test"
+        self.collection = "users"
         self.cookies_collection = "user_cookies"
         # In Docker, we want /opt/airflow/scraper/cookies/users
         # __file__ is /opt/airflow/scraper/src/user_credential_manager.py

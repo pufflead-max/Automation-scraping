@@ -1,4 +1,4 @@
-"""GoHighLevel integration client  """
+"""GoHighLevel integration client"""
 
 import json
 import hashlib
@@ -22,7 +22,6 @@ class GHLClient:
     
     BASE_URL = "https://services.leadconnectorhq.com"
     
-    # Schema field definitions
     SCRAPED_LEADS_FIELDS = [
         {"name": "Lead Title", "dataType": "TEXT"},
         {"name": "Lead Description", "dataType": "LARGE_TEXT"},
@@ -52,7 +51,6 @@ class GHLClient:
     ]
     
     def __init__(self, api_key: str, location_id: str, **kwargs):
-        """Initialize GHL client."""
         self.api_key = api_key
         self.location_id = location_id
         self.crm_url = kwargs.get("crm_url", "https://services.leadconnectorhq.com").rstrip("/")
@@ -63,11 +61,9 @@ class GHLClient:
         }
         self._custom_fields_cache: Dict[str, str] = {}
         self._custom_object_schemas: Dict[str, str] = {}
-        logger.info("ghl_client_initialized", location_id=location_id)
 
     def _make_request(self, method: str, endpoint: str, data: Optional[Dict] = None, 
-                      params: Optional[Dict] = None) -> Optional[Dict[str, Any]]:
-        """Make HTTP request to GHL API."""
+                       params: Optional[Dict] = None) -> Optional[Dict[str, Any]]:
         try:
             response = requests.request(
                 method=method,
@@ -81,41 +77,20 @@ class GHLClient:
             return response.json()
         except requests.exceptions.RequestException as e:
             status_code = getattr(e.response, 'status_code', None)
-            error_msg = str(e)
-            
-            if status_code == 403:
-                logger.error("ghl_permission_denied", 
-                           method=method, 
-                           endpoint=endpoint, 
-                           hint="Check if your Private Integration Token has the required scopes.",
-                           error=error_msg)
-            else:
-                logger.error("ghl_api_request_failed", 
-                           method=method, 
-                           endpoint=endpoint,
-                           status=status_code, 
-                           error=error_msg)
+            logger.error("ghl_api_request_failed", method=method, endpoint=endpoint, status=status_code, error=str(e))
             return None
 
-    # ===== CUSTOM OBJECTS =====
-    
     def get_custom_object_schemas(self) -> List[Dict[str, Any]]:
-        """Fetch all custom object schemas for the location."""
         result = self._make_request("GET", "/objects/schemas", params={"locationId": self.location_id})
         schemas = result.get('schemas', []) if result else []
-        
-        # Cache schemas by name
         self._custom_object_schemas = {s['name']: s['id'] for s in schemas if 'name' in s and 'id' in s}
-        logger.info("ghl_custom_object_schemas_fetched", count=len(schemas))
         return schemas
     
     def get_schema_id(self, schema_name: str) -> Optional[str]:
-        """Get schema ID by name."""
         return self._custom_object_schemas.get(schema_name) or \
                (self.get_custom_object_schemas() and self._custom_object_schemas.get(schema_name))
     
     def create_custom_object_schema(self, name: str, fields: List[Dict[str, Any]]) -> Optional[str]:
-        """Create a new custom object schema."""
         payload = {"locationId": self.location_id, "name": name, "fields": fields}
         result = self._make_request("POST", "/objects/schemas", data=payload)
         schema_id = result.get('id') if result else None
@@ -124,117 +99,77 @@ class GHLClient:
         return schema_id
     
     def create_custom_object_record(self, schema_id: str, record_data: Dict[str, Any]) -> Optional[str]:
-        """Create a custom object record."""
         endpoint = f"/locations/{self.location_id}/customObjects/{schema_id}/records"
         result = self._make_request("POST", endpoint, data=record_data)
         record_id = result.get('id') if result else None
-        if record_id:
-            logger.info("ghl_custom_object_record_created", schema_id=schema_id, record_id=record_id)
         return record_id
     
     def search_custom_object_records(self, schema_id: str, filters: Optional[Dict] = None) -> List[Dict[str, Any]]:
-        """Search custom object records."""
         endpoint = f"/locations/{self.location_id}/customObjects/{schema_id}/records/search"
         result = self._make_request("POST", endpoint, data=filters or {})
         return result.get('records', []) if result else []
     
-    # ===== CONTACTS =====
-    
     def get_custom_fields(self) -> List[Dict[str, Any]]:
-        """Fetch all custom fields for the location."""
         result = self._make_request("GET", f"/locations/{self.location_id}/customFields")
         fields = result.get('customFields', []) if result else []
-        
-        # Cache fields by name
         self._custom_fields_cache = {f['name']: f['id'] for f in fields if 'name' in f and 'id' in f}
-        logger.info("ghl_custom_fields_fetched", count=len(fields))
         return fields
 
     def get_field_id(self, field_name: str) -> Optional[str]:
-        """Get field ID by name (case-insensitive)."""
         if not self._custom_fields_cache:
             self.get_custom_fields()
-        
-        # Exact match or case-insensitive fallback
         return self._custom_fields_cache.get(field_name) or \
                next((v for k, v in self._custom_fields_cache.items() if k.lower() == field_name.lower()), None)
 
     def _prepare_contact_data(self, contact_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Prepare contact data for API submission."""
         data = contact_data.copy()
-        
-        # Set defaults
         data.setdefault('locationId', self.location_id)
         data.setdefault('name', 'Scraped Lead')
-        
-        # Ensure email or phone exists
         if not data.get('email') and not data.get('phone'):
             data['email'] = self._generate_deterministic_email(data)
-        
-        # Convert customField dict to customFields array (v2 format)
         if 'customField' in data and data['customField'] and 'customFields' not in data:
             data['customFields'] = [{"id": k, "value": v} for k, v in data['customField'].items()]
             del data['customField']
-        
-        # Remove internal fields
-        for field in ['source_url']:
-            data.pop(field, None)
-        
+        data.pop('source_url', None)
         return data
 
     def create_contact(self, contact_data: Dict[str, Any]) -> Optional[str]:
-        """Create a contact in GHL."""
         data = self._prepare_contact_data(contact_data)
         result = self._make_request("POST", "/contacts/", data=data)
-        
-        if not result:
-            return None
-        
-        contact_id = result.get('contact', {}).get('id')
-        logger.info("ghl_contact_created", contact_id=contact_id)
-        return contact_id
+        return result.get('contact', {}).get('id') if result else None
 
     def upsert_contact(self, contact_data: Dict[str, Any]) -> Optional[str]:
-        """Create or update a contact using upsert."""
         data = self._prepare_contact_data(contact_data)
         result = self._make_request("POST", "/contacts/upsert", data=data)
-        
-        if not result:
-            return None
-        
-        contact_id = result.get('contact', {}).get('id')
-        logger.info("ghl_contact_upserted", contact_id=contact_id)
-        return contact_id
+        return result.get('contact', {}).get('id') if result else None
 
     def get_contact_url(self, contact_id: str) -> str:
-        """Get the direct CRM link for a GHL contact."""
         return f"{self.crm_url}/v2/location/{self.location_id}/contacts/detail/{contact_id}"
 
     def get_contact_by_email(self, email: str) -> Optional[Dict[str, Any]]:
-        """Search for a contact by email address."""
         result = self._make_request("GET", "/contacts/", params={"locationId": self.location_id, "query": email})
         return result['contacts'][0] if result and result.get('contacts') else None
 
+    def get_contacts(self, limit: int = 100, query: Optional[str] = None, 
+                     tags: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        params = {"locationId": self.location_id, "limit": limit}
+        if query: params["query"] = query
+        result = self._make_request("GET", "/contacts/", params=params)
+        contacts = result.get('contacts', []) if result else []
+        if tags: contacts = [c for c in contacts if any(t in c.get('tags', []) for t in tags)]
+        return contacts
+
     def check_lead_exists_on_ghl(self, lead_data: Dict[str, Any]) -> bool:
-        """Check if a lead already exists as a contact in GHL."""
         email = self._generate_deterministic_email(lead_data)
         return self.get_contact_by_email(email) is not None
 
-    # ===== SCRAPED LEADS =====
-    
     def ensure_scraped_leads_schema(self) -> Optional[str]:
-        """Ensure the 'Scraped Leads' custom object schema exists."""
         schema_name = "Scraped Leads"
         schema_id = self.get_schema_id(schema_name)
-        
-        if schema_id:
-            logger.info("ghl_scraped_leads_schema_exists", schema_id=schema_id)
-            return schema_id
-        
+        if schema_id: return schema_id
         return self.create_custom_object_schema(schema_name, self.SCRAPED_LEADS_FIELDS)
     
     def _generate_deterministic_email(self, lead_data: Dict[str, Any]) -> str:
-        """Generate a stable email from lead source data."""
         unique_key = lead_data.get('source_id') or lead_data.get('source_url') or ""
         name_val = lead_data.get('name') or lead_data.get('author_name') or lead_data.get('title') or "lead"
         name_part = "".join(c for c in str(name_val).lower() if c.isalnum() or c == '_')[:20] or "lead"
@@ -242,24 +177,57 @@ class GHLClient:
         return f"{name_part}_{id_hash}@scraped.local"
 
     def save_scraped_lead(self, scraped_lead: Dict[str, Any]) -> Optional[str]:
-        """Save a scraped lead as a Custom Object record (fallback to Contact)."""
-        # Try custom objects first
+        user_email = scraped_lead.get('user_email')
+        user_name = scraped_lead.get('user_name')
+        user_phone = scraped_lead.get('user_phone')
+        
+        tags = scraped_lead.get('tags', [])
+        if scraped_lead.get('source') == 'craigslist':
+            tags.extend(['Dino Landscape', 'Landscaping', 'Craigslist'])
+        
+        contact_id = None
+        if user_email:
+            contact_payload = {
+                "name": user_name or "Unknown User",
+                "email": user_email,
+                "phone": user_phone,
+                "tags": list(set(["automation_user", "lead_owner"] + tags))
+            }
+            if scraped_lead.get('pipeline_id') and scraped_lead.get('stage_id'):
+                 contact_payload['pipelineId'] = scraped_lead['pipeline_id']
+                 contact_payload['pipelineStageId'] = scraped_lead['stage_id']
+            elif scraped_lead.get('source') == 'craigslist':
+                 contact_payload['tags'].append('Manual Reply Stage')
+            contact_id = self.upsert_contact(contact_payload)
+        
         schema_id = self.ensure_scraped_leads_schema()
         if schema_id:
             record_data = self._map_to_custom_object(scraped_lead)
+            if contact_id: record_data['contactId'] = contact_id
             record_id = self.create_custom_object_record(schema_id, record_data)
-            if record_id:
-                return record_id
+            if record_id: return record_id
         
-        # Fallback to contacts
-        logger.info("falling_back_to_contacts", lead=scraped_lead.get('title'))
+        if contact_id: return self.add_contact_note(contact_id, scraped_lead)
         return self._save_as_contact(scraped_lead)
+
+    def add_contact_note(self, contact_id: str, lead: Dict[str, Any]) -> Optional[str]:
+        note_body = (
+            f"NEW SCRAPED LEAD FOUND:\n"
+            f"Title: {lead.get('title')}\n"
+            f"Source: {lead.get('source')} ({lead.get('source_url')})\n"
+            f"Author: {lead.get('author_name')}\n"
+            f"Description: {lead.get('description')}\n"
+            f"Vertical: {lead.get('vertical')}\n"
+            f"Phone: {lead.get('phone')}\n"
+            f"City: {lead.get('city')}\n"
+            f"Date: {lead.get('posted_date')}"
+        )
+        endpoint = f"/contacts/{contact_id}/notes"
+        result = self._make_request("POST", endpoint, data={"body": note_body})
+        return result.get('note', {}).get('id') if result else None
     
     def _map_to_custom_object(self, lead: Dict[str, Any]) -> Dict[str, Any]:
-        """Map scraped lead to custom object record."""
         record = {}
-        
-        # Text mappings
         text_map = {
             "title": "Lead Title", "description": "Lead Description", "author_name": "Author Name",
             "category": "Lead Category", "location": "Location", "source": "Source",
@@ -267,47 +235,34 @@ class GHLClient:
             "scraped_date": "Scraped Date", "phone": "Phone", "city": "City", "vertical": "Vertical"
         }
         for lead_key, field_name in text_map.items():
-            if lead.get(lead_key):
-                record[field_name] = str(lead[lead_key])
+            if lead.get(lead_key): record[field_name] = str(lead[lead_key])
         
-        # Numeric mappings
         num_map = {
             "comment_count": "Comment Count", "reaction_count": "Reaction Count",
             "image_count": "Image Count", "video_count": "Video Count", "word_count": "Word Count"
         }
         for lead_key, field_name in num_map.items():
-            if lead.get(lead_key) is not None:
-                record[field_name] = lead[lead_key]
+            if lead.get(lead_key) is not None: record[field_name] = lead[lead_key]
         
-        # Boolean mappings
         bool_map = {"has_image": "Has Image", "has_map": "Has Map", "has_media": "Has Media"}
         for lead_key, field_name in bool_map.items():
-            if lead.get(lead_key) is not None:
-                record[field_name] = "Yes" if lead[lead_key] else "No"
+            if lead.get(lead_key) is not None: record[field_name] = "Yes" if lead[lead_key] else "No"
         
-        # JSON fields
         for key, field in [("images", "Images"), ("videos", "Videos"), ("extra_data", "Extra Data")]:
-            if lead.get(key):
-                record[field] = json.dumps(lead[key])
+            if lead.get(key): record[field] = json.dumps(lead[key])
         
         if lead.get('is_service_request') is not None:
             record["Services Requested"] = "Yes" if lead['is_service_request'] else "No"
-        
         return record
     
     def _save_as_contact(self, lead: Dict[str, Any]) -> Optional[str]:
-        """Save scraped lead as contact (fallback method)."""
-        # Prepare lead data
         temp_lead = lead.copy()
         for key in ["has_image", "has_map", "has_media"]:
-            if key in temp_lead:
-                temp_lead[key] = "Yes" if temp_lead[key] else "No"
+            if key in temp_lead: temp_lead[key] = "Yes" if temp_lead[key] else "No"
         
-        # Get name
         name = temp_lead.get('contact_name') or temp_lead.get('author_name') or temp_lead.get('title') or "Scraped Lead"
         name = (str(name)[:97] + "...") if len(str(name)) > 100 else name
         
-        # Field mapping
         mapping = {
             "source": "source", "city": "city", "state": "state", "phone": "phone", "vertical": "vertical",
             "reaction_count": "Reaction Count", "image_count": "Image Count", "video_count": "Video Count",
@@ -323,29 +278,26 @@ class GHLClient:
         
         contact_payload = self.map_lead_to_ghl(temp_lead, mapping)
         contact_payload['name'] = name
+        if temp_lead.get('tags'):
+            contact_payload['tags'] = list(set(contact_payload.get('tags', []) + temp_lead['tags']))
+        if temp_lead.get('pipelineId'): contact_payload['pipelineId'] = temp_lead['pipelineId']
+        if temp_lead.get('pipelineStageId'): contact_payload['pipelineStageId'] = temp_lead['pipelineStageId']
         return self.upsert_contact(contact_payload)
     
     def map_lead_to_ghl(self, lead: Dict[str, Any], mapping: Dict[str, str]) -> Dict[str, Any]:
-        """Map a generic lead dictionary to GHL contact structure."""
         ghl_contact = {"locationId": self.location_id, "customField": {}}
         standard_fields = ['firstName', 'lastName', 'name', 'email', 'phone', 'address1', 'city', 
                           'state', 'country', 'postalCode', 'companyName', 'website', 'tags', 'source', 'source_url']
         
         for lead_key, ghl_key in mapping.items():
             value = lead.get(lead_key)
-            if not value:
-                continue
-            
+            if not value: continue
             if ghl_key in standard_fields:
                 ghl_contact[ghl_key] = value
             else:
                 field_id = self.get_field_id(ghl_key)
                 if field_id:
                     ghl_contact['customField'][field_id] = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
-                else:
-                    logger.warning("ghl_custom_field_not_found", field_name=ghl_key)
         
-        if not ghl_contact['customField']:
-            del ghl_contact['customField']
-        
+        if not ghl_contact['customField']: del ghl_contact['customField']
         return ghl_contact

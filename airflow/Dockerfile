@@ -50,9 +50,23 @@ RUN pip install --no-cache-dir \
     apache-airflow-providers-mongo==4.1.1 \
     psycopg2-binary==2.9.9
 
+# Copy project files
+COPY --chown=airflow:root airflow/dags /opt/airflow/dags
+COPY --chown=airflow:root airflow/plugins /opt/airflow/plugins
+COPY --chown=airflow:root airflow/scripts /opt/airflow/scripts
+COPY --chown=airflow:root scraper/src /opt/airflow/scraper/src
+
 # Runtime environment
-ENV PYTHONPATH="/opt/airflow/scraper/src"
+ENV PYTHONPATH="/opt/airflow/scraper/src:/opt/airflow/airflow/plugins"
 ENV CHROME_BIN="/usr/bin/chromium"
 ENV CHROMEDRIVER_BIN="/usr/bin/chromedriver"
 
-# DO NOT override ENTRYPOINT or CMD - let the base image handle it
+# Create log directories and set permissions
+USER root
+RUN mkdir -p /opt/airflow/logs/backups /opt/airflow/scraper/cookies && \
+    chown -R airflow:root /opt/airflow/logs /opt/airflow/scraper && \
+    chmod -R 775 /opt/airflow/logs /opt/airflow/scraper
+
+USER airflow
+
+# DO NOT override ENTRYPOINT - let the base image handle it

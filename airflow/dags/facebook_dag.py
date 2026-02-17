@@ -1,8 +1,6 @@
 """
 Airflow DAG for Facebook lead scraping with dynamic URL loading.
-Reads URLs from text file and creates separate tasks for each URL.
 """
-
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
@@ -12,7 +10,6 @@ import os
 import json
 from airflow_utils.callbacks import trigger_cookie_rotation
 
-# Add scraper modules to path
 sys.path.insert(0, "/opt/airflow/scraper/src")
 
 default_args = {
@@ -26,143 +23,168 @@ default_args = {
     'on_failure_callback': trigger_cookie_rotation,
 }
 
+def get_user_details(email: str):
+    from user_credential_manager import UserCredentialManager
+    manager = UserCredentialManager()
+    user_doc = manager.db.find_one(manager.collection, {"user.email": email})
+    if user_doc:
+        creds = manager.get_user_credentials(email)
+        return {"user": user_doc.get("user"), "credentials": creds, "scraping_config": user_doc.get("scraping_config", {})}
+    return None
 
-def load_facebook_urls():
-    """Load Facebook URLs from file or Airflow variable."""
-    from utils.url_loader import get_scraper_urls
-    
-    # 1. Try DB and File (scraper/urls/facebook_urls.txt)
-    urls = get_scraper_urls("facebook")
+def load_facebook_urls(**context):
+    dag_run = context.get('dag_run')
+    user_email = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
+    if not user_email: raise ValueError("No user_email provided.")
+    user_details = get_user_details(user_email)
+    if not user_details: raise ValueError(f"User details for {user_email} not found.")
+
+    fb_onboarding = user_details.get("facebook", {})
+    page_urls = fb_onboarding.get("page_urls", "")
+    group_urls = fb_onboarding.get("group_urls", "")
+    urls_list = []
+    if page_urls: urls_list.extend([u.strip() for u in (page_urls.split(',') if isinstance(page_urls, str) else page_urls) if u.strip()])
+    if group_urls: urls_list.extend([u.strip() for u in (group_urls.split(',') if isinstance(group_urls, str) else group_urls) if u.strip()])
+    urls = urls_list
+
+    if not urls:
+        config = user_details.get("scraping_config", {}).get("facebook", {})
+        urls = config.get("urls")
+        
     if urls:
-        print(f"✓ Successfully loaded {len(urls)} URLs from file/DB")
+        if isinstance(urls, str):
+            urls = [u.strip() for u in urls.replace('\n', ',').split(',') if u.strip()]
         return urls
-
-    # 2. Fallback to Airflow variable
-    try:
-        urls_raw = Variable.get("facebook_target_url", default_var="")
-        if urls_raw:
-            urls = [url.strip() for url in urls_raw.replace('\n', ',').split(',') if url.strip()]
-            if urls:
-                print(f"✓ Successfully loaded {len(urls)} URLs from Airflow Variable 'facebook_target_url'")
-                return urls
-    except Exception as e:
-        print(f"Error loading facebook_target_url variable: {e}")
     
-    # If using search URLs, we might not have a variable set, so fail if nothing found
-    raise ValueError("No Facebook URLs specified. Please check scraper/urls/facebook_urls.txt or 'facebook_target_url' Airflow Variable.")
-
+    raise ValueError(f"No Facebook URLs configured for user: {user_email}")
 
 def scrape_facebook_url(target_url: str, url_index: int, **context):
-    """
-    Execute the Facebook scraper for a single URL.
-    
-    Args:
-        target_url: The Facebook URL to scrape
-        url_index: Index of the URL (for logging)
-    """
     from scrapers import FacebookScraper
+    dag_run = context.get('dag_run')
+    user_email = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
+    user_details = get_user_details(user_email) if user_email else None
     
-    limit = int(Variable.get("facebook_post_limit", default_var="25"))
-    headless = Variable.get("facebook_headless", default_var="true").lower() == "true"
+    fb_onboarding = user_details.get("facebook", {})
+    custom_keywords = fb_onboarding.get("target_keywords")
+    fb_email = fb_onboarding.get("email")
+    fb_password = fb_onboarding.get("password")
     
-    # Try to get cookies from variable, otherwise scraper will look for file
-    cookies = None
-    try:
-        cookies_str = Variable.get("facebook_cookies", default_var="")
-        if cookies_str:
-            cookies = json.loads(cookies_str)
-    except:
-        print("Could not load cookies from Airflow Variable")
+    user_fb_config = user_details.get("scraping_config", {}).get("facebook", {}) if user_details else {}
+    limit = int(user_fb_config.get("limit", Variable.get("facebook_post_limit", default_var="25")))
+    headless = user_fb_config.get("headless", Variable.get("facebook_headless", default_var="true").lower() == "true")
+    
+    if not custom_keywords: custom_keywords = user_fb_config.get("keywords")
+    exclude_keywords = user_fb_config.get("exclude_keywords")
+    custom_indicators = user_fb_config.get("intent_indicators")
 
-    print(f"Starting Facebook scrape for URL #{url_index + 1}: {target_url}")
-    
+    if dag_run and dag_run.conf:
+        if 'keywords' in dag_run.conf: custom_keywords = dag_run.conf['keywords']
+        if 'exclude_keywords' in dag_run.conf: exclude_keywords = dag_run.conf['exclude_keywords']
+        if 'indicators' in dag_run.conf: custom_indicators = dag_run.conf['indicators']
+
+    def to_list(val):
+        if not val: return None
+        if isinstance(val, list): return val
+        return [k.strip() for k in str(val).replace(',', '\n').split('\n') if k.strip()]
+
+    custom_keywords = to_list(custom_keywords)
+    exclude_keywords = to_list(exclude_keywords)
+    custom_indicators = to_list(custom_indicators)
+
+    cookies = None
+    if user_details:
+        user_data = user_details.get("user")
+        from user_credential_manager import UserCredentialManager
+        manager = UserCredentialManager()
+        cookies = manager.load_cookies(user_email, 'facebook')
+        fb_creds = user_details.get("credentials", {}).get("facebook", {})
+        fb_email = fb_creds.get("email") or fb_email
+        fb_password = fb_creds.get("password") or fb_password
+    else:
+        try:
+            cookies_str = Variable.get("facebook_cookies", default_var="")
+            if cookies_str: cookies = json.loads(cookies_str)
+        except: pass
+        user_data = None
+
     try:
         scraper = FacebookScraper(cookies=cookies, headless=headless)
-        results = scraper.run(target=target_url, limit=limit, save_to_db=True)
-        print(f"✓ Successfully scraped {len(results)} posts from {target_url}")
+        results = scraper.run(
+            target=target_url, 
+            limit=limit, 
+            save_to_db=True, 
+            keywords=custom_keywords,
+            exclude_keywords=exclude_keywords,
+            custom_indicators=custom_indicators,
+            user_data=user_data,
+            email=fb_email,
+            password=fb_password
+        )
         return len(results)
     except Exception as e:
-        print(f"✗ Error scraping {target_url}: {str(e)}")
+        error_msg = str(e)
+        if "authentication failed" in error_msg.lower() or "session invalid" in error_msg.lower():
+            if user_email:
+                try:
+                    from airflow.api.common.trigger_dag import trigger_dag
+                    trigger_dag(
+                        dag_id='facebook_multi_user_cookie_rotation',
+                        run_id=f'auto_rotate_fb_{user_email.replace("@", "_")}_{datetime.now().strftime("%Y%m%d%H%M%S")}',
+                        conf={'user_email': user_email},
+                        replace_microseconds=False
+                    )
+                except: pass
         raise
 
-
-# Create DAG
 with DAG(
     'facebook_scraper_dag',
     default_args=default_args,
-    description='Scrape Facebook pages (multi-URL support)',
+    description='Scrape Facebook pages',
     schedule_interval='*/15 * * * *',
     catchup=False,
     tags=['scraping', 'facebook'],
-    max_active_runs=1,  # Only 1 DAG run at a time
-    concurrency=2,  # Limit to 2 concurrent tasks within the DAG
+    max_active_runs=1,
 ) as dag:
 
-    # Load URLs and create dynamic tasks
-    facebook_urls = load_facebook_urls()
-    
     scrape_tasks = []
-    for idx, url in enumerate(facebook_urls):
-        # Create a safe task ID from the URL
+    for idx in range(10):
         task_id = f'scrape_facebook_url_{idx + 1}'
         
+        def dynamic_scrape_task(url_index, **context):
+            urls = load_facebook_urls(**context)
+            if url_index >= len(urls): return 0
+            return scrape_facebook_url(urls[url_index], url_index, **context)
+
         task = PythonOperator(
             task_id=task_id,
-            python_callable=scrape_facebook_url,
-            op_kwargs={
-                'target_url': url,
-                'url_index': idx,
-            },
+            python_callable=dynamic_scrape_task,
+            op_kwargs={'url_index': idx},
+            provide_context=True,
+            pool='scraper_pool',
         )
         scrape_tasks.append(task)
     
-    # Push to GHL task
-    def push_facebook_leads_to_ghl():
-        """Push Facebook leads from MongoDB to GHL."""
+    def push_facebook_leads_to_ghl(**context):
         from push_leads import push_leads
-        print("Starting Facebook push to GHL")
-        push_leads(source="facebook")
+        dag_run = context.get('dag_run')
+        user_email = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
+        push_leads(source="facebook", user_email=user_email)
 
     push_task = PythonOperator(
         task_id='push_facebook_to_ghl',
         python_callable=push_facebook_leads_to_ghl,
+        provide_context=True,
     )
     
-    # Summary task
     def summarize_facebook_results(**context):
-        """
-        Summarize the results from Facebook scraping.
-        """
         from database import get_db_manager
-        from datetime import datetime, timedelta
-        
         db = get_db_manager()
         yesterday = datetime.utcnow() - timedelta(days=1)
-        
-        jobs = db.find_many(
-            "scrape_jobs",
-            {"scraper": "facebook", "started_at": {"$gte": yesterday}}
-        )
-        
+        jobs = db.find_many("scrape_jobs", {"scraper": "facebook", "started_at": {"$gte": yesterday}})
         total_items = sum(job.get('items_saved', 0) for job in jobs)
         successful_jobs = sum(1 for job in jobs if job.get('status') == 'completed')
         failed_jobs = sum(1 for job in jobs if job.get('status') == 'failed')
-        
-        print("\n" + "="*60)
-        print("FACEBOOK SCRAPING SUMMARY")
-        print("="*60)
-        print(f"Total jobs: {len(jobs)}")
-        print(f"Successful: {successful_jobs}")
-        print(f"Failed: {failed_jobs}")
-        print(f"Total leads scraped: {total_items}")
-        print("="*60 + "\n")
-        
-        return {
-            'total_jobs': len(jobs),
-            'successful': successful_jobs,
-            'failed': failed_jobs,
-            'total_leads': total_items
-        }
+        return {'total_jobs': len(jobs), 'successful': successful_jobs, 'failed': failed_jobs, 'total_leads': total_items}
 
     summary_task = PythonOperator(
         task_id='summarize_results',
@@ -170,5 +192,4 @@ with DAG(
         provide_context=True,
     )
 
-    # Set dependencies: all scrape tasks run in parallel, then push, then summary
     scrape_tasks >> push_task >> summary_task

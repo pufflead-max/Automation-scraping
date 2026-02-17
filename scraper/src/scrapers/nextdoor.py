@@ -9,9 +9,11 @@ from .base import BaseScraper
 try:
     from ..models import NextdoorLead, ScrapedLead
     from ..utils.buyer_intent import BuyerIntentDetector
+    from ..user_credential_manager import UserCredentialManager
 except ImportError:
     from models import NextdoorLead, ScrapedLead
     from utils.buyer_intent import BuyerIntentDetector
+    from user_credential_manager import UserCredentialManager
 
 
 class NextdoorScraper(BaseScraper):
@@ -84,7 +86,9 @@ class NextdoorScraper(BaseScraper):
             self.logger.warning("failed_to_parse_nextdoor_post", error=str(e))
             return None
     
-    def parse_item(self, raw_data: Dict[str, Any]) -> Optional[NextdoorLead]:
+    def parse_item(self, raw_data: Dict[str, Any], custom_keywords: Optional[str] = None, 
+                   exclude_keywords: Optional[list] = None,
+                   custom_indicators: Optional[list] = None) -> Optional[NextdoorLead]:
         """Parse raw data into a NextdoorLead model."""
         try:
             # Combine title and description for buyer intent analysis
@@ -94,7 +98,10 @@ class NextdoorScraper(BaseScraper):
             is_service_request = BuyerIntentDetector.is_buyer_request(
                 text=text,
                 require_url=True,
-                url=raw_data.get('url')
+                url=raw_data.get('url'),
+                custom_keywords=custom_keywords,
+                exclude_keywords=exclude_keywords,
+                custom_indicators=custom_indicators
             )
             
             # Log detection reason for debugging
@@ -190,7 +197,10 @@ class NextdoorScraper(BaseScraper):
                 # Check for login wall immediately
                 if "login" in page.url or "signup" in page.url or page.get_by_role("button", name="Log in").is_visible():
                     self.logger.error("session_invalid_redirected_to_login")
-                    raise ValueError("Nextdoor session invalid. Please update cookies in Airflow Variables.")
+                    if self.user_email:
+                        self.logger.warning("nextdoor_cookies_expired_removing_stale_record", user=self.user_email)
+                        UserCredentialManager().delete_cookies(self.user_email, 'nextdoor')
+                    raise ValueError("Nextdoor session invalid. Cookie rotation required.")
                 
                 previous_height = 0
                 for i in range(max_pages):
@@ -226,5 +236,9 @@ class NextdoorScraper(BaseScraper):
             finally:
                 browser.close()
         
-        return [lead for post_data in collected_posts.values() if (lead := self.parse_item(post_data))]
+        return [lead for post_data in collected_posts.values() 
+                if (lead := self.parse_item(post_data, 
+                                            custom_keywords=kwargs.get('keywords'),
+                                            exclude_keywords=kwargs.get('exclude_keywords'),
+                                            custom_indicators=kwargs.get('custom_indicators')))]
 

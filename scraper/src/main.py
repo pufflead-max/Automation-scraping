@@ -1,5 +1,4 @@
-"""Main entry point for the scraping system  ."""
-
+"""Main entry point for the scraping system"""
 import os, sys, argparse, json
 from typing import Optional, List
 
@@ -14,9 +13,16 @@ def run_scraper(name: str, target: Optional[str], **kwargs):
     scraper_logger.info(f"starting_{name}_scraper", target=target, **kwargs)
     
     try:
-        # Prepare arguments, prioritizing 'save' over 'save_to_db' if both exist
-        kwargs['save'] = kwargs.get('save', kwargs.get('save_to_db', True))
-        
+        common = {
+            "save": kwargs.get('save', kwargs.get('save_to_db', True)), 
+            "category": kwargs.get('category'),
+            "keywords": kwargs.get('keywords'),
+            "exclude_keywords": kwargs.get('exclude_keywords'),
+            "custom_indicators": kwargs.get('custom_indicators'),
+            "user_data": kwargs.get('user_data'),
+            "email": kwargs.get('email'),
+            "password": kwargs.get('password')
+        }
         if name == "craigslist":
             from scrapers.craigslist import CraigslistScraper
             leads = CraigslistScraper(headless=kwargs.get('headless', True)).run(target=target, **kwargs)
@@ -49,7 +55,6 @@ def main():
     parser.add_argument("--cookies", help="Path to JSON cookies file")
     parser.add_argument("--max-pages", type=int, default=30)
     parser.add_argument("--limit", type=int, default=25)
-    
     args = parser.parse_args()
     
     try:
@@ -66,7 +71,6 @@ def main():
             save=not args.no_save, headless=not args.no_headless,
             cookies=cookies, max_pages=args.max_pages, limit=args.limit
         )
-        
         print(f"\n✓ Scraped {len(leads)} leads")
     except Exception as e:
         print(f"\n✗ Failed: {e}"); sys.exit(1)

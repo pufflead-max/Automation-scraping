@@ -91,6 +91,15 @@ class DatabaseManager:
             return res.modified_count + res.upserted_count
         except BulkWriteError as e:
             return e.details.get('nModified', 0) + e.details.get('nUpserted', 0)
+    
+    def find_leads_by_user(self, col: str, user_email: str, limit: int = 0) -> List[Dict[str, Any]]:
+        """Find all leads for a specific user by email."""
+        query = {"user_email": user_email}
+        return self.find_many(col, query, limit)
+    
+    def count_leads_by_user(self, col: str, user_email: str) -> int:
+        """Count leads for a specific user."""
+        return self.get_collection(col).count_documents({"user_email": user_email})
 
 _db_manager = None
 def get_db_manager() -> DatabaseManager:

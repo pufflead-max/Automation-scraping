@@ -42,11 +42,16 @@ class CraigslistScraper(BaseScraper):
                 "image_alt": (img := soup_element.select_one("img")) and img.get("alt"),
             }
         
-        title_link = soup_element.select_one("a.posting-title") or soup_element.select_one("a.cl-search-anchor")
-        location_elem = soup_element.select_one(".result-info > div") or soup_element.select_one(".result-hood")
+        title_link = soup_element.select_one("a.posting-title") or soup_element.select_one("a.cl-search-anchor") or soup_element.select_one("a")
+        location_elem = soup_element.select_one(".result-info > div") or soup_element.select_one(".result-hood") or soup_element.select_one(".location")
         date_span = soup_element.select_one(".meta > span") or soup_element.select_one(".result-date")
         img = soup_element.select_one("img")
         
+        # Try to find a description snippet if available
+        description = None
+        if desc_elem := soup_element.select_one(".cl-static-search-result-body"):
+            description = desc_elem.get_text(strip=True)
+
         return {
             "title": title_link.get_text(strip=True) if title_link else None,
             "url": title_link.get("href") if title_link else None,
@@ -54,6 +59,7 @@ class CraigslistScraper(BaseScraper):
             "price": None,
             "date_short": date_span.get_text(strip=True) if date_span else None,
             "date_full": date_span.get("title") if date_span else None,
+            "description": description,
             "image_url": img.get("src") if img else None,
             "image_alt": img.get("alt") if img else None,
         }
@@ -95,7 +101,9 @@ class CraigslistScraper(BaseScraper):
             self.logger.error("scraping_page_failed", url=page_url, error=str(e))
             raise
 
-    def parse_item(self, raw_data: Dict[str, Any]) -> Optional[CraigslistLead]:
+    def parse_item(self, raw_data: Dict[str, Any], custom_keywords: Optional[list] = None, 
+                   exclude_keywords: Optional[list] = None, 
+                   custom_indicators: Optional[list] = None) -> Optional[CraigslistLead]:
         """Parse raw scraped data into a CraigslistLead model."""
         try:
             posting_id = None
@@ -113,7 +121,10 @@ class CraigslistScraper(BaseScraper):
             is_buyer_request = BuyerIntentDetector.is_buyer_request(
                 text=text,
                 require_url=True,
-                url=url
+                url=raw_data.get('url'),
+                custom_keywords=custom_keywords,
+                exclude_keywords=exclude_keywords,
+                custom_indicators=custom_indicators
             )
             
             # Log detection reason for debugging
@@ -130,7 +141,8 @@ class CraigslistScraper(BaseScraper):
                 location=raw_data.get('location'),
                 category=raw_data.get('category'),
                 date_short=raw_data.get('date_short'),
-                date_full=raw_data.get('date_full'),
+                date_full=raw_data.get('date_full') or raw_data.get('date_short'),
+                posted_date=raw_data.get('date_full') or raw_data.get('date_short'), # Ensure posted_date is populated
                 image_thumbnail=raw_data.get('image_url'),
                 images=[raw_data.get('image_url')] if raw_data.get('image_url') else [],
                 is_buyer_request=is_buyer_request,
@@ -176,7 +188,10 @@ class CraigslistScraper(BaseScraper):
                             break
                         
                         for raw in raw_items:
-                            if lead := self.parse_item(raw):
+                            if (lead := self.parse_item(raw, 
+                                                       custom_keywords=kwargs.get('keywords'),
+                                                       exclude_keywords=kwargs.get('exclude_keywords'),
+                                                       custom_indicators=kwargs.get('custom_indicators'))):
                                 all_leads.append(lead)
                         
                         if offset + len(raw_items) >= self.get_total_count(soup) or len(raw_items) == 0:
@@ -188,7 +203,6 @@ class CraigslistScraper(BaseScraper):
                         self.logger.error("page_loop_failed", error=str(e))
                         break
             
-            print(all_leads)
             return all_leads
         except Exception as e:
             self.logger.error("scrape_failed", error=str(e))

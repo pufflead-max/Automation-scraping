@@ -1,82 +1,42 @@
 [
   {
     "domain": ".facebook.com",
-    "expiry": 1802416078,
-    "httpOnly": true,
-    "name": "xs",
-    "path": "/",
-    "sameSite": "None",
-    "secure": true,
-    "value": "16%3AxQ78bJH3uwVaMQ%3A2%3A1770880073%3A-1%3A-1%3A%3AAcwLD67LpKD4e-cvJUQ2mr2ka4HW63J0mVYbKNjE4w"
-  },
-  {
-    "domain": ".facebook.com",
-    "expiry": 1778656078,
-    "httpOnly": true,
-    "name": "fr",
-    "path": "/",
-    "sameSite": "None",
-    "secure": true,
-    "value": "14gVWSswnPEW6d1QB.AWdHK0yxxQukWw-_n6T877GhXkfDKyp8-qPlw8do5pISCYbr7lM.BpjXxO..AAA.0.0.BpjXxO.AWfctoxLU58G8O2TY7YCLmYE3Y8"
-  },
-  {
-    "domain": ".facebook.com",
-    "expiry": 1805440076,
-    "httpOnly": true,
-    "name": "ps_l",
-    "path": "/",
-    "sameSite": "Lax",
-    "secure": true,
-    "value": "1"
-  },
-  {
-    "domain": ".facebook.com",
-    "expiry": 1802416078,
-    "httpOnly": false,
-    "name": "c_user",
-    "path": "/",
-    "sameSite": "None",
-    "secure": true,
-    "value": "61584863189765"
-  },
-  {
-    "domain": ".facebook.com",
-    "expiry": 1771484877,
+    "expiry": 1771402304,
     "httpOnly": false,
     "name": "wd",
     "path": "/",
     "sameSite": "Lax",
     "secure": true,
-    "value": "800x513"
-  },
-  {
-    "domain": ".facebook.com",
-    "expiry": 1805440076,
-    "httpOnly": true,
-    "name": "ps_n",
-    "path": "/",
-    "sameSite": "None",
-    "secure": true,
     "value": "1"
   },
   {
     "domain": ".facebook.com",
-    "expiry": 1805440075,
+    "expiry": 1805357497,
     "httpOnly": true,
     "name": "sb",
     "path": "/",
     "sameSite": "None",
     "secure": true,
-    "value": "QnyNaW1lAzJ8h10UuM6SzIsh"
+    "value": "uTmMaUdcqcPfYUJZi65FO6zq"
   },
   {
     "domain": ".facebook.com",
-    "expiry": 1805440066,
+    "expiry": 1778573497,
+    "httpOnly": true,
+    "name": "fr",
+    "path": "/",
+    "sameSite": "None",
+    "secure": true,
+    "value": "07lk5nl30lRPM8Xb9..BpjDm5..AAA.0.0.BpjDm5.AWf_-Cg4WDl7yUbifOh1PMyyEY8"
+  },
+  {
+    "domain": ".facebook.com",
+    "expiry": 1805357497,
     "httpOnly": true,
     "name": "datr",
     "path": "/",
     "sameSite": "None",
     "secure": true,
-    "value": "QnyNaaJEU9o3Ctrv9zfaMmvu"
+    "value": "uTmMaafwOkFeRGJR0aX0HwzN"
   }
 ]

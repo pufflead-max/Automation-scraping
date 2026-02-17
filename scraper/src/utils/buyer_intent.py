@@ -1,8 +1,6 @@
 """
-Buyer Intent Detection Module  
-
-Detects buyer intent in posts while filtering out seller/promotional content.
-Optimized for fewer lines while maintaining 96% accuracy.
+Buyer Intent Detection Module
+Detects buyer intent while filtering out promotional content.
 """
 
 from typing import Optional
@@ -12,11 +10,14 @@ import re
 class BuyerIntentDetector:
     """Detects whether a post is from a buyer looking to hire vs a seller promoting services."""
     
-    # Combined patterns for efficiency
     BUYER_PATTERN = re.compile(
         r'(looking for|need|recommendation|can anyone recommend|who does|quote|estimate|contractor|'
-        r'(anyone|can someone|does anyone|who do you) (available|know|recommend)|'
-        r'iso|in search of|seeking|help with)',
+        r'(anyone|can someone|does anyone|who do you|do you|any) (available|know|recommend|have|suggestions)|'
+        r'iso|in search of|seeking|help with|suggestions for|referral for|looking to hire|'
+        r'(who|anyone) (do|does|fix|install|repair)|'
+        r'good (place|person|guy|crew|company) for|'
+        r'recommend (a|an|some)|'
+        r'price on|cost to|how much to)',
         re.IGNORECASE
     )
     
@@ -42,39 +43,63 @@ class BuyerIntentDetector:
         r'(landscaping|landscape|landscaper|lawn care|lawn maintenance|lawn mowing|mowing|'
         r'yard cleanup|spring cleanup|fall cleanup|leaf removal|snow removal|snow plow|plowing|'
         r'yard work|lawn service|gardening|garden|mulch|trimming|hedge|tree service|'
-        r'outdoor maintenance|property maintenance)',
+        r'outdoor maintenance|property maintenance|'
+        r'hardscape|hardscaping|pavers|patio|walkway|driveway|'
+        r'retaining wall|stone wall|masonry|mason|brick|concrete|'
+        r'backyard|front yard|fence|fencing|irrigation|sprinkler|sod|grass)',
         re.IGNORECASE
     )
     
     PHONE_PATTERN = re.compile(r'\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b')
     COMPANY_PATTERN = re.compile(r'\b(asap|llc|inc|corp)\b', re.IGNORECASE)
     
+    EXCLUSION_PATTERN = re.compile(
+        r'\b(handyman|roofing|electrician|plumbing|painting|flooring|'
+        r'for sale|hiring|job|equipment|tools|'
+        r'career|interview|opportunity|benefits|salary|w2|1099)\b',
+        re.IGNORECASE
+    )
+    
     @classmethod
-    def is_buyer_request(cls, text: str, require_url: bool = True, url: Optional[str] = None) -> bool:
+    def is_buyer_request(cls, text: str, require_url: bool = True, url: Optional[str] = None, 
+                         custom_keywords: Optional[list] = None,
+                         exclude_keywords: Optional[list] = None,
+                         custom_indicators: Optional[list] = None) -> bool:
         """
         Determine if a post is a buyer request vs seller promotion.
-        
-        Returns True if genuine buyer request, False otherwise.
         """
         if not text:
             return False
         
         text_lower = text.lower().strip()
         
-        # STEP 1: Quick disqualifiers (sellers, recruiters, promoters)
+        buyer_pattern = cls.BUYER_PATTERN
+        service_pattern = cls.SERVICE_PATTERN
+        exclusion_pattern = cls.EXCLUSION_PATTERN
+        
+        if custom_keywords:
+            kw_regex = '|'.join([re.escape(k.strip()) for k in custom_keywords if k.strip()])
+            if kw_regex:
+                buyer_pattern = re.compile(f'({kw_regex}|{cls.BUYER_PATTERN.pattern})', re.IGNORECASE)
+                service_pattern = re.compile(f'({kw_regex}|{cls.SERVICE_PATTERN.pattern})', re.IGNORECASE)
+        
+        if exclude_keywords:
+            ex_regex = '|'.join([re.escape(k.strip()) for k in exclude_keywords if k.strip()])
+            if ex_regex:
+                exclusion_pattern = re.compile(f'({ex_regex}|{cls.EXCLUSION_PATTERN.pattern})', re.IGNORECASE)
+
         if (cls.PHONE_PATTERN.search(text) or 
             cls.SELLER_PATTERN.search(text) or 
-            cls.COMPANY_PATTERN.search(text)):
+            cls.COMPANY_PATTERN.search(text) or
+            exclusion_pattern.search(text)):
             return False
         
-        # STEP 2: Check for deceptive patterns: question + call-to-action nearby
         if '?' in text_lower:
             parts = text_lower.split('?', 1)
             if len(parts) > 1 and any(w in parts[0] for w in ['need', 'want', 'looking']):
                 if any(s in parts[1][:50] for s in ['we', 'call', 'contact', 'service', 'offer']):
                     return False
         
-        # STEP 3: Check for self-promotional pronouns + service verbs close together
         for pronoun in ['i ', 'we ', 'my ', 'our ']:
             if pronoun in text_lower:
                 for verb in ['do ', 'provide', 'offer', 'specialize', 'can help', 'am ', 'are ']:
@@ -82,47 +107,36 @@ class BuyerIntentDetector:
                     if idx1 != -1 and idx2 != -1 and abs(idx1 - idx2) < 50:
                         return False
         
-        # STEP 4: STRICT REQUIREMENT - Must match landscaping/snow removal keywords
-        # This is the PRIMARY filter - no exceptions
-        if not cls.SERVICE_PATTERN.search(text_lower):
+        if not buyer_pattern.search(text):
             return False
         
-        # STEP 5: For Craigslist labor gigs, be more lenient
-        # Labor gig posts are often just "Landscaping" or "Snow Removal Needed"
-        # without explicit "looking for" language
-        is_labor_gig = 'craigslist.org' in (url or '') and '/lbg/' in (url or '')
-        
-        if is_labor_gig:
-            # For labor gigs: if it has service keywords and passed seller checks, accept it
-            # But still require SOME indicator it's a request (not just a title)
-            request_indicators = ['need', 'want', 'looking', 'seeking', 'help', '?', 'anyone', 'someone', 'asap', 'urgent']
-            if any(ind in text_lower for ind in request_indicators) or len(text_lower) > 20:
-                return not require_url or bool(url)
-        
-        # STEP 6: For non-labor-gig posts, require explicit buyer intent keywords
-        if not cls.BUYER_PATTERN.search(text_lower):
+        if len(text_lower) < 20 and not service_pattern.search(text):
             return False
         
-        # STEP 7: Must have buyer indicators (question/request format)
-        buyer_indicators = ['?', 'anyone', 'someone', 'who', 'canceled', 'urgent', 'asap', 'hiring', 'looking', 'need', 'recommendation', 'recommend']
-        has_indicator = (any(ind in text_lower for ind in buyer_indicators) or 
-                        re.search(r'looking for (a )?(contractor|landscaper|worker|help|service)', text_lower))
+        custom_kw_match = False
+        if custom_keywords:
+            kw_regex = '|'.join([re.escape(k.strip()) for k in custom_keywords if k.strip()])
+            if kw_regex and re.search(kw_regex, text_lower):
+                custom_kw_match = True
+
+        buyer_indicators = custom_indicators if custom_indicators else ['?', 'anyone', 'someone', 'who', 'canceled', 'urgent', 'asap']
         
-        if not has_indicator:
+        has_indicator = (any(ind.lower() in text_lower for ind in buyer_indicators) or 
+                        re.search(r'looking for (a )?(mechanic|contractor|plumber|electrician|handyman|landscaper)', text_lower))
+        
+        if not has_indicator and not custom_kw_match:
             return False
         
-        # STEP 8: URL check if required
         return not require_url or bool(url)
     
     @classmethod
     def get_detection_reason(cls, text: str, url: Optional[str] = None) -> str:
-        """Get human-readable reason for classification (for debugging)."""
+        """Get human-readable reason for classification."""
         if not text:
             return "Empty text"
         
         text_lower = text.lower()
         
-        # Check disqualifiers
         if cls.PHONE_PATTERN.search(text):
             return "Contains phone number (seller)"
         
@@ -133,12 +147,7 @@ class BuyerIntentDetector:
         if cls.COMPANY_PATTERN.search(text):
             return f"Company name pattern"
         
-        # Check for service keywords (PRIMARY requirement)
-        if not cls.SERVICE_PATTERN.search(text_lower):
-            return "No landscaping/snow removal keywords"
-        
-        # Check buyer qualifiers
-        buyer_match = cls.BUYER_PATTERN.search(text_lower)
+        buyer_match = cls.BUYER_PATTERN.search(text)
         if not buyer_match:
             return "No buyer intent keywords"
         

@@ -158,8 +158,24 @@ def sync_ghl_onboarding():
         cf_source_val = get_cf("Contact Source")
         
         is_dino_source = (source_val == 'Dino Landscape') or (cf_source_val == 'Dino Landscape')
+        # Log complete raw contact info for debugging
+        print(f"\n--- RAW CONTACT DATA: {contact.get('email')} ---")
+        import json
+        print(json.dumps(contact, indent=2))
+        print("-------------------------------------------\n")
+
+        logger.info("processing_raw_contact_start", 
+                    contact_id=contact.get('id'), 
+                    email=contact.get('email'))
+        # Filter by Contact Type: "Customer" (Case-insensitive check)
+        contact_type = str(contact.get('type') or "").lower()
+        cf_contact_type = str(get_cf("Contact Type") or "").lower()
+        is_customer = (contact_type == 'customer') or (cf_contact_type == 'customer')
         
-        if not is_dino_source:
+        # BOTH conditions must be true
+        if not (is_dino_source and is_customer):
+            if is_dino_source and not is_customer:
+                logger.debug("skipping_contact", email=contact.get('email'), reason="source_match_but_not_customer", type=contact_type or cf_contact_type)
             continue
         
         raw_state = get_cf("State")
@@ -168,9 +184,15 @@ def sync_ghl_onboarding():
         # Validate and Standardize Geo Data
         std_state, std_city, std_code = validate_geo_data(db, raw_state, raw_city)
 
-        # Parse and Validate Verticals
-        raw_verticals_str = get_cf("Verticals") or ""
-        raw_verticals = [v.strip() for v in raw_verticals_str.split(",") if v.strip()]
+        # Parse and Validate Verticals (Handle list or comma-separated string)
+        raw_v_data = get_cf("Verticals") or []
+        if isinstance(raw_v_data, str):
+            raw_verticals = [v.strip() for v in raw_v_data.split(",") if v.strip()]
+        elif isinstance(raw_v_data, list):
+            raw_verticals = [str(v).strip() for v in raw_v_data if str(v).strip()]
+        else:
+            raw_verticals = [str(raw_v_data).strip()] if raw_v_data else []
+            
         validated_verticals = validate_verticals(db, raw_verticals)
 
         onboarding_doc = {
@@ -193,6 +215,11 @@ def sync_ghl_onboarding():
                 "ghl_contact_id": contact.get('id')
             }
         }
+
+        # Log full document for transparency
+        logger.info("syncing_document", 
+                   email=onboarding_doc["user"]["email"], 
+                   data=onboarding_doc["user"])
 
         collection.update_one(
             {"user.email": onboarding_doc["user"]["email"]},

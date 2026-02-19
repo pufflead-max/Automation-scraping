@@ -546,65 +546,146 @@ class FacebookScraper(BaseScraper):
             self.logger.debug("scroll_failed", error=str(e))
 
     def login(self, email, password):
-        """Login to Facebook with credentials and save cookies."""
+        """Login to Facebook with credentials and save cookies (with CAPTCHA bypass)."""
         self.logger.info("logging_in_to_facebook")
         
         try:
             self.driver.get('https://www.facebook.com')
+            time.sleep(5)
+            
+            # 1. Check for CAPTCHA immediately
+            if self._is_captcha_present():
+                self.logger.warning("captcha_detected_at_login_start")
+                if not self._try_solve_captcha():
+                    self.logger.error("captcha_bypass_failed")
+                    return False
+
+            # 2. Handle Cookie Banners
+            self._handle_cookie_banners()
+            
+            # 3. Fill Credentials
+            if not self._fill_credentials(email, password):
+                return False
+            
+            # 4. Handle Post-Login CAPTCHA / Security Checks
+            self.logger.info("waiting_for_login_completion")
+            time.sleep(12) 
+
+            # Check for checkpoints or second-stage CAPTCHAs
+            if self._is_captcha_present():
+                self.logger.warning("second_stage_captcha_detected")
+                self._try_solve_captcha()
+
+            self._close_popups()
+            
+            if "checkpoint" in self.driver.current_url or "challenge" in self.driver.current_url:
+                self.logger.warning("security_checkpoint_detected", url=self.driver.current_url)
+                return False
+
+            if not self._is_logged_in():
+                if "facebook.com/home" in self.driver.current_url:
+                    self.logger.info("login_verified_via_url")
+                else:
+                    return False
+            
+            self._save_cookies()
+            return True
+            
+        except Exception as e:
+            self.logger.error("login_exception", error=str(e))
+            return False
+
+    def _is_captcha_present(self):
+        """Detect if reCAPTCHA or Meta CAPTCHA is on screen."""
+        try:
+            # Look for reCAPTCHA iframes
+            iframes = self.driver.find_elements(By.TAG_NAME, 'iframe')
+            for iframe in iframes:
+                src = iframe.get_attribute('src') or ""
+                if 'recaptcha' in src or 'captcha' in src:
+                    return True
+            
+            # Look for Meta specific CAPTCHA elements
+            captcha_indicators = [
+                'img[src*="captcha"]',
+                'div#captcha',
+                'input[name="captcha_response"]'
+            ]
+            for selector in captcha_indicators:
+                if self.driver.find_elements(By.CSS_SELECTOR, selector):
+                    return True
+            return False
+        except: return False
+
+    def _try_solve_captcha(self):
+        """Bypass CAPTCHA using 2Captcha if API key is present."""
+        api_key = os.getenv("TWO_CAPTCHA_API_KEY")
+        if not api_key:
+            self.logger.error("captcha_solver_missing_api_key", msg="Add TWO_CAPTCHA_API_KEY to .env to bypass this.")
+            return False
+
+        try:
+            from twocaptcha import TwoCaptcha
+            solver = TwoCaptcha(api_key)
+            
+            self.logger.info("attempting_captcha_solve_via_2captcha")
+            
+            # Get site key from reCAPTCHA iframe
+            iframe = self.driver.find_element(By.CSS_SELECTOR, 'iframe[src*="recaptcha/api2/anchor"]')
+            src = iframe.get_attribute('src')
+            site_key = re.search(r'k=([^&]+)', src).group(1)
+            
+            result = solver.recaptcha(sitekey=site_key, url=self.driver.current_url)
+            code = result['code']
+            
+            # Inject solution
+            self.driver.execute_script(f'document.getElementById("g-recaptcha-response").innerHTML="{code}";')
+            self.driver.execute_script('___grecaptcha_cfg.clients[0].aa.l.callback()') # Trigger callback
+            
+            self.logger.info("captcha_solved_successfully")
             time.sleep(3)
-            
-            # Handle "Allow Cookies" consent if present
+            return True
+        except Exception as e:
+            self.logger.error("captcha_solver_error", error=str(e))
+            return False
+
+    def _handle_cookie_banners(self):
+        cookie_selectors = [
+            "//button[contains(., 'Allow all cookies')]",
+            "//button[contains(., 'Allow essential and optional cookies')]",
+            "//button[contains(., 'Accept All')]",
+            "//button[@data-cookiebanner='accept_button']"
+        ]
+        for xpath in cookie_selectors:
             try:
-                cookie_btns = self.driver.find_elements(By.XPATH, "//button[contains(., 'Allow all cookies') or contains(., 'Allow essential and optional cookies')]")
-                if cookie_btns:
-                    cookie_btns[0].click()
+                btns = self.driver.find_elements(By.XPATH, xpath)
+                if btns and btns[0].is_displayed():
+                    btns[0].click()
                     time.sleep(2)
-            except: pass
-            
-            # Wait for and fill email
-            email_field = WebDriverWait(self.driver, 10).until(
+                    break
+            except: continue
+
+    def _fill_credentials(self, email, password):
+        try:
+            email_field = WebDriverWait(self.driver, 15).until(
                 EC.presence_of_element_located((By.NAME, 'email'))
             )
             email_field.clear()
             for char in email:
                 email_field.send_keys(char)
-                time.sleep(random.uniform(0.05, 0.2)) # Type like a human
-            time.sleep(1)
+                time.sleep(random.uniform(0.05, 0.15))
             
-            # Fill password
             password_field = self.driver.find_element(By.NAME, 'pass')
             password_field.clear()
             for char in password:
                 password_field.send_keys(char)
-                time.sleep(random.uniform(0.05, 0.2))
-            time.sleep(1)
+                time.sleep(random.uniform(0.05, 0.15))
             
-            # Click login button
             login_button = self.driver.find_element(By.NAME, 'login')
             login_button.click()
-            
-            self.logger.info("waiting_for_login_completion")
-            time.sleep(10) # Give it time to redirect
-
-            self._close_popups()
-            time.sleep(3)
-            
-            # Check for checkpoints
-            if "checkpoint" in self.driver.current_url:
-                self.logger.warning("facebook_checkpoint_triggered_automated_login_blocked")
-                return False
-
-            # Check if logged in
-            if not self._is_logged_in():
-                self.logger.warning("login_validation_failed_manual_intervention_might_be_needed", url=self.driver.current_url)
-                return False
-            
-            self._save_cookies()
-            self.logger.info("login_successful_cookies_saved")
             return True
-            
         except Exception as e:
-            self.logger.error("login_failed", error=str(e))
+            self.logger.error("credential_fill_failed", error=str(e))
             return False
 
     def _save_cookies(self):

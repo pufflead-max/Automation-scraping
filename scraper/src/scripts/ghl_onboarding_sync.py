@@ -1,5 +1,5 @@
 import os
-import json
+import re
 import sys
 from datetime import datetime
 from pymongo import MongoClient
@@ -11,6 +11,110 @@ from integrations.ghl import GHLClient
 from logger import get_logger
 
 logger = get_logger(__name__)
+
+def _clean(s):
+    """Strip non-alphanumeric chars and lowercase for comparison."""
+    return re.sub(r'[^a-zA-Z0-9]', '', str(s)).lower() if s else ""
+
+def validate_geo_data(db, state_input, city_input):
+    """Standardize state and city based on master geo_data."""
+    if not state_input:
+        return state_input, city_input, None
+
+    # 1. Match State
+    
+    clean_state = _clean(state_input)
+    # Search by code (MA) or name (Massachusetts)
+    state_doc = db.geo_data.find_one({
+        "$or": [
+            {"state_code": {"$regex": f"^{state_input}$", "$options": "i"}},
+            {"state_name": {"$regex": f"^{state_input}$", "$options": "i"}}
+        ]
+    })
+    
+    # If not found with exact, try cleaner match
+    if not state_doc:
+        all_states = db.geo_data.find({}, {"state_name": 1, "state_code": 1})
+        for s in all_states:
+            if _clean(s['state_name']) == clean_state or _clean(s['state_code']) == clean_state:
+                state_doc = db.geo_data.find_one({"_id": s["_id"]})
+                break
+
+    if not state_doc:
+        logger.warning("state_not_found_in_master", input=state_input)
+        return state_input, city_input, None
+
+    std_state = state_doc["state_name"]
+    std_code = state_doc["state_code"]
+    std_city = city_input
+
+    # 2. Match City within that state
+    if city_input:
+        clean_city = _clean(city_input)
+        matched_city = next((c for c in state_doc["cities"] if _clean(c) == clean_city), None)
+        
+        if matched_city:
+            std_city = matched_city
+        else:
+            pattern = re.compile(re.escape(city_input), re.IGNORECASE)
+            matched_city = next((c for c in state_doc["cities"] if pattern.search(c)), None)
+            if matched_city: std_city = matched_city
+            else: logger.warning("city_not_found_in_state", city=city_input, state=std_state)
+
+    return std_state, std_city, std_code
+
+def validate_verticals(db, raw_verticals):
+    """Standardize vertical names by matching against master verticals collection."""
+    if not raw_verticals:
+        return []
+    
+
+    
+    # Load all master verticals
+    master_verticals = list(db.verticals.find({}, {"name": 1, "slug": 1}))
+    if not master_verticals:
+        logger.warning("no_master_verticals_found", msg="verticals collection is empty")
+        return raw_verticals  # Return as-is if no master data
+    
+    validated = []
+    for raw_v in raw_verticals:
+        raw_v = raw_v.strip()
+        if not raw_v:
+            continue
+        
+        clean_raw = _clean(raw_v)
+        matched = None
+        
+        # 1. Exact match (case-insensitive)
+        for mv in master_verticals:
+            if _clean(mv['name']) == clean_raw or _clean(mv.get('slug', '')) == clean_raw:
+                matched = mv['name']
+                break
+        
+        # 2. Partial/substring match
+        if not matched:
+            for mv in master_verticals:
+                if clean_raw in _clean(mv['name']) or _clean(mv['name']) in clean_raw:
+                    matched = mv['name']
+                    break
+        
+        # 3. Slug-based match (e.g., "landscaping" -> "Landscaping Services")
+        if not matched:
+            for mv in master_verticals:
+                slug = mv.get('slug', '')
+                if slug and (clean_raw in _clean(slug) or _clean(slug) in clean_raw):
+                    matched = mv['name']
+                    break
+        
+        if matched:
+            if matched != raw_v:
+                logger.info("vertical_corrected", original=raw_v, corrected=matched)
+            validated.append(matched)
+        else:
+            logger.warning("vertical_not_found_in_master", vertical=raw_v)
+            validated.append(raw_v)  # Keep original if no match
+    
+    return validated
 
 def sync_ghl_onboarding():
     load_dotenv()
@@ -58,33 +162,29 @@ def sync_ghl_onboarding():
         if not is_dino_source:
             continue
         
+        raw_state = get_cf("State")
+        raw_city = get_cf("City")
         
-        # has_scraping = any("target keywords" in k.lower() or "urls" in k.lower() for k in cf_values.keys())
-        # if not has_scraping and "onboarding" not in [t.lower() for t in contact.get('tags', [])]: continue
+        # Validate and Standardize Geo Data
+        std_state, std_city, std_code = validate_geo_data(db, raw_state, raw_city)
+
+        # Parse and Validate Verticals
+        raw_verticals_str = get_cf("Verticals") or ""
+        raw_verticals = [v.strip() for v in raw_verticals_str.split(",") if v.strip()]
+        validated_verticals = validate_verticals(db, raw_verticals)
 
         onboarding_doc = {
             "user": {
                 "name": contact.get('name') or f"{contact.get('firstName', '')} {contact.get('lastName', '')}".strip(),
                 "email": contact.get('email'),
-                "phone": contact.get('phone')
-            },
-            "facebook": {
-                "email": get_cf("FB Email") or get_cf("Facebook Email") or os.getenv("FACEBOOK_EMAIL"),
-                "password": get_cf("FB Password") or get_cf("Facebook Password") or os.getenv("FACEBOOK_PASSWORD"),
-                "target_keywords": get_cf("FB Target Keywords") or get_cf("Facebook Target Keywords"),
-                "page_urls": get_cf("FB Page URLs") or get_cf("Facebook Page URLs"),
-                "group_urls": get_cf("FB Group URLs") or get_cf("Facebook Group URLs")
-            },
-            "nextdoor": {
-                "email": get_cf("ND Email") or get_cf("Nextdoor Email") or os.getenv("NEXTDOOR_EMAIL"),
-                "password": get_cf("ND Password") or get_cf("Nextdoor Password") or os.getenv("NEXTDOOR_PASSWORD"),
-                "target_keywords": get_cf("ND Target Keywords") or get_cf("Nextdoor Target Keywords"),
-                "page_urls": get_cf("ND Page URLs") or get_cf("Nextdoor Page URLs"),
-                "group_urls": get_cf("ND Group URLs") or get_cf("Nextdoor Group URLs")
-            },
-            "craigslist": {
-                "target_keywords": get_cf("CL Target Keywords") or get_cf("Craigslist Target Keywords"),
-                "group_urls": get_cf("CL Group URLs") or get_cf("Craigslist Group URLs") or get_cf("Craigslist URLs")
+                "phone": contact.get('phone'),
+                "state": std_state,
+                "city": std_city,
+                "state_code": std_code,
+                "region": get_cf("Region"),
+                "service_area": get_cf("Service Area"),
+                "verticals": validated_verticals,
+                "onboarding_status": "pending"
             },
             "metadata": {
                 "source": "GHL_Onboarding_Form",
@@ -101,6 +201,12 @@ def sync_ghl_onboarding():
         )
         synced_count += 1
         logger.info("contact_synced", email=onboarding_doc["user"]["email"])
+        
+        # Internal Notification Placeholder
+        logger.info("INTERNAL_NOTIFICATION: New user signup synced from GHL", 
+                    name=onboarding_doc["user"]["name"], 
+                    email=onboarding_doc["user"]["email"],
+                    verticals=onboarding_doc["user"]["verticals"])
 
     logger.info("ghl_sync_complete", synced=synced_count)
 

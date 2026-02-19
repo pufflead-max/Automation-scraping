@@ -48,6 +48,9 @@ class GHLClient:
         {"name": "Phone", "dataType": "TEXT"},
         {"name": "City", "dataType": "TEXT"},
         {"name": "Vertical", "dataType": "TEXT"},
+        {"name": "Owner Name", "dataType": "TEXT"},
+        {"name": "Owner Email", "dataType": "TEXT"},
+        {"name": "Owner Phone", "dataType": "TEXT"},
     ]
     
     def __init__(self, api_key: str, location_id: str, **kwargs):
@@ -231,8 +234,8 @@ class GHLClient:
         text_map = {
             "title": "Lead Title", "description": "Lead Description", "author_name": "Author Name",
             "category": "Lead Category", "location": "Location", "source": "Source",
-            "source_id": "Source ID", "source_url": "Source URL", "posted_date": "Posted Date",
-            "scraped_date": "Scraped Date", "phone": "Phone", "city": "City", "vertical": "Vertical"
+            "posted_date": "Posted Date", "scraped_date": "Scraped Date", "phone": "Phone", "city": "City", "vertical": "Vertical",
+            "user_name": "Owner Name", "user_email": "Owner Email", "user_phone": "Owner Phone"
         }
         for lead_key, field_name in text_map.items():
             if lead.get(lead_key): record[field_name] = str(lead[lead_key])
@@ -270,7 +273,8 @@ class GHLClient:
             "has_image": "Has Image", "has_map": "Has Map", "has_media": "Has Media",
             "images": "Images", "videos": "Videos", "source_url": "source_url", "source_id": "Source ID",
             "author_name": "Author Name", "description": "Lead Description", "title": "Lead Title",
-            "category": "Lead Category", "comment_count": "Comment Count", "is_service_request": "Services Requested"
+            "category": "Lead Category", "comment_count": "Comment Count", "is_service_request": "Services Requested",
+            "user_name": "Owner Name", "user_email": "Owner Email", "user_phone": "Owner Phone"
         }
         
         temp_lead["source_url_display"] = temp_lead.get("source_url")

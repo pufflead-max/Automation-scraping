@@ -35,84 +35,48 @@ def get_user_details(email: str):
 
 def load_nextdoor_urls(**context):
     dag_run = context.get('dag_run')
-    # If specific user requested or specific URLs provided manually
     user_email_override = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
     
-    if dag_run and dag_run.conf and 'urls' in dag_run.conf:
-        urls = dag_run.conf['urls']
-        if isinstance(urls, str):
-            urls = [url.strip() for url in urls.replace('\n', ',').split(',') if url.strip()]
-        if urls: 
-             # If manual URLs but no user email, we can't attach user data easily.
-             # This case is legacy/debug mostly.
-             return [{"url": u, "user_email": user_email_override} for u in urls]
+    from utils.mappings import get_mapping_manager
+    mapper = get_mapping_manager()
 
     if user_email_override:
-        user_details = get_user_details(user_email_override)
-        if not user_details: raise ValueError(f"User details for {user_email_override} not found.")
-
-        nd_onboarding = user_details.get("nextdoor", {})
-        page_urls = nd_onboarding.get("page_urls", "")
-        group_urls = nd_onboarding.get("group_urls", "")
-        
-        urls = []
-        if page_urls: urls.extend([u.strip() for u in (page_urls.split(',') if isinstance(page_urls, str) else page_urls) if u.strip()])
-        if group_urls: urls.extend([u.strip() for u in (group_urls.split(',') if isinstance(group_urls, str) else group_urls) if u.strip()])
-        
-        if not urls:
-            config = user_details.get("scraping_config", {}).get("nextdoor", {})
-            urls = config.get("urls")
-            
-        if urls and isinstance(urls, str):
-            urls = [u.strip() for u in urls.replace('\n', ',').split(',') if u.strip()]
-            
-        return [{"url": u, "user_email": user_email_override} for u in urls or []]
+        mappings = mapper.get_user_mappings(user_email_override)
+        all_tasks = []
+        for m in mappings:
+            nd_config = m.get("nextdoor", {})
+            urls = nd_config.get("group_urls", [])
+            for url in urls:
+                all_tasks.append({"url": url, "user_email": user_email_override, "vertical": m.get("vertical")})
+        return all_tasks
 
     # Load ALL users
     from user_credential_manager import UserCredentialManager
     manager = UserCredentialManager()
-    all_users = manager.db.find_many(manager.collection, {
-        "$or": [
-            {"nextdoor.page_urls": {"$exists": True, "$ne": ""}},
-            {"nextdoor.group_urls": {"$exists": True, "$ne": ""}},
-            {"scraping_config.nextdoor.urls": {"$exists": True}}
-        ]
-    })
+    all_users = manager.db.find_many(manager.collection, {})
 
     all_tasks = []
     for user_doc in all_users:
         u_email = user_doc.get("user", {}).get("email")
         if not u_email: continue
         
-        nd_data = user_doc.get("nextdoor", {})
-        p_urls = nd_data.get("page_urls", "")
-        g_urls = nd_data.get("group_urls", "")
-        
-        u_list = []
-        if p_urls: u_list.extend([u.strip() for u in (p_urls.split(',') if isinstance(p_urls, str) else p_urls) if u.strip()])
-        if g_urls: u_list.extend([u.strip() for u in (g_urls.split(',') if isinstance(g_urls, str) else g_urls) if u.strip()])
-        
-        if not u_list:
-            conf_urls = user_doc.get("scraping_config", {}).get("nextdoor", {}).get("urls")
-            if conf_urls:
-                 if isinstance(conf_urls, str):
-                     u_list = [u.strip() for u in conf_urls.replace('\n', ',').split(',') if u.strip()]
-                 else:
-                     u_list = conf_urls
-        
-        for url in u_list:
-            all_tasks.append({"url": url, "user_email": u_email})
+        mappings = mapper.get_user_mappings(u_email)
+        for m in mappings:
+            nd_config = m.get("nextdoor", {})
+            urls = nd_config.get("group_urls", [])
+            for url in urls:
+                all_tasks.append({"url": url, "user_email": u_email, "vertical": m.get("vertical")})
             
     return all_tasks
 
-def load_nextdoor_cookies(user_details=None):
-    if user_details:
-        user_email = user_details.get("user", {}).get("email")
-        if user_email:
-            from user_credential_manager import UserCredentialManager
-            manager = UserCredentialManager()
-            cookies = manager.load_cookies(user_email, 'nextdoor')
-            if cookies: return cookies
+def load_nextdoor_cookies():
+    from user_credential_manager import UserCredentialManager
+    manager = UserCredentialManager()
+    
+    owner_email = Variable.get("nextdoor_owner_email", default_var=os.getenv("NEXTDOOR_EMAIL"))
+    cookies = manager.load_cookies(owner_email, 'nextdoor') if owner_email else None
+    
+    if cookies: return cookies
 
     cookies_json = os.getenv('NEXTDOOR_COOKIES')
     if cookies_json:
@@ -124,7 +88,7 @@ def load_nextdoor_cookies(user_details=None):
         if cookies_str: return json.loads(cookies_str)
     except: pass
     
-    raise ValueError("Nextdoor cookies not configured.")
+    return None
 
 def scrape_nextdoor_url(target_data, url_index: int, default_max_pages: int = 5, **context):
     from main import run_nextdoor_scraper
@@ -148,21 +112,21 @@ def scrape_nextdoor_url(target_data, url_index: int, default_max_pages: int = 5,
         return 0
     
     nd_onboarding = user_details.get("nextdoor", {})
-    custom_keywords = nd_onboarding.get("target_keywords")
-    
     user_nd_config = user_details.get("scraping_config", {}).get("nextdoor", {}) if user_details else {}
     max_pages = user_nd_config.get("max_pages", default_max_pages)
+    # Load keywords from Vertical Master List
+    vertical_slug = target_data.get('vertical')
+    from utils.mappings import get_mapping_manager
+    vertical_config = get_mapping_manager().get_vertical_config(vertical_slug) if vertical_slug else None
     
-    if not custom_keywords: custom_keywords = user_nd_config.get("keywords")
-    
-    # Allow DAG run override only if it's a specific single-user run
-    dag_run = context.get('dag_run')
-    if dag_run and dag_run.conf and dag_run.conf.get('user_email') == user_email:
-        if 'keywords' in dag_run.conf: custom_keywords = dag_run.conf['keywords']
+    if vertical_config:
+        custom_keywords = vertical_config.get("keywords")
+    else:
+        custom_keywords = nd_onboarding.get("target_keywords") or user_nd_config.get("keywords")
 
     try:
         user_data = user_details.get("user") if user_details else None
-        cookies = load_nextdoor_cookies(user_details)
+        cookies = load_nextdoor_cookies()
         
         leads = run_nextdoor_scraper(
             target=target_url,
@@ -176,16 +140,16 @@ def scrape_nextdoor_url(target_data, url_index: int, default_max_pages: int = 5,
     except Exception as e:
         error_msg = str(e)
         if "session invalid" in error_msg.lower() or "cookie rotation required" in error_msg.lower():
-            if user_email:
-                try:
-                    from airflow.api.common.trigger_dag import trigger_dag
-                    trigger_dag(
-                        dag_id='nextdoor_multi_user_cookie_rotation',
-                        run_id=f'auto_rotate_{user_email.replace("@", "_")}_{datetime.now().strftime("%Y%m%d%H%M%S")}',
-                        conf={'user_email': user_email},
-                        replace_microseconds=False
-                    )
-                except: pass
+            owner_email = Variable.get("nextdoor_owner_email", default_var=os.getenv("NEXTDOOR_EMAIL"))
+            try:
+                from airflow.api.common.trigger_dag import trigger_dag
+                trigger_dag(
+                    dag_id='nextdoor_multi_user_cookie_rotation',
+                    run_id=f'auto_rotate_{datetime.now().strftime("%Y%m%d%H%M%S")}',
+                    conf={'user_email': owner_email},
+                    replace_microseconds=False
+                )
+            except: pass
         raise
 
 with DAG(

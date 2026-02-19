@@ -4,7 +4,6 @@ from airflow.operators.python import PythonOperator
 from airflow.models import Variable
 import sys
 import os
-import json
 
 # Add scraper modules to path
 sys.path.insert(0, "/opt/airflow/scraper/src")
@@ -21,84 +20,57 @@ default_args = {
     'retry_delay': timedelta(minutes=5),
 }
 
-def rotate_user_facebook_cookies(user_email, **context):
-    """Log in to Facebook for a specific user and update their cookies."""
-    # If triggered via another DAG for a specific user, only run for that user
-    dag_run = context.get('dag_run')
-    target_user = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
-    if target_user and target_user != user_email:
-        print(f"⏭️ Skipping rotation for {user_email} as this run is targeted for {target_user}")
-        return f"Skipped: Targeted run for {target_user}"
-
+def rotate_facebook_owner_cookies(**context):
+    """Log in to Facebook for the central owner account and update cookies."""
     from scrapers import FacebookScraper
     from user_credential_manager import UserCredentialManager
     
-    manager = UserCredentialManager()
-    creds = manager.get_facebook_credentials(user_email)
+    owner_email = Variable.get("facebook_owner_email", default_var=os.getenv("FACEBOOK_EMAIL"))
+    owner_password = Variable.get("facebook_owner_password", default_var=os.getenv("FACEBOOK_PASSWORD"))
     
-    if not creds or not creds.get("email") or not creds.get("password"):
-        print(f"✗ Facebook credentials not found for user: {user_email}")
-        return f"Failed: No credentials for {user_email}"
+    if not owner_email or not owner_password:
+        print("✗ Central Facebook owner credentials not found in Airflow Variables or Env.")
+        return "Failed: No owner credentials"
 
-    email = creds["email"]
-    password = creds["password"]
+    manager = UserCredentialManager()
     
-    printable_email = email[:3] + "***" + email[email.find("@"):] if "@" in email else email[:4] + "***"
-    print(f"🚀 Starting Facebook cookie rotation for User: {user_email} (FB Account: {printable_email})")
+    printable_email = owner_email[:3] + "***" + owner_email[owner_email.find("@"):] if "@" in owner_email else owner_email[:4] + "***"
+    print(f"🚀 Starting Facebook cookie rotation for OWNER account: {printable_email}")
     
     scraper = FacebookScraper(headless=True)
     try:
         scraper._init_driver(headless=True)
-        success = scraper.login(email, password)
+        success = scraper.login(owner_email, owner_password)
         
         if success:
             cookies = scraper.driver.get_cookies()
             if cookies:
-                # Save to user-specific cookie file and MongoDB
-                manager.save_cookies(user_email, 'facebook', cookies)
-                print(f"✅ Successfully rotated Facebook cookies for {user_email}.")
+                # Save owner cookies
+                manager.save_cookies(owner_email, 'facebook', cookies)
+                print(f"✅ Successfully rotated Facebook cookies for owner {printable_email}.")
+                # Also set a global variable for scrapers to find easily
+                Variable.set("facebook_last_rotation", datetime.utcnow().isoformat())
                 return "Success"
             else:
-                print(f"✗ Login succeeded for {user_email} but no cookies gathered.")
                 raise ValueError("No cookies gathered after login.")
         else:
-            print(f"✗ Facebook login failed for user {user_email}.")
-            raise ValueError(f"Facebook login failed for {user_email}")
+            raise ValueError(f"Facebook login failed for owner {owner_email}")
     finally:
         if scraper.driver:
             scraper.driver.quit()
 
-# Create DAG
 with DAG(
-    'facebook_multi_user_cookie_rotation',
+    'facebook_owner_cookie_rotation',
     default_args=default_args,
-    description='Dynamic rotation of Facebook cookies for multiple users',
+    description='Rotation of Facebook cookies for the central owner account',
     schedule_interval='0 2 */2 * *', # Every 2 days at 2 AM
     catchup=False,
-    tags=['maintenance', 'cookies', 'facebook', 'multi-user'],
+    tags=['maintenance', 'cookies', 'facebook', 'owner'],
     max_active_runs=1,
 ) as dag:
 
-    # Get all users with facebook credentials
-    try:
-        manager = UserCredentialManager()
-        users = manager.get_users_with_credentials('facebook')
-    except Exception as e:
-        print(f"Error fetching users: {e}")
-        users = []
-
-    if not users:
-        # Create a dummy task if no users found to avoid DAG parsing errors
-        def no_users(): print("No users with Facebook credentials found.")
-        task = PythonOperator(task_id='no_users_found', python_callable=no_users)
-    else:
-        for user in users:
-            user_email = user['email']
-            user_id_clean = user_email.replace('@', '_at_').replace('.', '_')
-            
-            task = PythonOperator(
-                task_id=f'rotate_fb_cookies_{user_id_clean}',
-                python_callable=rotate_user_facebook_cookies,
-                op_kwargs={'user_email': user_email},
-                pool='scraper_pool',
-            )
+    rotate_task = PythonOperator(
+        task_id='rotate_facebook_owner_cookies',
+        python_callable=rotate_facebook_owner_cookies,
+        pool='scraper_pool',
+    )

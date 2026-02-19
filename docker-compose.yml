@@ -57,7 +57,7 @@ services:
     # Bind mounts removed to use code in image
     networks: [ appnet ]
     user: "${AIRFLOW_UID}:${AIRFLOW_GID}"
-    command: bash -c "python /opt/airflow/scripts/init_variables.py && airflow version"
+    command: bash -c "python /opt/airflow/scripts/init_variables.py && python /opt/airflow/scraper/src/scripts/init_master_data.py && python /opt/airflow/scraper/src/scripts/init_geo_data.py && airflow version"
 
   airflow-webserver:
     build:

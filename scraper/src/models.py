@@ -110,18 +110,3 @@ class ScrapeJob(BaseModel):
     error_message: Optional[str] = None
     error_type: Optional[str] = None
 
-
-class ScraperMetrics(BaseModel):
-    """Model for scraper performance metrics."""
-    model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
-    
-    scraper: str
-    date: datetime = Field(default_factory=datetime.utcnow)
-    total_runs: int = 0
-    successful_runs: int = 0
-    failed_runs: int = 0
-    total_items_scraped: int = 0
-    total_items_saved: int = 0
-    total_items_failed: int = 0
-    average_runtime_seconds: float = 0.0
-    average_items_per_run: float = 0.0

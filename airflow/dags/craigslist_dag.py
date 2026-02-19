@@ -24,93 +24,46 @@ default_args = {
 }
 
 def get_user_details(email: str):
-    from pymongo import MongoClient
-    mongo_uri = os.getenv("MONGO_URI", "mongodb://mongo:27017")
-    client = MongoClient(mongo_uri)
-    db = client["PUFF"]
-    user_doc = db["users"].find_one({"user.email": email})
+    from database import get_db_manager
+    db = get_db_manager()
+    user_doc = db.find_one("users", {"user.email": email})
     return user_doc.get("user") if user_doc else None
 
 def load_craigslist_urls(**context):
     dag_run = context.get('dag_run')
     user_email_override = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
     
-    if user_email_override:
-        from pymongo import MongoClient
-        mongo_uri = os.getenv("MONGO_URI", "mongodb://mongo:27017")
-        client = MongoClient(mongo_uri)
-        db = client["PUFF"]
-        user_doc = db["users"].find_one({"user.email": user_email_override})
-        
-        if user_doc:
-            cl_onboarding = user_doc.get("craigslist", {})
-            urls = cl_onboarding.get("group_urls")
-            
-            if not urls:
-                config = user_doc.get("scraping_config", {}).get("craigslist", {})
-                urls = config.get("urls")
-                
-            if urls:
-                if isinstance(urls, list): u_list = urls
-                else: u_list = [url.strip() for url in urls.replace('\n', ',').split(',') if url.strip()]
-                return [{"url": u, "user_email": user_email_override} for u in u_list]
-            
-    if dag_run and dag_run.conf and 'urls' in dag_run.conf:
-        urls = dag_run.conf['urls']
-        if isinstance(urls, str):
-            urls = [url.strip() for url in urls.replace('\n', ',').split(',') if url.strip()]
-        if urls: return [{"url": u, "user_email": user_email_override} for u in urls]
-            
-    # If no specific user requested, check if it's a manual run via Variable or scheduled run for ALL users
-    try:
-        urls_raw = Variable.get("craigslist_target_url", default_var="")
-        if urls_raw:
-            u_list = [url.strip() for url in urls_raw.replace('\n', ',').split(',') if url.strip()]
-            if u_list: return [{"url": u, "user_email": None} for u in u_list] # Variable-based runs have no user context
-    except:
-        pass
-    
-    # Load ALL users for scheduled run
-    if not user_email_override:
-        from pymongo import MongoClient
-        mongo_uri = os.getenv("MONGO_URI", "mongodb://mongo:27017")
-        client = MongoClient(mongo_uri)
-        db = client["PUFF"]
-        
-        all_users = db["users"].find({
-            "$or": [
-                {"craigslist.group_urls": {"$exists": True, "$ne": ""}},
-                {"scraping_config.craigslist.urls": {"$exists": True}}
-            ]
-        })
-        
-        all_tasks = []
-        for user_doc in all_users:
-            u_email = user_doc.get("user", {}).get("email")
-            if not u_email: continue
-            
-            cl_data = user_doc.get("craigslist", {})
-            urls = cl_data.get("group_urls")
-            
-            u_list = []
-            if urls:
-                if isinstance(urls, list): u_list = urls
-                else: u_list = [url.strip() for url in urls.replace('\n', ',').split(',') if url.strip()]
-            
-            if not u_list:
-                conf_urls = user_doc.get("scraping_config", {}).get("craigslist", {}).get("urls")
-                if conf_urls:
-                    if isinstance(conf_urls, str):
-                        u_list = [u.strip() for u in conf_urls.replace('\n', ',').split(',') if u.strip()]
-                    else:
-                        u_list = conf_urls
-            
-            for url in u_list:
-                all_tasks.append({"url": url, "user_email": u_email})
-        
-        if all_tasks: return all_tasks
+    from utils.mappings import get_mapping_manager
+    mapper = get_mapping_manager()
 
-    raise ValueError("No Craigslist URLs found.")
+    if user_email_override:
+        mappings = mapper.get_user_mappings(user_email_override)
+        all_tasks = []
+        for m in mappings:
+            cl_config = m.get("craigslist", {})
+            urls = cl_config.get("urls", [])
+            for url in urls:
+                all_tasks.append({"url": url, "user_email": user_email_override, "vertical": m.get("vertical")})
+        return all_tasks
+
+    # Load ALL users
+    from user_credential_manager import UserCredentialManager
+    manager = UserCredentialManager()
+    all_users = manager.db.find_many(manager.collection, {})
+
+    all_tasks = []
+    for user_doc in all_users:
+        u_email = user_doc.get("user", {}).get("email")
+        if not u_email: continue
+        
+        mappings = mapper.get_user_mappings(u_email)
+        for m in mappings:
+            cl_config = m.get("craigslist", {})
+            urls = cl_config.get("urls", [])
+            for url in urls:
+                all_tasks.append({"url": url, "user_email": u_email, "vertical": m.get("vertical")})
+            
+    return all_tasks
 
 def extract_category_from_url(url: str) -> str:
     match = re.search(r'/search/([a-z]+)', url)
@@ -139,26 +92,30 @@ def scrape_craigslist_url(target_data, category_name: str, url_index: int, **con
     custom_keywords = None
     
     # Load user specific config
-    from pymongo import MongoClient
-    mongo_uri = os.getenv("MONGO_URI", "mongodb://mongo:27017")
-    client = MongoClient(mongo_uri)
-    db = client["PUFF"]
-    user_doc = db["users"].find_one({"user.email": user_email}) if user_email else None
+    from database import get_db_manager
+    db = get_db_manager()
+    user_doc = db.find_one("users", {"user.email": user_email}) if user_email else None
     
     user_data = user_doc.get("user") if user_doc else None
     exclude_keywords = None
     custom_indicators = None
     
-    if user_doc:
+    # Load keywords from Vertical Master List
+    vertical_slug = target_data.get('vertical')
+    from utils.mappings import get_mapping_manager
+    vertical_config = get_mapping_manager().get_vertical_config(vertical_slug) if vertical_slug else None
+    
+    if vertical_config:
+        custom_keywords = vertical_config.get("keywords")
+        exclude_keywords = vertical_config.get("exclude_keywords")
+        custom_indicators = vertical_config.get("intent_indicators")
+    else:
         cl_onboarding = user_doc.get("craigslist", {})
         custom_keywords = cl_onboarding.get("target_keywords")
-        
         cl_config = user_doc.get("scraping_config", {}).get("craigslist", {})
         if not custom_keywords: custom_keywords = cl_config.get("keywords")
-        
         exclude_keywords = cl_config.get("exclude_keywords")
         custom_indicators = cl_config.get("intent_indicators")
-        max_pages = cl_config.get("max_pages", max_pages)
 
     # Defaults
     if not custom_keywords:
@@ -214,9 +171,10 @@ for idx in range(10):
     def dynamic_scrape_task(url_index, **context):
         urls = load_craigslist_urls(**context)
         if url_index >= len(urls): return 0
-        url = urls[url_index]
-        category_name = extract_category_from_url(url)
-        return scrape_craigslist_url(url, category_name, url_index, **context)
+        url_data = urls[url_index]
+        url_str = url_data.get('url') if isinstance(url_data, dict) else url_data
+        category_name = extract_category_from_url(url_str)
+        return scrape_craigslist_url(url_data, category_name, url_index, **context)
 
     task = PythonOperator(
         task_id=task_id,
@@ -228,13 +186,16 @@ for idx in range(10):
     )
     scraping_tasks.append(task)
 
-def push_craigslist_leads_to_ghl():
+def push_craigslist_leads_to_ghl(**context):
     from push_leads import push_leads
-    push_leads(source="craigslist")
+    dag_run = context.get('dag_run')
+    user_email = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
+    push_leads(source="craigslist", user_email=user_email)
 
 push_task = PythonOperator(
     task_id='push_craigslist_to_ghl',
     python_callable=push_craigslist_leads_to_ghl,
+    provide_context=True,
     dag=dag,
 )
 

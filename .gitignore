@@ -86,9 +86,7 @@ Thumbs.db
 .DS_Store
 
 # Project specific
-development_pipelines/*.csv
-development_pipelines/*.xlsx
-!development_pipelines/Full Sample 1K Craigslist 19_11_2025.xlsx
+development_pipelines/
 scraped_data/
 output/
 downloads/

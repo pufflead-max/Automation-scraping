@@ -78,6 +78,10 @@ def init_master_data():
     db.verticals.insert_many(verticals)
     logger.info("verticals_initialized", count=len(verticals))
     
+    # helper for search urls
+    def get_fb_searches(city, keywords):
+        return [f"https://www.facebook.com/search/posts?q={kw}%20{city}".replace(" ", "%20") for kw in keywords[:3]]
+
     # 2. Group Mappings (Region + Vertical -> URLs)
     mappings = [
         {
@@ -89,11 +93,11 @@ def init_master_data():
                 "group_urls": [
                     "https://www.facebook.com/groups/hinghamcommunity",
                     "https://www.facebook.com/groups/hinghamscooop"
-                ],
+                ] + get_fb_searches("Hingham", verticals[0]["keywords"]),
                 "page_urls": []
             },
             "nextdoor": {
-                "group_urls": ["https://nextdoor.com/city/hingham–ma"]
+                "group_urls": ["https://nextdoor.com/city/hingham--ma/"]
             },
             "craigslist": {
                 "urls": [
@@ -109,11 +113,13 @@ def init_master_data():
             "region": "South Shore",
             "vertical": "landscaping",
             "facebook": {
-                "group_urls": ["https://www.facebook.com/groups/cohassetcommunity"],
+                "group_urls": [
+                    "https://www.facebook.com/groups/cohassetcommunity"
+                ] + get_fb_searches("Cohasset", verticals[0]["keywords"]),
                 "page_urls": []
             },
             "nextdoor": {
-                "group_urls": ["https://nextdoor.com/city/cohasset–ma"]
+                "group_urls": ["https://nextdoor.com/city/cohasset--ma/"]
             },
             "craigslist": {
                 "urls": ["https://boston.craigslist.org/search/sob/sss?query=cohasset"]
@@ -125,46 +131,16 @@ def init_master_data():
             "region": "Greater Boston",
             "vertical": "landscaping",
             "facebook": {
-                "group_urls": ["https://www.facebook.com/groups/cambridgema"],
+                "group_urls": [
+                    "https://www.facebook.com/groups/cambridgema"
+                ] + get_fb_searches("Cambridge", verticals[0]["keywords"]),
                 "page_urls": []
             },
             "nextdoor": {
-                "group_urls": ["https://nextdoor.com/city/cambridge–ma"]
+                "group_urls": ["https://nextdoor.com/city/cambridge--ma/"]
             },
             "craigslist": {
                 "urls": ["https://boston.craigslist.org/search/gbs/sss?query=cambridge"]
-            }
-        },
-        {
-            "state": "MA",
-            "city": "Hanover",
-            "region": "South Shore",
-            "vertical": "landscaping",
-            "facebook": {
-                "group_urls": ["https://www.facebook.com/groups/hanovermacommunity"],
-                "page_urls": []
-            },
-            "nextdoor": {
-                "group_urls": ["https://nextdoor.com/city/hanover–ma"]
-            },
-            "craigslist": {
-                "urls": ["https://boston.craigslist.org/search/sob/sss?query=hanover"]
-            }
-        },
-        {
-            "state": "MA",
-            "city": "Scituate",
-            "region": "South Shore",
-            "vertical": "landscaping",
-            "facebook": {
-                "group_urls": ["https://www.facebook.com/groups/scituatecommunity"],
-                "page_urls": []
-            },
-            "nextdoor": {
-                "group_urls": ["https://nextdoor.com/city/scituate–ma"]
-            },
-            "craigslist": {
-                "urls": ["https://boston.craigslist.org/search/sob/sss?query=scituate"]
             }
         },
         {
@@ -175,7 +151,7 @@ def init_master_data():
             "facebook": {
                 "group_urls": [
                     "https://www.facebook.com/groups/bostoncommunity",
-                ],
+                ] + get_fb_searches("Boston", verticals[6]["keywords"]),
                 "page_urls": []
             },
             "nextdoor": {

@@ -1,20 +1,17 @@
-# Automation Scraping System (PUFF)
+# Automation Scraping System
 
-A production-ready lead extraction system that scrapes service listings from Facebook, Craigslist, and Nextdoor, with automated workflows powered by Apache Airflow.
-
-> [!IMPORTANT]
-> **Full System Documentation**: For a complete overview of the architecture, database schema, and account structures, please refer to [**DOCUMENTATION.md**](./DOCUMENTATION.md).
+A production-ready lead extraction system that scrapes service listings from Craigslist and Nextdoor, with automated workflows powered by Apache Airflow.
 
 ## 🎯 Project Overview
 
 This system transforms experimental notebook-based scrapers into a robust, production-ready platform for extracting and managing service leads. It features:
 
-- **Multi-platform scraping**: Facebook, Craigslist, and Nextdoor support
+- **Multi-platform scraping**: Craigslist and Nextdoor support
 - **Automated workflows**: Airflow DAGs for scheduled scraping
-- **Data quality**: AI-driven Buyer Intent Detection and enrichment
+- **Data quality**: Validation and deduplication
 - **Structured logging**: JSON-based logging for monitoring
-- **Error handling**: Automatic retries, CAPTCHA solving, and session rotation
-- **Database integration**: MongoDB for lead storage and user configuration
+- **Error handling**: Automatic retries and graceful degradation
+- **Database integration**: MongoDB for lead storage
 
 ## 📋 Prerequisites
 

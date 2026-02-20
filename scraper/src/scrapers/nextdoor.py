@@ -140,6 +140,21 @@ class NextdoorScraper(BaseScraper):
             self.logger.error("nextdoor_cookies_required")
             raise ValueError("Nextdoor cookies not configured.")
         
+        # Normalize URL: Handle common formatting issues like em-dashes or single hyphens in city URLs
+        if target:
+            original_target = target
+            # Replace em-dash (—) or en-dash (–) with double hyphen (--)
+            target = target.replace('—', '--').replace('–', '--')
+            
+            # Ensure city URLs have double hyphens before state code if they only have one
+            import re
+            city_match = re.search(r'nextdoor\.com/city/([a-z-]+)-([a-z]{2})/?$', target)
+            if city_match and '--' not in target:
+                target = target.replace(f"{city_match.group(1)}-{city_match.group(2)}", f"{city_match.group(1)}--{city_match.group(2)}")
+            
+            if target != original_target:
+                self.logger.info("normalized_nextdoor_url", original=original_target, normalized=target)
+
         max_pages = kwargs.get('max_pages', 5)
         collected_posts = {}
         

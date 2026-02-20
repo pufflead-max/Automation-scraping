@@ -1,14 +1,20 @@
+from dotenv import load_dotenv
 import os
-import re
 import sys
+import re
+
+# Load environment variables from project root before anything else
+env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".env")
+load_dotenv(env_path)
+
 from datetime import datetime
 from pymongo import MongoClient
-from dotenv import load_dotenv
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from integrations.ghl import GHLClient
 from logger import get_logger
+from utils.mappings import get_mapping_manager
 
 logger = get_logger(__name__)
 
@@ -216,10 +222,34 @@ def sync_ghl_onboarding():
             }
         }
 
+        # 3. Generate and Store Platform URLs
+        mapper = get_mapping_manager()
+        mappings = mapper.get_mappings_for_user(onboarding_doc)
+        
+        # Consolidate URLs across all mappings (Primary + Service Area)
+        fb_urls = []
+        nd_urls = []
+        cl_urls = []
+        
+        for m in mappings:
+            fb_urls.extend(m.get("facebook", {}).get("group_urls", []))
+            nd_urls.extend(m.get("nextdoor", {}).get("group_urls", []))
+            cl_urls.extend(m.get("craigslist", {}).get("urls", []))
+            
+        onboarding_doc["facebook"] = {"group_urls": list(set(fb_urls)), "page_urls": []}
+        onboarding_doc["nextdoor"] = {"group_urls": list(set(nd_urls))}
+        onboarding_doc["craigslist"] = {"urls": list(set(cl_urls))}
+
+        if not onboarding_doc["user"]["email"]:
+            logger.warning("skipping_contact_no_email", contact_id=contact.get('id'))
+            continue
+
         # Log full document for transparency
         logger.info("syncing_document", 
                    email=onboarding_doc["user"]["email"], 
-                   data=onboarding_doc["user"])
+                   facebook_urls=len(onboarding_doc["facebook"]["group_urls"]),
+                   nextdoor_urls=len(onboarding_doc["nextdoor"]["group_urls"]),
+                   craigslist_urls=len(onboarding_doc["craigslist"]["urls"]))
 
         collection.update_one(
             {"user.email": onboarding_doc["user"]["email"]},

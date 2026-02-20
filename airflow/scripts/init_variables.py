@@ -71,5 +71,35 @@ def initialize():
     except Exception as e:
         print(f"⚠️ Could not initialize pool: {e}")
 
+    # Auto-unpause DAGs
+    try:
+        from airflow.models import DagModel
+        from airflow.utils.session import create_session
+        
+        target_dags = [
+            'facebook_scraper_dag', 
+            'nextdoor_lead_scraper', 
+            'craigslist_lead_scraper',
+            'facebook_owner_cookie_rotation',
+            'nextdoor_owner_cookie_rotation',
+            'ghl_onboarding_sync_dag'
+        ]
+        
+        with create_session() as session:
+            print("🔓 Preparing to unpause DAGs for automatic execution...")
+            for dag_id in target_dags:
+                dag_model = session.query(DagModel).filter(DagModel.dag_id == dag_id).first()
+                if dag_model:
+                    if dag_model.is_paused:
+                        dag_model.is_paused = False
+                        print(f"▶️ Unpaused DAG: {dag_id}")
+                    else:
+                        print(f"✓ DAG '{dag_id}' is already active.")
+                else:
+                    print(f"ℹ️ DAG '{dag_id}' not found yet (will be active on first scan).")
+            session.commit()
+    except Exception as e:
+        print(f"⚠️ Could not unpause DAGs: {e}")
+
 if __name__ == "__main__":
     initialize()

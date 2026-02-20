@@ -550,7 +550,7 @@ class FacebookScraper(BaseScraper):
         self.logger.info("logging_in_to_facebook")
         
         try:
-            self.driver.get('https://www.facebook.com')
+            self.driver.get('https://www.facebook.com/login')
             time.sleep(5)
             
             # 1. Check for CAPTCHA immediately
@@ -596,20 +596,30 @@ class FacebookScraper(BaseScraper):
             return False
 
     def _is_captcha_present(self):
-        """Detect if reCAPTCHA or Meta CAPTCHA is on screen."""
+        """Detect if reCAPTCHA or Meta CAPTCHA is on screen (Updated for Meta UI)."""
         try:
-            # Look for reCAPTCHA iframes
+            # 1. Check for the "Meta" logo or specific headers
+            if self.driver.find_elements(By.XPATH, "//i[contains(@class, 'fb_logo')]") or \
+               self.driver.find_elements(By.XPATH, "//*[contains(text(), 'bicycles')]") or \
+               self.driver.find_elements(By.XPATH, "//*[contains(text(), 'traffic lights')]"):
+                if "checkpoint" in self.driver.current_url:
+                    return True
+
+            # 2. Look for reCAPTCHA iframes
             iframes = self.driver.find_elements(By.TAG_NAME, 'iframe')
             for iframe in iframes:
                 src = iframe.get_attribute('src') or ""
-                if 'recaptcha' in src or 'captcha' in src:
+                if 'recaptcha' in src or 'captcha' in src or 'checkpoint' in src:
                     return True
             
-            # Look for Meta specific CAPTCHA elements
+            # 3. Look for the "Meta" challenge container
             captcha_indicators = [
                 'img[src*="captcha"]',
                 'div#captcha',
-                'input[name="captcha_response"]'
+                'input[name="captcha_response"]',
+                '.rc-anchor',
+                '#captcha_image',
+                'header img[alt="Meta"]' 
             ]
             for selector in captcha_indicators:
                 if self.driver.find_elements(By.CSS_SELECTOR, selector):
@@ -621,29 +631,44 @@ class FacebookScraper(BaseScraper):
         """Bypass CAPTCHA using 2Captcha if API key is present."""
         api_key = os.getenv("TWO_CAPTCHA_API_KEY")
         if not api_key:
-            self.logger.error("captcha_solver_missing_api_key", msg="Add TWO_CAPTCHA_API_KEY to .env to bypass this.")
+            self.logger.error("captcha_solver_missing_api_key", msg="Please add TWO_CAPTCHA_API_KEY to your .env to bypass the Meta challenge.")
             return False
 
         try:
             from twocaptcha import TwoCaptcha
             solver = TwoCaptcha(api_key)
-            
             self.logger.info("attempting_captcha_solve_via_2captcha")
             
-            # Get site key from reCAPTCHA iframe
-            iframe = self.driver.find_element(By.CSS_SELECTOR, 'iframe[src*="recaptcha/api2/anchor"]')
-            src = iframe.get_attribute('src')
-            site_key = re.search(r'k=([^&]+)', src).group(1)
-            
+            site_key = None
+            try:
+                iframe = self.driver.find_element(By.CSS_SELECTOR, 'iframe[src*="recaptcha/api2/anchor"]')
+                src = iframe.get_attribute('src')
+                site_key = re.search(r'k=([^&]+)', src).group(1)
+            except:
+                try:
+                    page_source = self.driver.page_source
+                    match = re.search(r'data-sitekey="([^"]+)"', page_source)
+                    if match: site_key = match.group(1)
+                except: pass
+
+            if not site_key:
+                self.logger.error("could_not_extract_site_key_from_meta_challenge")
+                return False
+
             result = solver.recaptcha(sitekey=site_key, url=self.driver.current_url)
             code = result['code']
-            
-            # Inject solution
             self.driver.execute_script(f'document.getElementById("g-recaptcha-response").innerHTML="{code}";')
-            self.driver.execute_script('___grecaptcha_cfg.clients[0].aa.l.callback()') # Trigger callback
+            
+            try:
+                self.driver.execute_script('___grecaptcha_cfg.clients[0].aa.l.callback()') 
+            except:
+                try:
+                    verify_btn = self.driver.find_element(By.ID, "recaptcha-verify-button")
+                    verify_btn.click()
+                except: pass
             
             self.logger.info("captcha_solved_successfully")
-            time.sleep(3)
+            time.sleep(5)
             return True
         except Exception as e:
             self.logger.error("captcha_solver_error", error=str(e))
@@ -667,25 +692,56 @@ class FacebookScraper(BaseScraper):
 
     def _fill_credentials(self, email, password):
         try:
-            email_field = WebDriverWait(self.driver, 15).until(
-                EC.presence_of_element_located((By.NAME, 'email'))
-            )
+            # 1. Enter Email
+            email_field = None
+            for selector in ['input[name="email"]', '#email', 'input[type="text"]']:
+                try:
+                    email_field = WebDriverWait(self.driver, 10).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+                    )
+                    if email_field.is_displayed(): break
+                except: continue
+                
+            if not email_field:
+                raise ValueError("Could not find email field.")
+                
             email_field.clear()
             for char in email:
                 email_field.send_keys(char)
-                time.sleep(random.uniform(0.05, 0.15))
+                time.sleep(random.uniform(0.04, 0.1))
             
-            password_field = self.driver.find_element(By.NAME, 'pass')
+            # 2. Enter Password
+            password_field = None
+            for selector in ['input[name="pass"]', '#pass', 'input[type="password"]']:
+                try:
+                    password_field = self.driver.find_element(By.CSS_SELECTOR, selector)
+                    if password_field.is_displayed(): break
+                except: continue
+                
+            if not password_field:
+                raise ValueError("Could not find password field.")
+                
             password_field.clear()
             for char in password:
                 password_field.send_keys(char)
-                time.sleep(random.uniform(0.05, 0.15))
+                time.sleep(random.uniform(0.04, 0.1))
             
-            login_button = self.driver.find_element(By.NAME, 'login')
-            login_button.click()
+            # 3. Click Login
+            login_btn = None
+            for selector in ['button[name="login"]', 'button[type="submit"]', 'input[type="submit"]', '[data-testid="royal_login_button"]']:
+                try:
+                    login_btn = self.driver.find_element(By.CSS_SELECTOR, selector)
+                    if login_btn.is_displayed(): break
+                except: continue
+                
+            if not login_btn:
+                raise ValueError("Could not find login button.")
+                
+            login_btn.click()
             return True
         except Exception as e:
             self.logger.error("credential_fill_failed", error=str(e))
+            # Take screenshot for debugging if possible (it will be in the log if using structlog with exc_info)
             return False
 
     def _save_cookies(self):

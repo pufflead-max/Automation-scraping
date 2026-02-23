@@ -82,12 +82,30 @@ def rotate_nextdoor_owner_cookies(**context):
                 page.wait_for_timeout(5000)
                 
                 # Handle 2FA if needed
-                page_text = page.inner_text('body')
-                if "login code" in page_text.lower() or "enter code" in page_text.lower():
-                    print("🔐 2FA detected. Waiting for 'nextdoor_owner_2fa' variable...")
-                    # Manual intervention needed or automated fetch
-                    Variable.set("nextdoor_owner_2fa", "")
-                    # Wait logic simplified for owner
+                page_text = page.inner_text('body').lower()
+                if "login code" in page_text or "enter code" in page_text or "verification code" in page_text:
+                    two_fa_secret = Variable.get("nextdoor_2fa_secret", default_var=os.getenv("NEXTDOOR_2FA_SECRET"))
+                    
+                    if two_fa_secret:
+                        print("🔐 Generating TOTP code...")
+                        import pyotp
+                        totp = pyotp.TOTP(two_fa_secret.replace(" ", ""))
+                        code = totp.now()
+                        page.locator('input[name="code"], input[id*="id_code"]').first.fill(code)
+                        page.keyboard.press("Enter")
+                        page.wait_for_timeout(5000)
+                    else:
+                        print("🔐 2FA detected but no secret found. Waiting for manual entry in 'nextdoor_owner_2fa' Airflow variable...")
+                        Variable.set("nextdoor_owner_2fa", "WAITING")
+                        # Simple poll logic
+                        for _ in range(30): # Wait 5 minutes max
+                            page.wait_for_timeout(10000)
+                            manual_code = Variable.get("nextdoor_owner_2fa", default_var="")
+                            if manual_code and manual_code != "WAITING":
+                                print(f"📥 Received manual code: {manual_code}")
+                                page.locator('input[name="code"], input[id*="id_code"]').first.fill(manual_code)
+                                page.keyboard.press("Enter")
+                                break
                 
             page.wait_for_url(lambda url: "login" not in url.lower(), timeout=30000)
             cookies = browser_context.cookies()

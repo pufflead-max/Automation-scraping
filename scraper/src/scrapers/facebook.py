@@ -18,16 +18,37 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.service import Service
+from selenium.common.exceptions import TimeoutException, ElementNotInteractableException, NoSuchElementException, ElementClickInterceptedException
 
-from .base import BaseScraper
+
+# Handle imports for both local and Airflow environments
+import sys
+import os
+
+# Ensure the 'src' directory is in PYTHONPATH
+src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if src_dir not in sys.path:
+    sys.path.append(src_dir)
+
 try:
-    from ..models import FacebookLead, ScrapedLead
-    from ..utils.buyer_intent import BuyerIntentDetector
-    from ..user_credential_manager import UserCredentialManager
-except ImportError:
+    # Try absolute imports (works in Airflow when src is in path)
+    from scrapers.base import BaseScraper
     from models import FacebookLead, ScrapedLead
     from utils.buyer_intent import BuyerIntentDetector
     from user_credential_manager import UserCredentialManager
+except ImportError:
+    try:
+        # Try relative imports (works when running as a package)
+        from .base import BaseScraper
+        from ..models import FacebookLead, ScrapedLead
+        from ..utils.buyer_intent import BuyerIntentDetector
+        from ..user_credential_manager import UserCredentialManager
+    except (ImportError, ValueError):
+        # Fallback for direct script execution
+        from base import BaseScraper
+        from models import FacebookLead, ScrapedLead
+        from utils.buyer_intent import BuyerIntentDetector
+        from user_credential_manager import UserCredentialManager
 
 
 class FacebookScraper(BaseScraper):
@@ -206,8 +227,6 @@ class FacebookScraper(BaseScraper):
         except Exception as e:
             self.logger.error("failed_to_load_cookies", error=str(e))
             return False
-
-
 
     def _close_popups(self):
         """Close common Facebook popups."""
@@ -546,84 +565,159 @@ class FacebookScraper(BaseScraper):
             self.logger.debug("scroll_failed", error=str(e))
 
     def login(self, email, password):
-        """Login to Facebook with credentials and save cookies (with CAPTCHA bypass)."""
+        """Login to Facebook with credentials and handle multi-stage security checkpoints."""
         self.logger.info("logging_in_to_facebook")
         
         try:
             self.driver.get('https://www.facebook.com/login')
             time.sleep(5)
             
-            # 1. Check for CAPTCHA immediately
+            # 1. Handle initial blockers
             if self._is_captcha_present():
                 self.logger.warning("captcha_detected_at_login_start")
-                if not self._try_solve_captcha():
-                    self.logger.error("captcha_bypass_failed")
-                    return False
+                self._try_solve_captcha()
 
-            # 2. Handle Cookie Banners
             self._handle_cookie_banners()
             
-            # 3. Fill Credentials
+            # 2. Fill Credentials
             if not self._fill_credentials(email, password):
                 return False
             
-            # 4. Handle Post-Login CAPTCHA / Security Checks
-            self.logger.info("waiting_for_login_completion")
-            time.sleep(12) 
-
-            # Check for checkpoints or second-stage CAPTCHAs
-            if self._is_captcha_present():
-                self.logger.warning("second_stage_captcha_detected")
-                self._try_solve_captcha()
-
-            self._close_popups()
+            # 3. Handle Security Sequence (Loop until logged in or timeout)
+            # Facebook often presents multiple screens: Captcha -> Identity Confirmation -> Home
+            self.logger.info("entering_security_sequence_monitoring")
+            start_time = time.time()
+            max_wait = 150 # 2.5 minutes total for the whole sequence
             
-            if "checkpoint" in self.driver.current_url or "challenge" in self.driver.current_url:
-                self.logger.warning("security_checkpoint_detected", url=self.driver.current_url)
-                return False
-
-            if not self._is_logged_in():
-                if "facebook.com/home" in self.driver.current_url:
-                    self.logger.info("login_verified_via_url")
-                else:
-                    return False
-            
-            self._save_cookies()
-            return True
+            while time.time() - start_time < max_wait:
+                if self._is_logged_in():
+                    self.logger.info("login_successful_verified")
+                    self._save_cookies()
+                    return True
+                
+                # Check for Security Checkpoint or CAPTCHA
+                if self._is_captcha_present():
+                    self.logger.warning("security_challenge_detected_solving")
+                    self._try_solve_captcha()
+                    time.sleep(8) # Wait for page to process solve
+                    continue
+                
+                # Check for "Continue" / "Next" buttons common in security checkpoints
+                continue_selectors = [
+                    'button[type="submit"]',
+                    'button#checkpointSubmitButton',
+                    'div[role="button"][id*="checkpoint"]',
+                    '//button[contains(., "Continue")]',
+                    '//button[contains(., "Next")]',
+                    '//button[contains(., "Yes")]',
+                    '//button[contains(., "OK")]',
+                    '//button[contains(., "This was me")]',
+                    '//button[contains(., "Continuar")]',
+                    '//button[contains(., "Próximo")]',
+                    '//button[contains(., "Confirm")]',
+                    '//span[contains(., "Continue")]/ancestor::button',
+                    '//div[@role="button" and (contains(., "Continue") or contains(., "Continuar"))]'
+                ]
+                
+                button_clicked = False
+                for sel in continue_selectors:
+                    try:
+                        btn = self.driver.find_element(By.XPATH, sel) if sel.startswith('//') else self.driver.find_element(By.CSS_SELECTOR, sel)
+                        if btn.is_displayed() and btn.is_enabled():
+                            self.logger.info("clicking_security_continue_button", selector=sel)
+                            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
+                            time.sleep(1)
+                            self.driver.execute_script("arguments[0].click();", btn)
+                            button_clicked = True
+                            time.sleep(10) # Give it time to load next stage
+                            break
+                    except: continue
+                
+                if not button_clicked:
+                    self.logger.debug("no_actionable_security_elements_waiting", url=self.driver.current_url)
+                    time.sleep(8)
+                    
+            self.logger.error("login_timed_out_no_success_indicators", url=self.driver.current_url)
+            return False
             
         except Exception as e:
-            self.logger.error("login_exception", error=str(e))
+            self.logger.error("login_exception", error=str(e), url=self.driver.current_url)
             return False
 
     def _is_captcha_present(self):
-        """Detect if reCAPTCHA or Meta CAPTCHA is on screen (Updated for Meta UI)."""
-        try:
-            # 1. Check for the "Meta" logo or specific headers
-            if self.driver.find_elements(By.XPATH, "//i[contains(@class, 'fb_logo')]") or \
-               self.driver.find_elements(By.XPATH, "//*[contains(text(), 'bicycles')]") or \
-               self.driver.find_elements(By.XPATH, "//*[contains(text(), 'traffic lights')]"):
-                if "checkpoint" in self.driver.current_url:
-                    return True
+        """Detect if reCAPTCHA or Meta CAPTCHA is on screen.
 
-            # 2. Look for reCAPTCHA iframes
+        IMPORTANT: This method uses conservative detection to avoid false positives.
+        Short or ambiguous strings (e.g. 'puzzle', 'checkpoint') have been removed
+        from text-based detection. Text checks also require the matching element to
+        be visible, ruling out hidden ad units or off-screen content.
+        """
+        try:
+            # 1. Check for known challenge URLs or path segments
+            current_url = self.driver.current_url.lower()
+            if any(x in current_url for x in ['checkpoint', 'challenge', 'captcha']):
+                self.logger.info("captcha_detected_via_url", url=current_url)
+                return True
+
+            # 2. Check for reCAPTCHA / hCaptcha / FunCaptcha iframes (Highest Reliability)
             iframes = self.driver.find_elements(By.TAG_NAME, 'iframe')
             for iframe in iframes:
-                src = iframe.get_attribute('src') or ""
-                if 'recaptcha' in src or 'captcha' in src or 'checkpoint' in src:
-                    return True
-            
-            # 3. Look for the "Meta" challenge container
+                try:
+                    src = iframe.get_attribute('src') or ""
+                    if any(x in src.lower() for x in ['recaptcha', 'captcha', 'hcaptcha', 'arkoselabs', 'checkpoint']):
+                        self.logger.info("captcha_detected_via_iframe", src=src[:100])
+                        return True
+                except: continue
+
+            # 3. Text-based detection — ONLY use long, highly specific phrases that won't
+            #    false-match unrelated page content (ads, nav labels, sidebar text, etc.).
+            #    Removed: 'checkpoint' (covered by URL check), 'puzzle'/'puzzel' (too short,
+            #    caused false positive matching e.g. "bus" substring in prior logs).
+            captcha_texts = [
+                'Confirm Your Identity',
+                'Security Check',
+                'Please solve the puzzle',
+                'Enter the code below',
+                'Help us confirm your identity',
+                'verify your account',
+            ]
+            for text in captcha_texts:
+                try:
+                    text_lower = text.lower()
+                    # Use case-insensitive XPath contains on normalized text
+                    xpath = (
+                        f"//*[contains("
+                        f"translate(normalize-space(.), "
+                        f"'ABCDEFGHIJKLMNOPQRSTUVWXYZ', "
+                        f"'abcdefghijklmnopqrstuvwxyz'), "
+                        f"'{text_lower}')]"
+                    )
+                    matches = self.driver.find_elements(By.XPATH, xpath)
+                    # Extra guard: only count visible elements to avoid hidden ad units
+                    visible = [m for m in matches if m.is_displayed()]
+                    if visible:
+                        self.logger.info("captcha_detected_via_text", text=text)
+                        return True
+                except:
+                    continue
+
+            # 4. Look for the "Meta" challenge container or specific elements
             captcha_indicators = [
                 'img[src*="captcha"]',
-                'div#captcha',
                 'input[name="captcha_response"]',
                 '.rc-anchor',
                 '#captcha_image',
-                'header img[alt="Meta"]' 
+                'header img[alt="Meta"]',
+                '.g-recaptcha',
+                '#recaptcha',
+                '#shredder-iframe', # Internal FB captcha iframe
+                'div[id*="captcha"]'
             ]
             for selector in captcha_indicators:
                 if self.driver.find_elements(By.CSS_SELECTOR, selector):
+                    self.logger.info("captcha_detected_via_selector", selector=selector)
                     return True
+            
             return False
         except: return False
 
@@ -639,37 +733,160 @@ class FacebookScraper(BaseScraper):
             solver = TwoCaptcha(api_key)
             self.logger.info("attempting_captcha_solve_via_2captcha")
             
+            # Try to find reCAPTCHA site key first
             site_key = None
             try:
-                iframe = self.driver.find_element(By.CSS_SELECTOR, 'iframe[src*="recaptcha/api2/anchor"]')
-                src = iframe.get_attribute('src')
-                site_key = re.search(r'k=([^&]+)', src).group(1)
-            except:
-                try:
-                    page_source = self.driver.page_source
-                    match = re.search(r'data-sitekey="([^"]+)"', page_source)
+                # Primary method: check for the recaptcha iframe src
+                iframes = self.driver.find_elements(By.CSS_SELECTOR, 'iframe[src*="recaptcha/api2/anchor"]')
+                if iframes:
+                    src = iframes[0].get_attribute('src')
+                    match = re.search(r'k=([^&]+)', src)
                     if match: site_key = match.group(1)
-                except: pass
+            except: pass
 
             if not site_key:
-                self.logger.error("could_not_extract_site_key_from_meta_challenge")
-                return False
-
-            result = solver.recaptcha(sitekey=site_key, url=self.driver.current_url)
-            code = result['code']
-            self.driver.execute_script(f'document.getElementById("g-recaptcha-response").innerHTML="{code}";')
-            
-            try:
-                self.driver.execute_script('___grecaptcha_cfg.clients[0].aa.l.callback()') 
-            except:
                 try:
-                    verify_btn = self.driver.find_element(By.ID, "recaptcha-verify-button")
-                    verify_btn.click()
+                    # Secondary method: look for data-sitekey attribute in DOM
+                    elements = self.driver.find_elements(By.CSS_SELECTOR, '[data-sitekey]')
+                    if elements:
+                        site_key = elements[0].get_attribute('data-sitekey')
                 except: pass
+
+            if site_key:
+                self.logger.info("solving_recaptcha", site_key=site_key)
+                result = solver.recaptcha(sitekey=site_key, url=self.driver.current_url)
+                code = result['code']
+                
+                # Use JS to inject the code into all possible reCAPTCHA response fields
+                self.driver.execute_script(f"""
+                    const fields = document.querySelectorAll('[id^="g-recaptcha-response"], [name^="g-recaptcha-response"]');
+                    fields.forEach(f => {{
+                        f.innerHTML = "{code}";
+                        f.value = "{code}";
+                        f.style.display = 'block'; // Ensure it's not hidden
+                    }});
+                """)
+                
+                # Check for callbacks
+                try:
+                    self.driver.execute_script("""
+                        if (typeof(onCaptchaFinished) === 'function') { onCaptchaFinished(); }
+                        if (typeof(___grecaptcha_cfg) !== 'undefined') {
+                            Object.keys(___grecaptcha_cfg.clients).forEach(clientId => {
+                                const client = ___grecaptcha_cfg.clients[clientId];
+                                Object.keys(client).forEach(prop => {
+                                    if (client[prop] && client[prop].callback) {
+                                        client[prop].callback();
+                                    }
+                                });
+                            });
+                        }
+                    """) 
+                except:
+                    # Fallback: Click verify button if callback is not found
+                    try:
+                        verify_btn = self.driver.find_element(By.ID, "recaptcha-verify-button")
+                        verify_btn.click()
+                    except: pass
+                
+                self.logger.info("recaptcha_solved_successfully")
+                time.sleep(5)
+                return True
             
-            self.logger.info("captcha_solved_successfully")
-            time.sleep(5)
-            return True
+            # Fallback: Check for Image CAPTCHA (Normal)
+            captcha_img = None
+            image_selectors = [
+                'img[src*="captcha"]', 
+                '#captcha_image', 
+                'img[alt="Captcha"]',
+                'img[src*="checkpoint/dyi"]',
+                'img.captcha'
+            ]
+            for selector in image_selectors:
+                try:
+                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    if elements and elements[0].is_displayed():
+                        captcha_img = elements[0]
+                        break
+                except: continue
+                
+            if captcha_img:
+                self.logger.info("solving_image_captcha")
+                # Wait for image to load
+                time.sleep(2)
+                # Take element screenshot
+                captcha_path = "/tmp/fb_captcha.png"
+                captcha_img.screenshot(captcha_path)
+                
+                result = solver.normal(captcha_path)
+                code = result['code']
+                self.logger.info("image_captcha_solved", code=code)
+                
+                # Find input field to enter the code
+                input_field = None
+                input_selectors = [
+                    'input[name="captcha_response"]', 
+                    'input#captcha_response', 
+                    'input[type="text"]',
+                    'input.captcha_input'
+                ]
+                for selector in input_selectors:
+                    try:
+                        inputs = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                        # Find the first visible/interactable one
+                        for inp in inputs:
+                            if inp.is_displayed():
+                                input_field = inp
+                                break
+                        if input_field: break
+                    except: continue
+                
+                if input_field:
+                    input_field.clear()
+                    input_field.send_keys(code)
+                    time.sleep(1)
+                    
+                    # Instead of .submit(), try to find the "Continue" or "Submit" button
+                    submitted = False
+                    submit_selectors = [
+                        'button[type="submit"]',
+                        'input[type="submit"]',
+                        'button#checkpointSubmitButton',
+                        '//button[contains(., "Continue")]',
+                        '//button[contains(., "Submit")]',
+                        '//button[contains(., "Next")]',
+                        '//button[contains(., "Continuar")]',
+                        '//button[contains(., "Confirm")]',
+                        '//button[contains(., "Entrar")]',
+                        '//div[@role="button" and (contains(., "Continue") or contains(., "Continuar"))]'
+                    ]
+                    
+                    for sel in submit_selectors:
+                        try:
+                            if sel.startswith('//'):
+                                btn = self.driver.find_element(By.XPATH, sel)
+                            else:
+                                btn = self.driver.find_element(By.CSS_SELECTOR, sel)
+                                
+                            if btn.is_displayed():
+                                self.driver.execute_script("arguments[0].click();", btn)
+                                self.logger.info("captcha_submit_button_clicked", selector=sel)
+                                submitted = True
+                                break
+                        except: continue
+                        
+                    if not submitted:
+                        # Fallback: Send Enter key
+                        self.logger.info("no_submit_button_found_sending_enter")
+                        input_field.send_keys(Keys.ENTER)
+                        
+                    time.sleep(5)
+                    return True
+                else:
+                    self.logger.error("could_not_find_captcha_input_field")
+            
+            self.logger.error("could_not_extract_any_captcha_type")
+            return False
         except Exception as e:
             self.logger.error("captcha_solver_error", error=str(e))
             return False
@@ -679,69 +896,149 @@ class FacebookScraper(BaseScraper):
             "//button[contains(., 'Allow all cookies')]",
             "//button[contains(., 'Allow essential and optional cookies')]",
             "//button[contains(., 'Accept All')]",
-            "//button[@data-cookiebanner='accept_button']"
+            "//button[contains(., 'Accept all')]",
+            "//button[contains(., 'Only allow essential cookies')]",
+            "//button[contains(., 'Decline optional cookies')]",
+            "//button[@data-cookiebanner='accept_button']",
+            "//button[@id='cookie_banner_accept_button']"
         ]
         for xpath in cookie_selectors:
             try:
                 btns = self.driver.find_elements(By.XPATH, xpath)
-                if btns and btns[0].is_displayed():
-                    btns[0].click()
+                if btns:
+                    self.driver.execute_script("arguments[0].scrollIntoView(true);", btns[0])
+                    time.sleep(0.5)
+                    try:
+                        btns[0].click()
+                    except:
+                        self.driver.execute_script("arguments[0].click();", btns[0])
+                    self.logger.info("cookie_banner_clicked", xpath=xpath)
                     time.sleep(2)
                     break
             except: continue
 
-    def _fill_credentials(self, email, password):
+    def _fill_credentials(self, email, password, retry_count=0):
+        """Fill email and password fields, handling popups and interactability issues."""
+        if retry_count > 3:
+            self.logger.error("max_fill_retries_reached_aborting")
+            return False
+            
         try:
+            self.logger.info("filling_credentials", url=self.driver.current_url)
             # 1. Enter Email
             email_field = None
-            for selector in ['input[name="email"]', '#email', 'input[type="text"]']:
+            email_selectors = ['input[name="email"]', '#email', 'input[type="text"]', 'input[placeholder*="Email"]', 'input[aria-label*="email"]']
+            
+            for selector in email_selectors:
                 try:
                     email_field = WebDriverWait(self.driver, 10).until(
                         EC.presence_of_element_located((By.CSS_SELECTOR, selector))
                     )
-                    if email_field.is_displayed(): break
+                    if email_field.is_displayed(): 
+                        self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", email_field)
+                        time.sleep(1)
+                        break
                 except: continue
                 
             if not email_field:
-                raise ValueError("Could not find email field.")
+                url = self.driver.current_url
+                self.logger.warning("email_field_not_found", url=url, title=self.driver.title)
+                if self._is_captcha_present():
+                    self.logger.warning("captcha_detected_during_fill_credentials")
+                    self._try_solve_captcha()
+                    return self._fill_credentials(email, password, retry_count + 1)
                 
-            email_field.clear()
-            for char in email:
-                email_field.send_keys(char)
-                time.sleep(random.uniform(0.04, 0.1))
-            
+                if "cookie" in url.lower() or "consent" in url.lower():
+                    self.logger.info("looks_like_cookie_consent_landing_page")
+                    self._handle_cookie_banners()
+                    time.sleep(3)
+                    return self._fill_credentials(email, password, retry_count + 1)
+                
+                raise ValueError(f"Could not find email field on page: {url}")
+                
+            # Use JS to focus and clear to avoid focus issues
+            self.driver.execute_script("arguments[0].focus();", email_field)
+            self.driver.execute_script("arguments[0].value = '';", email_field)
+            time.sleep(0.5)
+
+            # Try to type normally first, fallback to JS if it fails
+            try:
+                for char in email:
+                    email_field.send_keys(char)
+                    time.sleep(random.uniform(0.04, 0.12))
+                self.logger.info("email_typed_standard")
+            except Exception as e:
+                self.logger.warning("email_typing_standard_failed_using_js", error=str(e))
+                self.driver.execute_script("arguments[0].value = arguments[1];", email_field, email)
+
             # 2. Enter Password
             password_field = None
-            for selector in ['input[name="pass"]', '#pass', 'input[type="password"]']:
+            password_selectors = ['input[name="pass"]', '#pass', 'input[type="password"]', 'input[placeholder*="Password"]', 'input[aria-label*="password"]']
+            
+            for selector in password_selectors:
                 try:
                     password_field = self.driver.find_element(By.CSS_SELECTOR, selector)
-                    if password_field.is_displayed(): break
+                    if password_field.is_displayed(): 
+                        self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", password_field)
+                        time.sleep(1)
+                        break
                 except: continue
                 
             if not password_field:
                 raise ValueError("Could not find password field.")
                 
-            password_field.clear()
-            for char in password:
-                password_field.send_keys(char)
-                time.sleep(random.uniform(0.04, 0.1))
+            self.driver.execute_script("arguments[0].focus();", password_field)
+            self.driver.execute_script("arguments[0].value = '';", password_field)
+            time.sleep(0.5)
+
+            try:
+                for char in password:
+                    password_field.send_keys(char)
+                    time.sleep(random.uniform(0.04, 0.12))
+                self.logger.info("password_typed_standard")
+            except Exception as e:
+                self.logger.warning("password_typing_standard_failed_using_js", error=str(e))
+                self.driver.execute_script("arguments[0].value = arguments[1];", password_field, password)
             
             # 3. Click Login
             login_btn = None
-            for selector in ['button[name="login"]', 'button[type="submit"]', 'input[type="submit"]', '[data-testid="royal_login_button"]']:
+            login_selectors = ['button[name="login"]', 'button[type="submit"]', 'input[type="submit"]', '[data-testid="royal_login_button"]']
+            
+            for selector in login_selectors:
                 try:
                     login_btn = self.driver.find_element(By.CSS_SELECTOR, selector)
-                    if login_btn.is_displayed(): break
+                    if login_btn.is_displayed(): 
+                        self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", login_btn)
+                        time.sleep(1)
+                        break
                 except: continue
+                
+            if not login_btn:
+                # Last resort: look for any button with "Log In"
+                try:
+                    login_btn = self.driver.find_element(By.XPATH, "//button[contains(., 'Log In')] | //button[contains(., 'Entrar')]")
+                except: pass
                 
             if not login_btn:
                 raise ValueError("Could not find login button.")
                 
-            login_btn.click()
+            self.logger.info("clicking_login_button")
+            try:
+                # Try clicking normally with a shorter wait
+                WebDriverWait(self.driver, 5).until(EC.element_to_be_clickable(login_btn))
+                login_btn.click()
+            except Exception as e:
+                self.logger.warning("click_standard_failed_using_js", error=str(e))
+                self.driver.execute_script("arguments[0].click();", login_btn)
+                
             return True
         except Exception as e:
-            self.logger.error("credential_fill_failed", error=str(e))
-            # Take screenshot for debugging if possible (it will be in the log if using structlog with exc_info)
+            self.logger.error("credential_fill_failed", error=str(e), url=self.driver.current_url, title=self.driver.title)
+            # Check for captcha one last time if failed
+            if self._is_captcha_present():
+                self.logger.warning("captcha_detected_after_fill_failure")
+                if self._try_solve_captcha():
+                    return self._fill_credentials(email, password, retry_count + 1) # Recursive retry
             return False
 
     def _save_cookies(self):
@@ -793,6 +1090,7 @@ class FacebookScraper(BaseScraper):
                 'a[aria-label="Home"]',
                 'div[aria-label*="Stories"]',
                 '[role="feed"]',
+                'div[aria-label*="What\'s on your mind?"]', # Feed indicator
                 'a[href="/"]'
             ]
             for inc in indicators:
@@ -804,11 +1102,10 @@ class FacebookScraper(BaseScraper):
             login_buttons = [
                 'button[name="login"]',
                 'a[href*="/login"]',
-                'button:contains("Log In")' # This won't work with By.CSS_SELECTOR directly but good reference
             ]
-            for btn_sel in login_buttons[:2]: # Only first two for CSS
-                 if self.driver.find_elements(By.CSS_SELECTOR, btn_sel):
-                     return False
+            for btn_sel in login_buttons:
+                if self.driver.find_elements(By.CSS_SELECTOR, btn_sel):
+                    return False
                      
             return False
         except Exception as e:

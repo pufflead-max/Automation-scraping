@@ -56,8 +56,7 @@ def rotate_facebook_owner_cookies(**context):
         else:
             raise ValueError(f"Facebook login failed for owner {owner_email}")
     finally:
-        if scraper.driver:
-            scraper.driver.quit()
+        scraper.quit()
 
 with DAG(
     'facebook_owner_cookie_rotation',

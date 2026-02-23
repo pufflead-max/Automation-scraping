@@ -9,6 +9,8 @@ import time
 import traceback
 import random
 import logging
+import zipfile
+import tempfile
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -72,12 +74,37 @@ class FacebookScraper(BaseScraper):
         self.seen_urls = set()
         self.seen_texts = set()
         self.driver = None
+        self.proxy_tmp_dir = None
 
     def _init_driver(self, headless: bool = True):
-        """Initialize the Selenium driver with stealth settings."""
+        """Initialize the Selenium driver with stealth settings and proxies."""
         self.logger.info("initializing_selenium_driver", headless=headless)
         
         options = Options()
+        
+        # 1. Setup Proxies
+        proxy_server = self.cfg.get('decodo_proxy_server')
+        proxy_user = self.cfg.get('decodo_proxy_user')
+        proxy_pass = self.cfg.get('decodo_proxy_pass')
+
+        if proxy_server:
+            try:
+                # Format: http://gate.decodo.com:10001
+                host_port = proxy_server.replace("http://", "").replace("https://", "")
+                if ":" in host_port:
+                    host, port = host_port.split(":")
+                    if proxy_user and proxy_pass:
+                        self.logger.info("loading_proxy_with_auth", host=host, port=port)
+                        # Create a temporary directory for the extension
+                        self.proxy_tmp_dir = tempfile.mkdtemp()
+                        extension_path = self._create_proxy_extension(host, port, proxy_user, proxy_pass, self.proxy_tmp_dir)
+                        options.add_extension(extension_path)
+                    else:
+                        self.logger.info("loading_proxy_no_auth", host=host, port=port)
+                        options.add_argument(f'--proxy-server={proxy_server}')
+            except Exception as e:
+                self.logger.error("proxy_setup_failed", error=str(e))
+
         if headless:
             options.add_argument('--headless=new')
         
@@ -134,6 +161,86 @@ class FacebookScraper(BaseScraper):
             pass
             
         self.logger.info("driver_initialized")
+
+    def _create_proxy_extension(self, proxy_host, proxy_port, proxy_user, proxy_pass, folder):
+        """Create a Chrome extension on the fly to handle proxy authentication."""
+        manifest_json = """
+        {
+            "version": "1.0.0",
+            "manifest_version": 2,
+            "name": "Chrome Proxy",
+            "permissions": [
+                "proxy",
+                "tabs",
+                "unlimitedStorage",
+                "storage",
+                "<all_urls>",
+                "webRequest",
+                "webRequestBlocking"
+            ],
+            "background": {
+                "scripts": ["background.js"]
+            },
+            "minimum_chrome_version":"22.0.0"
+        }
+        """
+
+        background_js = """
+        var config = {
+                mode: "fixed_servers",
+                rules: {
+                singleProxy: {
+                    scheme: "http",
+                    host: "%s",
+                    port: parseInt(%s)
+                },
+                bypassList: ["localhost"]
+                }
+            };
+
+        chrome.proxy.settings.set({value: config, scope: "regular"}, function() {});
+
+        chrome.webRequest.onAuthRequired.addListener(
+                    function(details) {
+                        return {
+                            authCredentials: {
+                                username: "%s",
+                                password: "%s"
+                            }
+                        };
+                    },
+                    {urls: ["<all_urls>"]},
+                    ["blocking"]
+        );
+        """ % (proxy_host, proxy_port, proxy_user, proxy_pass)
+
+        extension_path = os.path.join(folder, 'proxy_auth_plugin.zip')
+        with zipfile.ZipFile(extension_path, 'w') as zp:
+            zp.writestr("manifest.json", manifest_json)
+            zp.writestr("background.js", background_js)
+
+        return extension_path
+
+    def quit(self):
+        """Quit the driver and clean up resources."""
+        if self.driver:
+            try:
+                self.driver.quit()
+                self.logger.info("driver_quit_successful")
+            except Exception as e:
+                self.logger.warning("driver_quit_failed", error=str(e))
+        
+        # Clean up temporary proxy directory
+        if self.proxy_tmp_dir and os.path.exists(self.proxy_tmp_dir):
+            import shutil
+            try:
+                shutil.rmtree(self.proxy_tmp_dir)
+                self.logger.info("proxy_temp_dir_cleaned", path=self.proxy_tmp_dir)
+            except Exception as e:
+                self.logger.warning("proxy_temp_dir_cleanup_failed", error=str(e))
+        
+        self.driver = None
+        self.proxy_tmp_dir = None
 
     def _inject_stealth_scripts(self):
         """Inject JavaScript to mask automation (enhanced version)"""
@@ -1411,8 +1518,7 @@ class FacebookScraper(BaseScraper):
             traceback.print_exc()
             raise # Re-raise to ensure Airflow sees the failure
         finally:
-            if self.driver:
-                self.driver.quit()
+            self.quit()
                 
         return extracted_leads
 

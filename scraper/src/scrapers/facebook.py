@@ -60,6 +60,7 @@ class FacebookScraper(BaseScraper):
         super().__init__("facebook", db_manager=kwargs.get('db_manager'))
         self.cookies = cookies or {}
         self.headless_default = kwargs.get('headless', True)
+        self.use_proxy = kwargs.get('use_proxy', False)
         
         # Load cookie file if path provided
         if isinstance(self.cookies, str) and os.path.exists(self.cookies):
@@ -78,32 +79,31 @@ class FacebookScraper(BaseScraper):
 
     def _init_driver(self, headless: bool = True):
         """Initialize the Selenium driver with stealth settings and proxies."""
-        self.logger.info("initializing_selenium_driver", headless=headless)
+        self.logger.info("initializing_selenium_driver", headless=headless, use_proxy=self.use_proxy)
         
         options = Options()
         
-        # 1. Setup Proxies
-        proxy_server = self.cfg.get('decodo_proxy_server')
-        proxy_user = self.cfg.get('decodo_proxy_user')
-        proxy_pass = self.cfg.get('decodo_proxy_pass')
-
-        if proxy_server:
-            try:
-                # Format: http://gate.decodo.com:10001
-                host_port = proxy_server.replace("http://", "").replace("https://", "")
-                if ":" in host_port:
-                    host, port = host_port.split(":")
-                    if proxy_user and proxy_pass:
-                        self.logger.info("loading_proxy_with_auth", host=host, port=port)
-                        # Create a temporary directory for the extension
-                        self.proxy_tmp_dir = tempfile.mkdtemp()
-                        extension_path = self._create_proxy_extension(host, port, proxy_user, proxy_pass, self.proxy_tmp_dir)
-                        options.add_extension(extension_path)
-                    else:
-                        self.logger.info("loading_proxy_no_auth", host=host, port=port)
-                        options.add_argument(f'--proxy-server={proxy_server}')
-            except Exception as e:
-                self.logger.error("proxy_setup_failed", error=str(e))
+        # 1. Setup Proxies (COMMENTED OUT FOR NOW)
+        # proxy_server = self.cfg.get('decodo_proxy_server')
+        # proxy_user = self.cfg.get('decodo_proxy_user')
+        # proxy_pass = self.cfg.get('decodo_proxy_pass')
+        # 
+        # if self.use_proxy and proxy_server:
+        #     try:
+        #         # Format: http://gate.decodo.com:10001
+        #         host_port = proxy_server.replace("http://", "").replace("https://", "")
+        #         if ":" in host_port:
+        #             host, port = host_port.split(":")
+        #             if proxy_user and proxy_pass:
+        #                 self.logger.info("loading_proxy_with_auth", host=host, port=port)
+        #                 self.proxy_tmp_dir = tempfile.mkdtemp()
+        #                 extension_path = self._create_proxy_extension(host, port, proxy_user, proxy_pass, self.proxy_tmp_dir)
+        #                 options.add_extension(extension_path)
+        #             else:
+        #                 self.logger.info("loading_proxy_no_auth", host=host, port=port)
+        #                 options.add_argument(f'--proxy-server={proxy_server}')
+        #     except Exception as e:
+        #         self.logger.error("proxy_setup_failed", error=str(e))
 
         if headless:
             options.add_argument('--headless=new')

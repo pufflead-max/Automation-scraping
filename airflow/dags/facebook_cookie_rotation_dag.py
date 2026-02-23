@@ -37,7 +37,7 @@ def rotate_facebook_owner_cookies(**context):
     printable_email = owner_email[:3] + "***" + owner_email[owner_email.find("@"):] if "@" in owner_email else owner_email[:4] + "***"
     print(f"🚀 Starting Facebook cookie rotation for OWNER account: {printable_email}")
     
-    scraper = FacebookScraper(headless=True)
+    scraper = FacebookScraper(headless=True, use_proxy=True)
     try:
         scraper._init_driver(headless=True)
         success = scraper.login(owner_email, owner_password)

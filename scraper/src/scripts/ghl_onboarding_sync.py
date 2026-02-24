@@ -184,8 +184,8 @@ def sync_ghl_onboarding():
                 logger.debug("skipping_contact", email=contact.get('email'), reason="source_match_but_not_customer", type=contact_type or cf_contact_type)
             continue
         
-        raw_state = get_cf("State")
-        raw_city = get_cf("City")
+        raw_state = contact.get('state') or get_cf("State")
+        raw_city = contact.get('city') or get_cf("City")
         
         # Validate and Standardize Geo Data
         std_state, std_city, std_code = validate_geo_data(db, raw_state, raw_city)

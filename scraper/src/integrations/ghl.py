@@ -180,39 +180,56 @@ class GHLClient:
         return f"{name_part}_{id_hash}@scraped.local"
 
     def save_scraped_lead(self, scraped_lead: Dict[str, Any]) -> Optional[str]:
-        user_email = scraped_lead.get('user_email')
-        user_name = scraped_lead.get('user_name')
-        user_phone = scraped_lead.get('user_phone')
+        """
+        Saves a lead as a separate contact in GHL without overwriting the Contractor/User profile.
+        Contractor details are stored in 'Owner' custom fields for linking.
+        """
+        # Generate a unique email for the LEAD (not the user) to prevent merging with Victor's customer record
+        lead_email = self._generate_deterministic_email(scraped_lead)
         
+        # Mapping to standalone contact with Owner details in custom fields
+        mapping = {
+            "source": "source", "city": "city", "vertical": "vertical",
+            "title": "Lead Title", "description": "Lead Description", 
+            "author_name": "Author Name", "source_url": "Source URL",
+            # Map Contractor details to Owner custom fields
+            "user_name": "Owner Name", "user_email": "Owner Email", "user_phone": "Owner Phone"
+        }
+        
+        # Build the payload
+        contact_payload = self.map_lead_to_ghl(scraped_lead, mapping)
+        contact_payload['email'] = lead_email
+        contact_payload['name'] = scraped_lead.get('title', 'New Lead')[:100]
+        
+        # Tags to identify this as a separate Lead
         tags = scraped_lead.get('tags', [])
+        tags.extend(['status:lead', 'type:lead', 'scraped_lead'])
         if scraped_lead.get('source') == 'craigslist':
             tags.extend(['Dino Landscape', 'Landscaping', 'Craigslist'])
-        
-        contact_id = None
-        if user_email:
-            contact_payload = {
-                "name": user_name or "Unknown User",
-                "email": user_email,
-                "phone": user_phone,
-                "tags": list(set(["automation_user", "lead_owner"] + tags))
-            }
-            if scraped_lead.get('pipeline_id') and scraped_lead.get('stage_id'):
-                 contact_payload['pipelineId'] = scraped_lead['pipeline_id']
-                 contact_payload['pipelineStageId'] = scraped_lead['stage_id']
-            elif scraped_lead.get('source') == 'craigslist':
-                 contact_payload['tags'].append('Manual Reply Stage')
-            contact_id = self.upsert_contact(contact_payload)
-        
-        schema_id = self.ensure_scraped_leads_schema()
-        if schema_id:
-            record_data = self._map_to_custom_object(scraped_lead)
-            if contact_id: record_data['contactId'] = contact_id
-            record_id = self.create_custom_object_record(schema_id, record_data)
-            if record_id: return record_id
-        
-        if contact_id: return self.add_contact_note(contact_id, scraped_lead)
-        return self._save_as_contact(scraped_lead)
+        contact_payload['tags'] = list(set(tags))
 
+        # UPSERT the lead as a separate contact
+        contact_id = self.upsert_contact(contact_payload)
+        
+        if contact_id:
+            # Add note for full lead context
+            self.add_contact_note(contact_id, scraped_lead)
+
+        # Optional: Try Custom Object if enabled
+        try:
+            schema_id = self.ensure_scraped_leads_schema()
+            if schema_id:
+                record_data = self._map_to_custom_object(scraped_lead)
+                if contact_id: record_data['contactId'] = contact_id
+                self.create_custom_object_record(schema_id, record_data)
+        except Exception: pass
+
+        return contact_id
+
+    def _save_as_contact(self, lead: Dict[str, Any]) -> Optional[str]:
+        """Deprecated in favor of the new save_scraped_lead logic."""
+        return self.save_scraped_lead(lead)
+    
     def add_contact_note(self, contact_id: str, lead: Dict[str, Any]) -> Optional[str]:
         note_body = (
             f"NEW SCRAPED LEAD FOUND:\n"
@@ -274,14 +291,20 @@ class GHLClient:
             "images": "Images", "videos": "Videos", "source_url": "source_url", "source_id": "Source ID",
             "author_name": "Author Name", "description": "Lead Description", "title": "Lead Title",
             "category": "Lead Category", "comment_count": "Comment Count", "is_service_request": "Services Requested",
-            "user_name": "Owner Name", "user_email": "Owner Email", "user_phone": "Owner Phone"
+            "user_name": "name", "user_email": "email", "user_phone": "phone"
         }
         
         temp_lead["source_url_display"] = temp_lead.get("source_url")
         mapping["source_url_display"] = "Source URL"
         
         contact_payload = self.map_lead_to_ghl(temp_lead, mapping)
-        contact_payload['name'] = name
+        
+        # If user_name is available, use it as the primary contact name
+        if temp_lead.get('user_name'):
+            contact_payload['name'] = temp_lead['user_name']
+        else:
+            contact_payload['name'] = name # Fallback to lead title/author
+            
         if temp_lead.get('tags'):
             contact_payload['tags'] = list(set(contact_payload.get('tags', []) + temp_lead['tags']))
         if temp_lead.get('pipelineId'): contact_payload['pipelineId'] = temp_lead['pipelineId']
@@ -291,7 +314,7 @@ class GHLClient:
     def map_lead_to_ghl(self, lead: Dict[str, Any], mapping: Dict[str, str]) -> Dict[str, Any]:
         ghl_contact = {"locationId": self.location_id, "customField": {}}
         standard_fields = ['firstName', 'lastName', 'name', 'email', 'phone', 'address1', 'city', 
-                          'state', 'country', 'postalCode', 'companyName', 'website', 'tags', 'source', 'source_url']
+                          'state', 'country', 'postalCode', 'companyName', 'website', 'tags', 'source']
         
         for lead_key, ghl_key in mapping.items():
             value = lead.get(lead_key)

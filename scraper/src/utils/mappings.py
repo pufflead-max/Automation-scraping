@@ -74,25 +74,33 @@ class MappingManager:
         cats = {
             "landscaping": ["fgs", "lbg", "hss"],
             "cleaning": ["hss"],
-            "painting": ["hss", "lbg"],
-            "asphalt_paving": ["hss", "lbg"],
-            "carpentry": ["hss", "lbg"],
-            "fencing": ["hss", "lbg"],
-            "flooring": ["hss", "lbg"]
+            "painting": ["fgs", "hss", "lbg"],
+            "asphalt_paving": ["fgs", "hss", "lbg"],
+            "carpentry": ["fgs", "hss", "lbg"],
+            "fencing": ["fgs", "hss", "lbg"],
+            "flooring": ["fgs", "hss", "lbg"]
         }
-        return cats.get(vertical, ["hss", "lbg", "sss"]) # Extended defaults
+        return cats.get(vertical, ["fgs", "hss", "lbg", "sss"]) # Extended defaults
 
     def _get_region_path(self, region: str) -> str:
         """Map region name to Craigslist region path."""
         if not region: return ""
-        r = region.lower()
-        if "south shore" in r: return "/sob"
-        if "greater boston" in r: return "/gbs"
-        if "northwest" in r: return "/nwb"
-        if "north shore" in r: return "/nos"
-        if "metro west" in r: return "/bmw"
-        if "cape cod" in r: return "/cap"
-        if "worcester" in r: return "/wma"
+        r = region.lower().strip()
+        # Common Boston Sub-Regions (MA)
+        if any(x in r for x in ["south shore", "weymouth", "hingham", "quincy", "braintree", "hull", "scituate"]): 
+            return "/sob"
+        if any(x in r for x in ["greater boston", "cambridge", "brookline", "somerville", "boston"]): 
+            return "/gbs"
+        if any(x in r for x in ["northwest", "lexington", "concord", "arlington"]): 
+            return "/nwb"
+        if any(x in r for x in ["north shore", "salem", "lynn", "peabody", "beverly"]): 
+            return "/nos"
+        if any(x in r for x in ["metro west", "framingham", "natick", "newton", "waltham"]): 
+            return "/bmw"
+        if any(x in r for x in ["cape cod", "barnstable", "falmouth", "hyannis"]): 
+            return "/cap"
+        if any(x in r for x in ["worcester", "central ma", "shrewsbury", "auburn"]): 
+            return "/wma"
         return ""
 
     def get_user_mappings(self, user_email: str) -> List[Dict[str, Any]]:
@@ -154,7 +162,7 @@ class MappingManager:
                 cl_region = self._get_region_path(region)
                 cl_urls = []
                 for cat in self._get_craigslist_categories(v_slug):
-                    cl_urls.append(f"https://{cl_subdomain}.craigslist.org/search{cl_region}/{cat}?query={user_city.lower()}")
+                    cl_urls.append(f"https://{cl_subdomain}.craigslist.org/search{cl_region}/{cat}")
 
                 # 3. Facebook Dynamic Search URLs
                 fb_urls = []
@@ -191,7 +199,7 @@ class MappingManager:
                     cl_subdomain = self._get_craigslist_subdomain(state_code, city)
                     cl_region = self._get_region_path(user_data.get("region"))
                     for cat in self._get_craigslist_categories(v_slug):
-                        cl_urls.append(f"https://{cl_subdomain}.craigslist.org/search{cl_region}/{cat}?query={city.lower()}")
+                        cl_urls.append(f"https://{cl_subdomain}.craigslist.org/search{cl_region}/{cat}")
                     
                     results.append({
                         "state": user_state,

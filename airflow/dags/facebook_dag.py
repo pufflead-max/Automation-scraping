@@ -1,5 +1,5 @@
 """
-Airflow DAG for Facebook lead scraping with dynamic URL loading.
+Airflow DAG for Facebook lead scraping with DYNAMIC task mapping.
 """
 from datetime import datetime, timedelta
 from airflow import DAG
@@ -39,46 +39,38 @@ def load_facebook_urls(**context):
     from utils.mappings import get_mapping_manager
     mapper = get_mapping_manager()
 
-    # If specific user requested
+    all_tasks = []
     if user_email_override:
         mappings = mapper.get_user_mappings(user_email_override)
-        all_tasks = []
         for m in mappings:
             fb_config = m.get("facebook", {})
             urls = fb_config.get("group_urls", []) + fb_config.get("page_urls", [])
             for url in urls:
-                all_tasks.append({"url": url, "user_email": user_email_override, "vertical": m.get("vertical")})
-        return all_tasks
-
-    # Otherwise, load ALL users with onboarding_status check if needed
-    from user_credential_manager import UserCredentialManager
-    manager = UserCredentialManager()
-    all_users = manager.db.find_many(manager.collection, {})
-    
-    all_tasks = []
-    for user_doc in all_users:
-        u_email = user_doc.get("user", {}).get("email")
-        if not u_email: continue
+                all_tasks.append({"target_data": {"url": url, "user_email": user_email_override, "vertical": m.get("vertical")}})
+    else:
+        from user_credential_manager import UserCredentialManager
+        manager = UserCredentialManager()
+        all_users = manager.db.find_many(manager.collection, {})
         
-        mappings = mapper.get_user_mappings(u_email)
-        for m in mappings:
-            fb_config = m.get("facebook", {})
-            urls = fb_config.get("group_urls", []) + fb_config.get("page_urls", [])
-            for url in urls:
-                all_tasks.append({"url": url, "user_email": u_email, "vertical": m.get("vertical")})
+        for user_doc in all_users:
+            u_email = user_doc.get("user", {}).get("email")
+            if not u_email: continue
+            
+            mappings = mapper.get_user_mappings(u_email)
+            for m in mappings:
+                fb_config = m.get("facebook", {})
+                urls = fb_config.get("group_urls", []) + fb_config.get("page_urls", [])
+                for url in urls:
+                    all_tasks.append({"target_data": {"url": url, "user_email": u_email, "vertical": m.get("vertical")}})
             
     return all_tasks
 
-def scrape_facebook_url(target_data, url_index: int, **context):
+def scrape_facebook_url(target_data, **kwargs):
     from scrapers import FacebookScraper
     
     target_url = target_data.get('url')
     user_email = target_data.get('user_email')
     vertical_slug = target_data.get('vertical')
-
-    if not user_email: 
-        print(f"⚠️ No user_email context for {target_url}. Skipping.")
-        return 0
 
     user_details = get_user_details(user_email)
     if not user_details:
@@ -87,7 +79,6 @@ def scrape_facebook_url(target_data, url_index: int, **context):
     
     fb_onboarding = user_details.get("facebook", {})
     user_fb_config = user_details.get("scraping_config", {}).get("facebook", {}) if user_details else {}
-    
     limit = int(user_fb_config.get("limit", Variable.get("facebook_post_limit", default_var="25")))
     headless = user_fb_config.get("headless", Variable.get("facebook_headless", default_var="true").lower() == "true")
     
@@ -114,71 +105,42 @@ def scrape_facebook_url(target_data, url_index: int, **context):
 
     from user_credential_manager import UserCredentialManager
     manager = UserCredentialManager()
-    
-    # Use global owner account instead of per-user
     owner_email = Variable.get("facebook_owner_email", default_var=os.getenv("FACEBOOK_EMAIL"))
     owner_password = Variable.get("facebook_owner_password", default_var=os.getenv("FACEBOOK_PASSWORD"))
-    
-    # Load owner cookies
     cookies = manager.load_cookies(owner_email, 'facebook') if owner_email else None
-    
     user_data = user_details.get("user")
 
-    try:
-        scraper = FacebookScraper(cookies=cookies, headless=headless)
-        results = scraper.run(
-            target=target_url, 
-            limit=limit, 
-            save_to_db=True, 
-            keywords=custom_keywords,
-            exclude_keywords=exclude_keywords,
-            custom_indicators=custom_indicators,
-            user_data=user_data,
-            email=owner_email,
-            password=owner_password
-        )
-        return len(results)
-    except Exception as e:
-        error_msg = str(e)
-        if "authentication failed" in error_msg.lower() or "session invalid" in error_msg.lower():
-            try:
-                from airflow.api.common.trigger_dag import trigger_dag
-                trigger_dag(
-                    dag_id='facebook_multi_user_cookie_rotation',
-                    run_id=f'auto_rotate_fb_owner_{datetime.now().strftime("%Y%m%d%H%M%S")}',
-                    conf={'user_email': owner_email},
-                    replace_microseconds=False
-                )
-            except: pass
-        raise
+    scraper = FacebookScraper(cookies=cookies, headless=headless)
+    results = scraper.run(
+        target=target_url, limit=limit, save_to_db=True, 
+        keywords=custom_keywords, exclude_keywords=exclude_keywords, 
+        custom_indicators=custom_indicators, user_data=user_data,
+        email=owner_email, password=owner_password
+    )
+    return len(results)
 
 with DAG(
     'facebook_scraper_dag',
     default_args=default_args,
-    description='Scrape Facebook pages',
+    description='Scrape Facebook pages with DYNAMIC mapping',
     schedule_interval='*/15 * * * *',
     catchup=False,
     tags=['scraping', 'facebook'],
     max_active_runs=1,
 ) as dag:
 
-    scrape_tasks = []
-    for idx in range(10):
-        task_id = f'scrape_facebook_url_{idx + 1}'
-        
-        def dynamic_scrape_task(url_index, **context):
-            urls = load_facebook_urls(**context)
-            if url_index >= len(urls): return 0
-            return scrape_facebook_url(urls[url_index], url_index, **context)
+    load_urls_task = PythonOperator(
+        task_id='load_facebook_urls',
+        python_callable=load_facebook_urls,
+    )
 
-        task = PythonOperator(
-            task_id=task_id,
-            python_callable=dynamic_scrape_task,
-            op_kwargs={'url_index': idx},
-            provide_context=True,
-            pool='scraper_pool',
-        )
-        scrape_tasks.append(task)
+    scrape_task = PythonOperator.partial(
+        task_id='scrape_facebook_url',
+        python_callable=scrape_facebook_url,
+        pool='scraper_pool',
+    ).expand(
+        op_kwargs=load_urls_task.output
+    )
     
     def push_facebook_leads_to_ghl(**context):
         from push_leads import push_leads
@@ -208,4 +170,4 @@ with DAG(
         provide_context=True,
     )
 
-    scrape_tasks >> push_task >> summary_task
+    load_urls_task >> scrape_task >> push_task >> summary_task

@@ -84,44 +84,43 @@ class BaseScraper(ABC):
         try:
             leads = self.scrape(target, **kw)
             self.scraped_items = leads
-            buyers = [l for l in leads if getattr(l, 'is_buyer_request', False) or getattr(l, 'is_service_request', False)]
             
+            # 1. Decorate ALL leads with user metadata
+            for l in leads:
+                if user_data:
+                    l.user_email = user_data.get('email')
+                    l.user_name = user_data.get('name')
+                    l.user_phone = user_data.get('phone')
+                    l.extra_data = l.extra_data or {}
+                    l.extra_data['user_detail'] = user_data
+            
+            # 2. Save ALL leads to Raw Data collection
+            if save and leads:
+                self.save_leads(leads, f"{self.name.capitalize()}_raw_data")
+            
+            # 3. Filter and Enrich Buyer Requests
+            buyers = [l for l in leads if getattr(l, 'is_buyer_request', False) or getattr(l, 'is_service_request', False)]
             self.logger.info("filtered", total=len(leads), buyers=len(buyers))
             
+            final_leads = []
             if buyers:
-                final_leads = []
-                required_verticals = kw.get('required_verticals')
-                if isinstance(required_verticals, str):
-                    required_verticals = [v.strip() for v in required_verticals.split(',')]
-                
                 for l in buyers:
                     text = f"{l.title or ''} {l.description or ''}"
                     l.vertical, l.phone = LeadEnricher.extract_vertical(text), LeadEnricher.extract_phone(text)
                     if not l.city: l.city = LeadEnricher.extract_city(text, l.location)
-                    
-                    # Attach user metadata if available
-                    if user_data:
-                        l.extra_data = l.extra_data or {}
-                        l.extra_data['user_detail'] = user_data
-                        
-                        # Extract user data to top-level fields for easier querying and GHL mapping
-                        self.user_email = user_data.get('email')
-                        l.user_email = self.user_email
-                        l.user_name = user_data.get('name')
-                        l.user_phone = user_data.get('phone')
+                    final_leads.append(l)
                 
-                buyers = final_leads
+                # JSON Backup for buyers
+                path = os.path.join(os.getcwd(), "scraped_data")
+                os.makedirs(path, exist_ok=True)
+                fname = os.path.join(path, f"{self.name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+                with open(fname, 'w') as f: json.dump([l.model_dump(mode='json') for l in final_leads], f, indent=2)
                 
-                if buyers:
-                    # JSON Backup
-                    path = os.path.join(os.getcwd(), "scraped_data")
-                    os.makedirs(path, exist_ok=True)
-                    fname = os.path.join(path, f"{self.name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
-                    with open(fname, 'w') as f: json.dump([l.model_dump(mode='json') for l in buyers], f, indent=2)
-                    
-                    if save: self.save_leads(buyers, f"{self.name.capitalize()}_final_data")
+                # 4. Save enriched leads to Final Data collection
+                if save:
+                    self.save_leads(final_leads, f"{self.name.capitalize()}_final_data")
             
             self.complete_job("completed")
-            return buyers
+            return final_leads
         except Exception as e:
             self.complete_job("failed", e); raise

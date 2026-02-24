@@ -1,6 +1,5 @@
-# airflow DAG
 """
-Airflow DAG for Nextdoor lead scraping with dynamic URL loading.
+Airflow DAG for Nextdoor lead scraping with DYNAMIC task mapping.
 """
 from datetime import datetime, timedelta
 from airflow import DAG
@@ -40,146 +39,103 @@ def load_nextdoor_urls(**context):
     from utils.mappings import get_mapping_manager
     mapper = get_mapping_manager()
 
+    all_tasks = []
     if user_email_override:
         mappings = mapper.get_user_mappings(user_email_override)
-        all_tasks = []
         for m in mappings:
             nd_config = m.get("nextdoor", {})
             urls = nd_config.get("group_urls", [])
             for url in urls:
-                all_tasks.append({"url": url, "user_email": user_email_override, "vertical": m.get("vertical")})
-        return all_tasks
+                all_tasks.append({"target_data": {"url": url, "user_email": user_email_override, "vertical": m.get("vertical")}})
+    else:
+        from user_credential_manager import UserCredentialManager
+        manager = UserCredentialManager()
+        all_users = manager.db.find_many(manager.collection, {})
 
-    # Load ALL users
-    from user_credential_manager import UserCredentialManager
-    manager = UserCredentialManager()
-    all_users = manager.db.find_many(manager.collection, {})
-
-    all_tasks = []
-    for user_doc in all_users:
-        u_email = user_doc.get("user", {}).get("email")
-        if not u_email: continue
-        
-        mappings = mapper.get_user_mappings(u_email)
-        for m in mappings:
-            nd_config = m.get("nextdoor", {})
-            urls = nd_config.get("group_urls", [])
-            for url in urls:
-                all_tasks.append({"url": url, "user_email": u_email, "vertical": m.get("vertical")})
+        for user_doc in all_users:
+            u_email = user_doc.get("user", {}).get("email")
+            if not u_email: continue
+            
+            mappings = mapper.get_user_mappings(u_email)
+            for m in mappings:
+                nd_config = m.get("nextdoor", {})
+                urls = nd_config.get("group_urls", [])
+                for url in urls:
+                    all_tasks.append({"target_data": {"url": url, "user_email": u_email, "vertical": m.get("vertical")}})
             
     return all_tasks
 
 def load_nextdoor_cookies():
     from user_credential_manager import UserCredentialManager
     manager = UserCredentialManager()
-    
     owner_email = Variable.get("nextdoor_owner_email", default_var=os.getenv("NEXTDOOR_EMAIL"))
     cookies = manager.load_cookies(owner_email, 'nextdoor') if owner_email else None
-    
     if cookies: return cookies
-
     cookies_json = os.getenv('NEXTDOOR_COOKIES')
     if cookies_json:
         try: return json.loads(cookies_json)
         except: pass
-    
     try:
         cookies_str = Variable.get("nextdoor_cookies", default_var="")
         if cookies_str: return json.loads(cookies_str)
     except: pass
-    
     return None
 
-def scrape_nextdoor_url(target_data, url_index: int, default_max_pages: int = 5, **context):
+def scrape_nextdoor_url(target_data, **kwargs):
     from main import run_nextdoor_scraper
     
-    # Handle both direct URL string (legacy/single) or dict with user context
-    if isinstance(target_data, dict):
-        target_url = target_data.get('url')
-        user_email = target_data.get('user_email')
-    else:
-        target_url = target_data
-        dag_run = context.get('dag_run')
-        user_email = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
-
-    if not user_email: 
-        print(f"⚠️ No user_email context for {target_url}. Skipping.")
-        return 0
+    target_url = target_data.get('url')
+    user_email = target_data.get('user_email')
+    vertical_slug = target_data.get('vertical')
 
     user_details = get_user_details(user_email)
     if not user_details:
         print(f"⚠️ User details not found for {user_email}. Skipping.")
         return 0
     
-    nd_onboarding = user_details.get("nextdoor", {})
+    nd_config_onboarding = user_details.get("nextdoor", {})
     user_nd_config = user_details.get("scraping_config", {}).get("nextdoor", {}) if user_details else {}
-    max_pages = user_nd_config.get("max_pages", default_max_pages)
-    # Load keywords from Vertical Master List
-    vertical_slug = target_data.get('vertical')
+    max_pages = user_nd_config.get("max_pages", int(Variable.get("nextdoor_max_pages", default_var="5")))
+    
     from utils.mappings import get_mapping_manager
     vertical_config = get_mapping_manager().get_vertical_config(vertical_slug) if vertical_slug else None
     
     if vertical_config:
         custom_keywords = vertical_config.get("keywords")
     else:
-        custom_keywords = nd_onboarding.get("target_keywords") or user_nd_config.get("keywords")
+        custom_keywords = nd_config_onboarding.get("target_keywords") or user_nd_config.get("keywords")
 
-    try:
-        user_data = user_details.get("user") if user_details else None
-        cookies = load_nextdoor_cookies()
-        
-        leads = run_nextdoor_scraper(
-            target=target_url,
-            cookies=cookies,
-            save_to_db=True,
-            max_pages=max_pages,
-            keywords=custom_keywords,
-            user_data=user_data
-        )
-        return len(leads)
-    except Exception as e:
-        error_msg = str(e)
-        if "session invalid" in error_msg.lower() or "cookie rotation required" in error_msg.lower():
-            owner_email = Variable.get("nextdoor_owner_email", default_var=os.getenv("NEXTDOOR_EMAIL"))
-            try:
-                from airflow.api.common.trigger_dag import trigger_dag
-                trigger_dag(
-                    dag_id='nextdoor_multi_user_cookie_rotation',
-                    run_id=f'auto_rotate_{datetime.now().strftime("%Y%m%d%H%M%S")}',
-                    conf={'user_email': owner_email},
-                    replace_microseconds=False
-                )
-            except: pass
-        raise
+    user_data = user_details.get("user")
+    cookies = load_nextdoor_cookies()
+    
+    leads = run_nextdoor_scraper(
+        target=target_url, cookies=cookies, save_to_db=True, 
+        max_pages=max_pages, keywords=custom_keywords, user_data=user_data
+    )
+    return len(leads)
 
 with DAG(
     'nextdoor_lead_scraper',
     default_args=default_args,
-    description='Scrape service leads from Nextdoor',
+    description='Scrape service leads from Nextdoor with DYNAMIC mapping',
     schedule_interval='*/15 * * * *',
     catchup=False,
     tags=['scraping', 'nextdoor', 'leads'],
     max_active_runs=1,
 ) as dag:
 
-    max_pages = int(Variable.get("nextdoor_max_pages", default_var="5"))
-    scrape_tasks = []
-    for idx in range(10):
-        task_id = f'scrape_nextdoor_url_{idx + 1}'
-        
-        def dynamic_scrape_task(url_index, max_pages_val, **context):
-            urls = load_nextdoor_urls(**context)
-            if url_index >= len(urls): return 0
-            return scrape_nextdoor_url(urls[url_index], url_index, max_pages_val, **context)
+    load_urls_task = PythonOperator(
+        task_id='load_nextdoor_urls',
+        python_callable=load_nextdoor_urls,
+    )
 
-        task = PythonOperator(
-            task_id=task_id,
-            python_callable=dynamic_scrape_task,
-            op_kwargs={'url_index': idx, 'max_pages_val': max_pages},
-            provide_context=True,
-            pool='scraper_pool',
-        )
-        scrape_tasks.append(task)
+    scrape_task = PythonOperator.partial(
+        task_id='scrape_nextdoor_url',
+        python_callable=scrape_nextdoor_url,
+        pool='scraper_pool',
+    ).expand(
+        op_kwargs=load_urls_task.output
+    )
 
     def push_nextdoor_leads_to_ghl(**context):
         from push_leads import push_leads
@@ -209,5 +165,4 @@ with DAG(
         provide_context=True,
     )
 
-    scrape_tasks >> push_task >> summary_task
-
+    load_urls_task >> scrape_task >> push_task >> summary_task

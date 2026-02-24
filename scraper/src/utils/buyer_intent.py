@@ -13,7 +13,7 @@ class BuyerIntentDetector:
     BUYER_PATTERN = re.compile(
         r'(looking for|need|recommendation|can anyone recommend|who does|quote|estimate|contractor|'
         r'(anyone|can someone|does anyone|who do you|do you|any) (available|know|recommend|have|suggestions)|'
-        r'iso|in search of|seeking|help with|suggestions for|referral for|looking to hire|'
+        r'iso|in search of|seeking|help|suggestions for|referral for|looking to hire|'
         r'(who|anyone) (do|does|fix|install|repair)|'
         r'good (place|person|guy|crew|company) for|'
         r'recommend (a|an|some)|'
@@ -22,7 +22,7 @@ class BuyerIntentDetector:
     )
     
     SELLER_PATTERN = re.compile(
-        r'(handyman|roofing|electrician|plumbing|painting|flooring|for sale|hiring|job|equipment|tools)|'
+        r'(for sale|hiring|job|equipment|tools)|'
         r'(i |we )(offer|provide|do|can|am a|are a|specialize)|'
         r'(my|our) (company|business|team|services|work)|'
         r'(call|contact|dm|message|text|email) (me|us|today|now)|'
@@ -30,7 +30,7 @@ class BuyerIntentDetector:
         r'looking for (work|projects|side work|new projects)|'
         r'(seeking|available for) (work|projects)|'
         r'(before you hire|look no further|give (me|us) a call)|'
-        r'need (help|a plumber|a contractor)\?|'
+        r'need (a plumber|a contractor)\?|'
         r'(24 hour|24/7|emergency (plumber|service)|asap service)|'
         r'(services available|for hire|now hiring|serving|appointments)|'
         r'(\$\d+)|(service (at|in))|(at your (home|location))|'

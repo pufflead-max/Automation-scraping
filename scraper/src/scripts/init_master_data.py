@@ -169,5 +169,63 @@ def init_master_data():
     db.group_mappings.insert_many(mappings)
     logger.info("group_mappings_initialized", count=len(mappings))
 
+    # 3. Craigslist Site Mappings (Dynamic lookup for all 50 states)
+    cl_sites = [
+        {"state_code": "AL", "subdomain": "birmingham", "name": "Birmingham"},
+        {"state_code": "AK", "subdomain": "anchorage", "name": "Anchorage"},
+        {"state_code": "AZ", "subdomain": "phoenix", "name": "Phoenix"},
+        {"state_code": "AR", "subdomain": "littlerock", "name": "Little Rock"},
+        {"state_code": "CA", "subdomain": "sfbay", "name": "SF Bay Area"},
+        {"state_code": "CO", "subdomain": "denver", "name": "Denver"},
+        {"state_code": "CT", "subdomain": "newhaven", "name": "New Haven"},
+        {"state_code": "DE", "subdomain": "delaware", "name": "Delaware"},
+        {"state_code": "FL", "subdomain": "miami", "name": "Miami"},
+        {"state_code": "GA", "subdomain": "atlanta", "name": "Atlanta"},
+        {"state_code": "HI", "subdomain": "honolulu", "name": "Honolulu"},
+        {"state_code": "ID", "subdomain": "boise", "name": "Boise"},
+        {"state_code": "IL", "subdomain": "chicago", "name": "Chicago"},
+        {"state_code": "IN", "subdomain": "indianapolis", "name": "Indianapolis"},
+        {"state_code": "IA", "subdomain": "desmoines", "name": "Des Moines"},
+        {"state_code": "KS", "subdomain": "wichita", "name": "Wichita"},
+        {"state_code": "KY", "subdomain": "louisville", "name": "Louisville"},
+        {"state_code": "LA", "subdomain": "neworleans", "name": "New Orleans"},
+        {"state_code": "ME", "subdomain": "maine", "name": "Maine"},
+        {"state_code": "MD", "subdomain": "baltimore", "name": "Baltimore"},
+        {"state_code": "MA", "subdomain": "boston", "name": "Boston"},
+        {"state_code": "MI", "subdomain": "detroit", "name": "Detroit"},
+        {"state_code": "MN", "subdomain": "minneapolis", "name": "Minneapolis"},
+        {"state_code": "MS", "subdomain": "jackson", "name": "Jackson"},
+        {"state_code": "MO", "subdomain": "stlouis", "name": "St. Louis"},
+        {"state_code": "MT", "subdomain": "billings", "name": "Billings"},
+        {"state_code": "NE", "subdomain": "omaha", "name": "Omaha"},
+        {"state_code": "NV", "subdomain": "lasvegas", "name": "Las Vegas"},
+        {"state_code": "NH", "subdomain": "nh", "name": "New Hampshire"},
+        {"state_code": "NJ", "subdomain": "newjersey", "name": "North Jersey"},
+        {"state_code": "NM", "subdomain": "albuquerque", "name": "Albuquerque"},
+        {"state_code": "NY", "subdomain": "newyork", "name": "New York City"},
+        {"state_code": "NC", "subdomain": "raleigh", "name": "Raleigh"},
+        {"state_code": "ND", "subdomain": "bismarck", "name": "Bismarck"},
+        {"state_code": "OH", "subdomain": "columbus", "name": "Columbus"},
+        {"state_code": "OK", "subdomain": "oklahomacity", "name": "Oklahoma City"},
+        {"state_code": "OR", "subdomain": "portland", "name": "Portland"},
+        {"state_code": "PA", "subdomain": "philadelphia", "name": "Philadelphia"},
+        {"state_code": "RI", "subdomain": "providence", "name": "Rhode Island"},
+        {"state_code": "SC", "subdomain": "columbia", "name": "Columbia"},
+        {"state_code": "SD", "subdomain": "siouxfalls", "name": "Sioux Falls"},
+        {"state_code": "TN", "subdomain": "nashville", "name": "Nashville"},
+        {"state_code": "TX", "subdomain": "austin", "name": "Austin"},
+        {"state_code": "UT", "subdomain": "slc", "name": "Salt Lake City"},
+        {"state_code": "VT", "subdomain": "vermont", "name": "Vermont"},
+        {"state_code": "VA", "subdomain": "richmond", "name": "Richmond"},
+        {"state_code": "WA", "subdomain": "seattle", "name": "Seattle"},
+        {"state_code": "WV", "subdomain": "parkersburg", "name": "Parkersburg"},
+        {"state_code": "WI", "subdomain": "milwaukee", "name": "Milwaukee"},
+        {"state_code": "WY", "subdomain": "wyoming", "name": "Wyoming"}
+    ]
+    
+    db.craigslist_sites.delete_many({})
+    db.craigslist_sites.insert_many(cl_sites)
+    logger.info("craigslist_sites_initialized", count=len(cl_sites))
+
 if __name__ == "__main__":
     init_master_data()

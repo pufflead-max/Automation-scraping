@@ -14,6 +14,7 @@ class MappingManager:
         self.users_col = "users"
         self.mappings_col = "group_mappings"
         self.verticals_col = "verticals"
+        self.cl_sites_col = "craigslist_sites"
 
     def get_vertical_map(self) -> Dict[str, str]:
         """Map GHL vertical names to slugs. Loads from MongoDB first, falls back to hardcoded."""
@@ -57,17 +58,40 @@ class MappingManager:
         # Fallback: slugify the name
         return vertical_name.lower().replace(" ", "_").replace("&", "and")
 
-    def _get_craigslist_subdomain(self, state_code: str, city: str) -> str:
-        """Map city/state to craigslist subdomain."""
-        sc = state_code.upper()
-        if sc == "MA":
-            return "boston"
-        if sc == "RI":
-            return "providence"
-        if sc == "NH":
-            return "nh"
-        # Add more mappings as needed
-        return "geo" # Default
+    def _get_craigslist_area(self, state_code: str, city: str = None) -> str:
+        """Map state code and city to Craigslist area (subdomain) dynamically."""
+        sc = state_code.upper() if state_code else ""
+        
+        # 1. Try Dynamic Database Lookup
+        try:
+            # Check for city-specific mapping first
+            if city:
+                site = self.db.find_one(self.cl_sites_col, {"state_code": sc, "name": {"$regex": f"^{city}$", "$options": "i"}})
+                if site: return site["subdomain"]
+            
+            # Fallback to state-level mapping
+            site = self.db.find_one(self.cl_sites_col, {"state_code": sc})
+            if site: return site["subdomain"]
+        except Exception:
+            pass
+            
+        # 2. Smart Guessing Logic (Fallback)
+        if city:
+            return self._guess_craigslist_area(city, sc)
+            
+        return "geo"
+
+    def _guess_craigslist_area(self, city: str, state_code: str) -> str:
+        """Guess the Craigslist subdomain based on city name."""
+        # Common city naming patterns for Craigslist
+        slug = re.sub(r'[^a-zA-Z0-9]', '', city.lower())
+        
+        # known exceptions (not just 'cityname')
+        if "newyork" in slug: return "newyork"
+        if "sanfrancisco" in slug or "sfbay" in slug: return "sfbay"
+        if "greaterboston" in slug: return "boston"
+        
+        return slug
 
     def _get_craigslist_categories(self, vertical: str) -> List[str]:
         """Map vertical to Craigslist category codes."""
@@ -157,16 +181,16 @@ class MappingManager:
                 city_slug = re.sub(r'-+', '-', user_city.lower().replace(" ", "-")).strip("-")
                 nd_url = f"https://nextdoor.com/city/{city_slug}--{state_code.lower()}/"
                 
-                # 2. Craigslist Dynamic URLs
-                cl_subdomain = self._get_craigslist_subdomain(state_code, user_city)
+                # 2. Craigslist Dynamic URLs - map state/city to correct area subdomain
+                cl_area = self._get_craigslist_area(state_code, user_city)
                 cl_region = self._get_region_path(region)
                 cl_urls = []
                 for cat in self._get_craigslist_categories(v_slug):
-                    cl_urls.append(f"https://{cl_subdomain}.craigslist.org/search{cl_region}/{cat}")
+                    cl_urls.append(f"https://{cl_area}.craigslist.org/search{cl_region}/{cat}")
 
                 # 3. Facebook Dynamic Search URLs
-                fb_urls = []
                 v_config = self.get_vertical_config(v_slug)
+                fb_urls = []
                 if v_config and v_config.get("keywords"):
                     # Use lead keywords for searches
                     keywords = v_config.get("keywords")[:3]
@@ -196,10 +220,10 @@ class MappingManager:
                 
                 for v_slug in v_slugs:
                     cl_urls = []
-                    cl_subdomain = self._get_craigslist_subdomain(state_code, city)
+                    cl_area = self._get_craigslist_area(state_code, city)
                     cl_region = self._get_region_path(user_data.get("region"))
                     for cat in self._get_craigslist_categories(v_slug):
-                        cl_urls.append(f"https://{cl_subdomain}.craigslist.org/search{cl_region}/{cat}")
+                        cl_urls.append(f"https://{cl_area}.craigslist.org/search{cl_region}/{cat}")
                     
                     results.append({
                         "state": user_state,

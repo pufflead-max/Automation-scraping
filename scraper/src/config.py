@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     decodo_proxy_user: Optional[str] = None
     decodo_proxy_pass: Optional[str] = None
 
+    # Bright Data Proxy
+    brightdata_proxy_server: Optional[str] = None
+    brightdata_proxy_user: Optional[str] = None
+    brightdata_proxy_pass: Optional[str] = None
+
     @field_validator('log_level')
     @classmethod
     def validate_log_level(cls, v: str) -> str:
@@ -92,4 +97,7 @@ def get_scraper_config() -> dict:
             "scraperapi_proxy": s.scraperapi_proxy,
             "decodo_proxy_server": s.decodo_proxy_server,
             "decodo_proxy_user": s.decodo_proxy_user,
-            "decodo_proxy_pass": s.decodo_proxy_pass}
+            "decodo_proxy_pass": s.decodo_proxy_pass,
+            "brightdata_proxy_server": s.brightdata_proxy_server,
+            "brightdata_proxy_user": s.brightdata_proxy_user,
+            "brightdata_proxy_pass": s.brightdata_proxy_pass}

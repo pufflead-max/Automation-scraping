@@ -60,14 +60,19 @@ def initialize():
                 # include_deferred=False is required for Airflow 2.7+
                 new_pool = Pool(
                     pool='scraper_pool', 
-                    slots=1, 
-                    description='Pool to ensure sequential scraping/browser tasks',
+                    slots=3, 
+                    description='Pool to allow concurrent scraping/browser tasks (CL, FB, ND)',
                     include_deferred=False
                 )
                 session.add(new_pool)
                 session.commit()
             else:
-                print("✓ 'scraper_pool' already exists.")
+                if pool.slots != 3:
+                    print(f"↻ Updating 'scraper_pool' slots from {pool.slots} to 3...")
+                    pool.slots = 3
+                    session.commit()
+                else:
+                    print("✓ 'scraper_pool' already exists with 3 slots.")
     except Exception as e:
         print(f"⚠️ Could not initialize pool: {e}")
 

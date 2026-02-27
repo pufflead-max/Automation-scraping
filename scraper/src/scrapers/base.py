@@ -69,7 +69,21 @@ class BaseScraper(ABC):
     def save_leads(self, leads: List[ScrapedLead], col: str = "leads") -> int:
         if not leads: return 0
         try:
-            count = self.db.bulk_upsert(col, [l.model_dump() for l in leads], key="source_url")
+            # 1. Ensure Index for fast lookups
+            self.db.get_collection(col).create_index("source_url", background=True)
+            
+            # 2. Batch check existence
+            urls = [l.source_url for l in leads]
+            existing = self.db.get_collection(col).find({"source_url": {"$in": urls}}, {"source_url": 1})
+            existing_urls = {doc["source_url"] for doc in existing}
+            
+            new_leads = [l.model_dump() for l in leads if l.source_url not in existing_urls]
+            
+            if not new_leads:
+                self.logger.info("no_new_leads_to_save", col=col)
+                return 0
+                
+            count = self.db.bulk_upsert(col, new_leads, key="source_url")
             self.logger.info("leads_saved", col=col, count=count)
             return count
         except Exception as e:
@@ -85,8 +99,9 @@ class BaseScraper(ABC):
             leads = self.scrape(target, **kw)
             self.scraped_items = leads
             
-            # 1. Decorate ALL leads with user metadata
+            # 1. Decorate ALL leads with user metadata and fresh scraped_date
             for l in leads:
+                l.scraped_date = datetime.utcnow()
                 if user_data:
                     l.user_email = user_data.get('email')
                     l.user_name = user_data.get('name')

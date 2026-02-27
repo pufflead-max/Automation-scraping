@@ -4,8 +4,18 @@ import sys
 import re
 
 # Load environment variables from project root before anything else
-env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".env")
-load_dotenv(env_path)
+# Path from scraper/src/scripts/ghl_onboarding_sync.py to root .env
+curr_dir = os.path.dirname(os.path.abspath(__file__))
+# 1: src, 2: scraper, 3: root
+env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(curr_dir))), ".env")
+
+if os.path.exists(env_path):
+    load_dotenv(env_path)
+else:
+    # Try project root based on common structure
+    root_path = os.path.abspath(os.path.join(curr_dir, "../../..")) # Faster fallback
+    env_path = os.path.join(root_path, ".env")
+    load_dotenv(env_path)
 
 from datetime import datetime
 from pymongo import MongoClient
@@ -143,7 +153,8 @@ def sync_ghl_onboarding():
 
     logger.info("starting_ghl_sync", location_id=loc_id)
     
-    contacts = ghl.get_contacts(limit=100)
+    contacts = ghl.get_contacts(limit=0)
+    
     
     custom_fields = ghl.get_custom_fields()
     field_id_to_name = {f['id']: f['name'] for f in custom_fields}
@@ -158,30 +169,35 @@ def sync_ghl_onboarding():
                 if pattern.lower() in k.lower(): return v
             return None
 
-        # Filter by Source: "Dino Landscape"
-        # Check standard source field and custom "Contact Source" field
+        # Reverted to strict AND logic as requested
         source_val = contact.get('source')
         cf_source_val = get_cf("Contact Source")
-        
-        is_dino_source = (source_val == 'Dino Landscape') or (cf_source_val == 'Dino Landscape')
-        # Log complete raw contact info for debugging
-        print(f"\n--- RAW CONTACT DATA: {contact.get('email')} ---")
-        import json
-        print(json.dumps(contact, indent=2))
-        print("-------------------------------------------\n")
+        contact_type = str(contact.get('type') or "").lower()
+        cf_contact_type = str(get_cf("Contact Type") or "").lower()
+        tags = [str(t).lower() for t in contact.get('tags', [])]
 
+        # Check source field, custom field, OR tags for "Dino Landscape"
+        is_dino_source = (source_val == 'Dino Landscape') or \
+                        (cf_source_val == 'Dino Landscape') or \
+                        ('dino landscape' in tags)
+        
+        is_customer = (contact_type == 'customer') or (cf_contact_type == 'customer')
+        
         logger.info("processing_raw_contact_start", 
                     contact_id=contact.get('id'), 
                     email=contact.get('email'))
-        # Filter by Contact Type: "Customer" (Case-insensitive check)
-        contact_type = str(contact.get('type') or "").lower()
-        cf_contact_type = str(get_cf("Contact Type") or "").lower()
-        is_customer = (contact_type == 'customer') or (cf_contact_type == 'customer')
         
-        # BOTH conditions must be true
+        # Strict AND: Must be the right source AND the right type
         if not (is_dino_source and is_customer):
-            if is_dino_source and not is_customer:
-                logger.debug("skipping_contact", email=contact.get('email'), reason="source_match_but_not_customer", type=contact_type or cf_contact_type)
+            reason = []
+            if not is_dino_source: reason.append("source_mismatch")
+            if not is_customer: reason.append("type_not_customer")
+            
+            logger.debug("skipping_contact", 
+                       email=contact.get('email'), 
+                       reason="+".join(reason), 
+                       source=source_val or cf_source_val,
+                       type=contact_type or cf_contact_type)
             continue
         
         raw_state = contact.get('state') or get_cf("State")

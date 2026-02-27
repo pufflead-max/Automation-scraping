@@ -3,6 +3,7 @@
 import json
 import hashlib
 import requests
+from datetime import datetime
 from typing import Dict, Any, Optional, List
 
 try:
@@ -155,12 +156,49 @@ class GHLClient:
 
     def get_contacts(self, limit: int = 100, query: Optional[str] = None, 
                      tags: Optional[List[str]] = None) -> List[Dict[str, Any]]:
-        params = {"locationId": self.location_id, "limit": limit}
+        all_contacts = []
+        # Support limit=0 for unlimited results
+        fetch_all = (limit == 0 or limit is None)
+        
+        params = {"locationId": self.location_id, "limit": 100}
         if query: params["query"] = query
-        result = self._make_request("GET", "/contacts/", params=params)
-        contacts = result.get('contacts', []) if result else []
-        if tags: contacts = [c for c in contacts if any(t in c.get('tags', []) for t in tags)]
-        return contacts
+        
+        while True:
+            result = self._make_request("GET", "/contacts/", params=params)
+            if not result: break
+            
+            contacts = result.get('contacts', [])
+            all_contacts.extend(contacts)
+            
+            # Check if we should continue
+            meta = result.get('meta', {})
+            next_token = meta.get('nextPageToken')
+            start_after_id = meta.get('startAfterId')
+            start_after = meta.get('startAfter')
+            
+            if not fetch_all and len(all_contacts) >= limit:
+                break
+                
+            if next_token:
+                params["nextPageToken"] = next_token
+            elif start_after_id and start_after:
+                # GHL v2 pagination uses startAfter and startAfterId
+                params["startAfterId"] = start_after_id
+                params["startAfter"] = start_after
+                # Ensure nextPageToken is NOT sent if we are using startAfter
+                if "nextPageToken" in params: del params["nextPageToken"]
+            else:
+                # No more pages
+                break
+                
+            # Adjust limit for next batch if not fetching all
+            if not fetch_all:
+                params["limit"] = min(100, limit - len(all_contacts))
+
+        if tags: 
+            all_contacts = [c for c in all_contacts if any(t in c.get('tags', []) for t in tags)]
+            
+        return all_contacts
 
     def check_lead_exists_on_ghl(self, lead_data: Dict[str, Any]) -> bool:
         email = self._generate_deterministic_email(lead_data)
@@ -192,6 +230,7 @@ class GHLClient:
             "source": "source", "city": "city", "vertical": "vertical",
             "title": "Lead Title", "description": "Lead Description", 
             "author_name": "Author Name", "source_url": "Source URL",
+            "scraped_date": "Scraped Date", "posted_date": "Posted Date",
             # Map Contractor details to Owner custom fields
             "user_name": "Owner Name", "user_email": "Owner Email", "user_phone": "Owner Phone"
         }
@@ -324,7 +363,13 @@ class GHLClient:
             else:
                 field_id = self.get_field_id(ghl_key)
                 if field_id:
-                    ghl_contact['customField'][field_id] = json.dumps(value) if isinstance(value, (dict, list)) else str(value)
+                    if isinstance(value, datetime):
+                        val_str = value.strftime('%Y-%m-%d %H:%M:%S')
+                    elif isinstance(value, (dict, list)):
+                        val_str = json.dumps(value)
+                    else:
+                        val_str = str(value)
+                    ghl_contact['customField'][field_id] = val_str
         
         if not ghl_contact['customField']: del ghl_contact['customField']
         return ghl_contact

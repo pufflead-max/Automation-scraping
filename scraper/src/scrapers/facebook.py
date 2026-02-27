@@ -83,14 +83,14 @@ class FacebookScraper(BaseScraper):
         
         options = Options()
         
-        # 1. Setup Proxies (COMMENTED OUT FOR NOW)
-        # proxy_server = self.cfg.get('decodo_proxy_server')
-        # proxy_user = self.cfg.get('decodo_proxy_user')
-        # proxy_pass = self.cfg.get('decodo_proxy_pass')
+        # 1. Setup Proxies (Bright Data Residential)
+        # proxy_server = self.cfg.get('brightdata_proxy_server')
+        # proxy_user = self.cfg.get('brightdata_proxy_user')
+        # proxy_pass = self.cfg.get('brightdata_proxy_pass')
         # 
         # if self.use_proxy and proxy_server:
         #     try:
-        #         # Format: http://gate.decodo.com:10001
+        #         # Format: brd.superproxy.io:33335
         #         host_port = proxy_server.replace("http://", "").replace("https://", "")
         #         if ":" in host_port:
         #             host, port = host_port.split(":")

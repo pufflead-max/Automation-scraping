@@ -30,11 +30,6 @@ class Settings(BaseSettings):
 
     airflow_executor: str = "LocalExecutor"
     
-    # Decodo Proxy
-    decodo_proxy_server: Optional[str] = None
-    decodo_proxy_user: Optional[str] = None
-    decodo_proxy_pass: Optional[str] = None
-
     # Bright Data Proxy
     brightdata_proxy_server: Optional[str] = None
     brightdata_proxy_user: Optional[str] = None
@@ -95,9 +90,6 @@ def get_scraper_config() -> dict:
     return {"timeout": s.scraper_timeout, "max_retries": s.scraper_max_retries,
             "retry_delay": s.scraper_retry_delay, "scraperapi_key": s.scraperapi_key,
             "scraperapi_proxy": s.scraperapi_proxy,
-            "decodo_proxy_server": s.decodo_proxy_server,
-            "decodo_proxy_user": s.decodo_proxy_user,
-            "decodo_proxy_pass": s.decodo_proxy_pass,
             "brightdata_proxy_server": s.brightdata_proxy_server,
             "brightdata_proxy_user": s.brightdata_proxy_user,
             "brightdata_proxy_pass": s.brightdata_proxy_pass}

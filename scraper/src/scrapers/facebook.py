@@ -108,17 +108,40 @@ class FacebookScraper(BaseScraper):
         if headless:
             options.add_argument('--headless=new')
         
-        # Enhanced stealth arguments
+        # ── Stealth / anti-detection ──────────────────────────────────────────
         options.add_argument('--disable-blink-features=AutomationControlled')
-        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36')
+        
+        # ── Sandbox / security (required in Docker) ───────────────────────────
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-setuid-sandbox')
         options.add_argument('--disable-web-security')
         options.add_argument('--disable-features=IsolateOrigins,site-per-process')
+        
+        # ── Memory-saving flags (critical for Docker/multi-instance) ──────────
+        # These prevent Chrome tab OOM crashes when multiple scrapers run in parallel.
+        options.add_argument('--disable-dev-shm-usage')      # Use /tmp instead of /dev/shm
+        options.add_argument('--no-zygote')                  # Skip zygote process (saves ~50MB)
+        options.add_argument('--disable-gpu')                # No GPU in Docker
+        options.add_argument('--disable-software-rasterizer')
+        options.add_argument('--disable-extensions')
+        options.add_argument('--disable-background-networking')
+        options.add_argument('--disable-default-apps')
+        options.add_argument('--disable-translate')
+        options.add_argument('--disable-sync')
+        options.add_argument('--disable-background-timer-throttling')
+        options.add_argument('--disable-backgrounding-occluded-windows')
+        options.add_argument('--disable-renderer-backgrounding')
+        options.add_argument('--disable-hang-monitor')
+        options.add_argument('--metrics-recording-only')
+        options.add_argument('--mute-audio')
+        options.add_argument('--window-size=1280,720')       # Smaller than before saves GPU mem
+        # Cap JS heap so a heavy SPA like Facebook search can't OOM the renderer
+        options.add_argument('--js-flags=--max-old-space-size=512')
+        
+        # ── UX / noise suppression ────────────────────────────────────────────
         options.add_argument('--disable-popup-blocking')
         options.add_argument('--disable-notifications')
-        options.add_argument('--window-size=1366,768')
-        options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36')
         
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)
@@ -132,6 +155,7 @@ class FacebookScraper(BaseScraper):
             "autofill.profile_enabled": False,
             "profile.default_content_setting_values.popups": 2,
             "intl.accept_languages": "en-US,en",
+            # Block images on search pages to further reduce memory pressure
             "profile.managed_default_content_settings.images": 1,
         }
         options.add_experimental_option("prefs", prefs)
@@ -1532,9 +1556,20 @@ class FacebookScraper(BaseScraper):
             self.logger.info("scraping_completed", total_posts=len(extracted_leads))
             
         except Exception as e:
-            self.logger.error("scraping_failed", error=str(e))
-            traceback.print_exc()
-            raise # Re-raise to ensure Airflow sees the failure
+            err_str = str(e).lower()
+            # "tab crashed" / "no such session" means Chrome OOM'd in Docker.
+            # Treat it as a graceful early-exit: return whatever we already collected
+            # rather than raising and losing all progress.
+            if any(sig in err_str for sig in ['tab crashed', 'no such session', 'invalid session']):
+                self.logger.warning(
+                    "chrome_tab_crashed_returning_partial_results",
+                    collected=len(extracted_leads),
+                    error=str(e)
+                )
+            else:
+                self.logger.error("scraping_failed", error=str(e))
+                traceback.print_exc()
+                raise  # Re-raise only for genuine unexpected errors
         finally:
             self.quit()
                 

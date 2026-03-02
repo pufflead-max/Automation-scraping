@@ -620,19 +620,8 @@ class FacebookScraper(BaseScraper):
                 reason = BuyerIntentDetector.get_detection_reason(text, raw_data.get('link'))
                 self.logger.debug("filtered_non_buyer_post", reason=reason, title=raw_data.get('title'))
 
-            # Build a meaningful fallback source_url when no direct post link was found.
-            # The raw id is a counter token (post_N); we construct a fbid-style URL only
-            # when the id looks like a real numeric Facebook ID.
-            fallback_url = None
-            raw_id = raw_data.get('id', '')
-            numeric_suffix = str(raw_id).replace('post_', '')
-            if numeric_suffix.isdigit() and len(numeric_suffix) > 6:
-                fallback_url = f"https://www.facebook.com/?fbid={numeric_suffix}"
-            # If id is just a counter token, leave fallback_url as None so we
-            # don't store a useless fake URL in the DB.
-
             return FacebookLead(
-                source_url=raw_data.get('link') or fallback_url,
+                source_url=raw_data.get('link'),
                 source_id=raw_data.get('id'),
                 title=raw_data.get('title'),
                 description=raw_data.get('text'),
@@ -1403,9 +1392,10 @@ class FacebookScraper(BaseScraper):
                         post_text = self._extract_post_content_only(article)
                         text_hash = post_text[:200].strip() if post_text else ""
                         
-                        # VALIDATION: Skip if definitely not a post (no text AND no valid link)
-                        if not link and (not text_hash or len(text_hash) < 15):
-                            self.logger.debug("skipping_empty_article_stub")
+                        # VALIDATION: Skip if no valid link found (as per User requirement)
+                        # We do not create custom/fallback URLs; missing links are skipped.
+                        if not link:
+                            self.logger.debug("skipping_article_no_link")
                             continue
                         
                         # Skip if we've seen this URL

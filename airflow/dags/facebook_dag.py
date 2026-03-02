@@ -41,7 +41,11 @@ def load_facebook_urls(**context):
 
     all_tasks = []
     if user_email_override:
-        mappings = mapper.get_user_mappings(user_email_override)
+        try:
+            mappings = mapper.get_user_mappings(user_email_override)
+        except Exception as e:
+            print(f"⚠️ Failed to load mappings for {user_email_override}: {e}")
+            mappings = []
         for m in mappings:
             fb_config = m.get("facebook", {})
             urls = fb_config.get("group_urls", []) + fb_config.get("page_urls", [])
@@ -50,19 +54,29 @@ def load_facebook_urls(**context):
     else:
         from user_credential_manager import UserCredentialManager
         manager = UserCredentialManager()
-        all_users = manager.db.find_many(manager.collection, {})
+        try:
+            all_users = manager.db.find_many(manager.collection, {})
+        except Exception as e:
+            print(f"❌ Failed to fetch users from MongoDB: {e}")
+            return []
         
         for user_doc in all_users:
             u_email = user_doc.get("user", {}).get("email")
-            if not u_email: continue
-            
-            mappings = mapper.get_user_mappings(u_email)
+            if not u_email:
+                continue
+            try:
+                mappings = mapper.get_user_mappings(u_email)
+            except Exception as e:
+                # One bad user should never abort the entire load task
+                print(f"⚠️ Skipping {u_email} — mapping lookup failed: {e}")
+                continue
             for m in mappings:
                 fb_config = m.get("facebook", {})
                 urls = fb_config.get("group_urls", []) + fb_config.get("page_urls", [])
                 for url in urls:
                     all_tasks.append({"target_data": {"url": url, "user_email": u_email, "vertical": m.get("vertical")}})
             
+    print(f"✅ Loaded {len(all_tasks)} Facebook URL task(s)")
     return all_tasks
 
 def scrape_facebook_url(target_data, **kwargs):
@@ -132,6 +146,7 @@ with DAG(
     load_urls_task = PythonOperator(
         task_id='load_facebook_urls',
         python_callable=load_facebook_urls,
+        execution_timeout=timedelta(minutes=10),  # Fail cleanly before Airflow sends SIGTERM
     )
 
     scrape_task = PythonOperator.partial(

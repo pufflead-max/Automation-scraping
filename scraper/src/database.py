@@ -38,7 +38,12 @@ class DatabaseManager:
         try:
             masked = f"{self.uri.split('://')[0]}://***:***@{self.uri.split('@')[1]}" if '@' in self.uri else self.uri
             logger.info("connecting_to_mongodb", uri=masked)
-            self._client = MongoClient(self.uri, serverSelectionTimeoutMS=5000)
+            self._client = MongoClient(
+                self.uri,
+                serverSelectionTimeoutMS=10_000,   # 10s to pick a server
+                connectTimeoutMS=10_000,           # 10s to open the TCP socket
+                socketTimeoutMS=30_000,            # 30s max for any single query/response
+            )
             self._client.admin.command('ping')
             self._db = self._client[self.db_name]
         except Exception as e:
@@ -56,7 +61,7 @@ class DatabaseManager:
             logger.info("collection_created", name=name)
 
     def get_collection(self, name: str) -> Collection:
-        self.ensure_collection(name)
+        # self.ensure_collection(name)
         return self.db[name]
     
     def insert_one(self, col: str, doc: Dict[str, Any]) -> str:

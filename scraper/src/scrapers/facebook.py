@@ -596,8 +596,19 @@ class FacebookScraper(BaseScraper):
                 reason = BuyerIntentDetector.get_detection_reason(text, raw_data.get('link'))
                 self.logger.debug("filtered_non_buyer_post", reason=reason, title=raw_data.get('title'))
 
+            # Build a meaningful fallback source_url when no direct post link was found.
+            # The raw id is a counter token (post_N); we construct a fbid-style URL only
+            # when the id looks like a real numeric Facebook ID.
+            fallback_url = None
+            raw_id = raw_data.get('id', '')
+            numeric_suffix = str(raw_id).replace('post_', '')
+            if numeric_suffix.isdigit() and len(numeric_suffix) > 6:
+                fallback_url = f"https://www.facebook.com/?fbid={numeric_suffix}"
+            # If id is just a counter token, leave fallback_url as None so we
+            # don't store a useless fake URL in the DB.
+
             return FacebookLead(
-                source_url=raw_data.get('link') or f"https://facebook.com/post/{raw_data.get('id')}",
+                source_url=raw_data.get('link') or fallback_url,
                 source_id=raw_data.get('id'),
                 title=raw_data.get('title'),
                 description=raw_data.get('text'),
@@ -1336,24 +1347,31 @@ class FacebookScraper(BaseScraper):
                     try:
                         # Extract link with more patterns
                         link = None
+                        # Priority order: most specific post-URL patterns first.
+                        # NOTE: /group/ is intentionally omitted — it matches group nav links,
+                        # not individual posts, and would give the group page as the source_url.
                         link_selectors = [
-                            'a[href*="/posts/"]', 
-                            'a[href*="/photos/"]', 
-                            'a[href*="/videos/"]', 
+                            'a[href*="/posts/"]',
+                            'a[href*="/permalink/"]',
+                            'a[href*="/photos/"]',
+                            'a[href*="/videos/"]',
                             'a[href*="/reel/"]',
                             'a[href*="fbid="]',
-                            'a[href*="/permalink/"]',
-                            'a[href*="/group/"]'
+                            'a[href*="story_fbid="]',
                         ]
                         
                         for sel in link_selectors:
                             try:
                                 els = article.find_elements(By.CSS_SELECTOR, sel)
                                 for e in els:
-                                    href = e.get_attribute('href')
-                                    if href and 'facebook.com' in href and not any(x in href for x in ['#', 'javascript:']):
-                                        link = href.split('?')[0]
-                                        break
+                                    href = e.get_attribute('href') or ''
+                                    if 'facebook.com' not in href or any(x in href for x in ['#', 'javascript:']):
+                                        continue
+                                    # Store the COMPLETE URL exactly as Facebook serves it.
+                                    # No splitting, no stripping — full URL with all query
+                                    # params (fbid, story_fbid, __cft__, etc.) is preserved.
+                                    link = href
+                                    break
                                 if link: break
                             except: continue
                         

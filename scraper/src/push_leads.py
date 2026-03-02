@@ -44,14 +44,19 @@ def push_leads(source: str, limit: int = None, force: bool = False, user_email: 
         print(f"🔍 Filtering leads for user: {user_email}")
     
     logger.info("fetching_leads", col=col, query=query)
-    leads = db.find_many(col, query, limit=limit or 0)
+    print('DEBUG: about to find leads'); leads = db.find_many(col, query, limit=limit or 0); print(f'DEBUG: found {len(leads)} leads')
     
     if not leads:
         print(f"ℹ️ No new leads for {source} in {col}.")
         return
 
-    # Deduplicate and filter for buyer requests
-    unique_leads = {l.get('source_url'): l for l in leads if l.get('source_url')}.values()
+    # Deduplicate by source_url. Falls back to MongoDB _id for leads without a URL
+    # so they are not silently collapsed into a single entry on the None key.
+    dedup_map = {}
+    for l in leads:
+        key = l.get('source_url') or str(l.get('_id', id(l)))
+        dedup_map[key] = l
+    unique_leads = dedup_map.values()
     buyer_leads = [l for l in unique_leads if l.get('is_buyer_request') or l.get('is_service_request')]
     
     if not buyer_leads:

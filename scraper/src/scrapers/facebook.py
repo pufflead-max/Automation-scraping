@@ -766,11 +766,22 @@ class FacebookScraper(BaseScraper):
                     return True
                 
                 # Check for Security Checkpoint or CAPTCHA
+                # We only 'continue' if a solveable challenge is found to avoid 
+                # skipping the button-clicking logic for simple roadblocks.
                 if self._is_captcha_present():
                     self.logger.warning("security_challenge_detected_solving")
-                    self._try_solve_captcha()
-                    time.sleep(8) # Wait for page to process solve
-                    continue
+                    if self._try_solve_captcha():
+                        time.sleep(10)
+                        continue
+                    else:
+                        self.logger.info("captcha_not_solveable_proceeding_to_action_checks")
+                
+                # Check for 2FA / Authentication Code screens
+                if "two_step_verification" in self.driver.current_url or "checkpoint" in self.driver.current_url:
+                    if self.driver.find_elements(By.CSS_SELECTOR, 'input[name="approvals_code"], input[id="approvals_code"]'):
+                        self.logger.error("2fa_code_required_manual_intervention_needed")
+                        # We can't solve this automatically without an OTP source
+                        return False
                 
                 # Check for "Continue" / "Next" buttons common in security checkpoints
                 continue_selectors = [
@@ -839,17 +850,15 @@ class FacebookScraper(BaseScraper):
                         return True
                 except: continue
 
-            # 3. Text-based detection — ONLY use long, highly specific phrases that won't
-            #    false-match unrelated page content (ads, nav labels, sidebar text, etc.).
-            #    Removed: 'checkpoint' (covered by URL check), 'puzzle'/'puzzel' (too short,
-            #    caused false positive matching e.g. "bus" substring in prior logs).
+            # 3. Text-based detection — ONLY use phrases highly specific to VISUAL puzzles.
+            # Roadblocks like 'Confirm Your Identity' are handled by the button-clicking
+            # logic in the login sequence, not the captcha solver.
             captcha_texts = [
-                'Confirm Your Identity',
-                'Security Check',
                 'Please solve the puzzle',
-                'Enter the code below',
-                'Help us confirm your identity',
-                'verify your account',
+                'Enter the characters you see',
+                'Complete the security check to continue',
+                'solve the captcha',
+                'type the characters',
             ]
             for text in captcha_texts:
                 try:

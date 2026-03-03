@@ -1630,29 +1630,10 @@ class FacebookScraper(BaseScraper):
                         except Exception as e:
                             self.logger.error("intermediate_batch_save_failed", error=str(e))
                 
-                # If we haven't found new posts in 4 scrolls, we might be stuck or at end
+                # If we haven't found new posts in 4 scrolls, we assume we reached the end or are blocked
                 if consecutive_no_new_posts >= 4:
-                    self.logger.warning("no_new_posts_for_multiple_scrolls_attempting_unstick")
-                    
-                    # Try aggressive unstick: scroll up a bit then HARD down
-                    try:
-                        self._close_popups() # Maybe a popup is blocking?
-                        curr = self.driver.execute_script("return window.pageYOffset;")
-                        self.driver.execute_script(f"window.scrollTo(0, {max(0, curr - 1000)});")
-                        time.sleep(1)
-                        self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                        time.sleep(4)
-                        
-                        # Try hitting END key multiple times
-                        actions = ActionChains(self.driver)
-                        for _ in range(3):
-                            actions.send_keys(Keys.END)
-                            time.sleep(0.5)
-                        actions.perform()
-                        
-                        consecutive_no_new_posts = 1 # Reset but keep pressure
-                    except:
-                        pass
+                    self.logger.warning("no_new_posts_for_multiple_scrolls_stopping_scrape")
+                    break
                 
                 # Check if reached target
                 if len(extracted_leads) >= target_posts:

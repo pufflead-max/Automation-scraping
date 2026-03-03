@@ -133,6 +133,7 @@ with DAG(
         task_id='scrape_nextdoor_url',
         python_callable=scrape_nextdoor_url,
         pool='scraper_pool',
+        max_active_tis_per_dag=2, # Limit parallel workers to 2
     ).expand(
         op_kwargs=load_urls_task.output
     )

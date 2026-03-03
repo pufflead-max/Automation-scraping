@@ -796,6 +796,13 @@ class FacebookScraper(BaseScraper):
         self.logger.info("logging_in_to_facebook")
         
         try:
+            # 0. Check if already logged in (important for Persistent Profiles)
+            self.driver.get('https://www.facebook.com/')
+            time.sleep(5)
+            if self._is_logged_in():
+                self.logger.info("already_logged_in_skipping_credentials_entry")
+                return True
+
             self.driver.get('https://www.facebook.com/login')
             time.sleep(5)
             
@@ -1353,6 +1360,10 @@ class FacebookScraper(BaseScraper):
                 return False
 
             # Check for profile link, account menu, or home feed indicators
+            if "home.php" in current_url:
+                self.logger.debug("login_confirmed_via_url", url=current_url)
+                return True
+
             indicators = [
                 'div[aria-label*="Account"]',
                 'div[aria-label*="Your profile"]',

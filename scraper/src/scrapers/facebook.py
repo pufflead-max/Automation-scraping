@@ -192,8 +192,35 @@ class FacebookScraper(BaseScraper):
             self.logger.info("system_binaries_not_found_falling_back_to_webdriver_manager")
             service = Service(ChromeDriverManager().install(), service_args=['--verbose'])
         
-        # Increase timeout for Chrome startup (especially when running multiple instances)
-        self.driver = webdriver.Chrome(service=service, options=options)
+        # ── Persistent Profile Lock Cleanup ──────────────────────────────────
+        # Chrome creates a 'SingletonLock' file to prevent multiple instances.
+        # In Docker, if the previous run crashed, this file is left behind
+        # and prevents Chrome from starting. We must clear it.
+        try:
+            lock_file = os.path.join(self.user_profile_dir, "SingletonLock")
+            if os.path.islink(lock_file) or os.path.exists(lock_file):
+                self.logger.info("removing_stale_chrome_lock", path=lock_file)
+                os.unlink(lock_file)
+        except Exception as e:
+            self.logger.warning("failed_to_remove_lock_file", error=str(e))
+
+        # ── Initialize Driver ────────────────────────────────────────────────
+        try:
+            # Increase timeout for Chrome startup (especially when running multiple instances)
+            self.driver = webdriver.Chrome(service=service, options=options)
+        except Exception as e:
+            self.logger.error("primary_driver_init_failed_trying_fallback", error=str(e))
+            # Fallback: Try without persistent profile if it's a profile issue
+            if "--user-data-dir" in str(options.arguments):
+                self.logger.warning("retrying_without_persistent_profile")
+                new_options = Options()
+                for arg in options.arguments:
+                    if "--user-data-dir" not in arg:
+                        new_options.add_argument(arg)
+                self.driver = webdriver.Chrome(service=service, options=new_options)
+            else:
+                raise e
+
         self.driver.set_page_load_timeout(300)  # 5 minutes for page loads
         
         # Inject anti-detection scripts

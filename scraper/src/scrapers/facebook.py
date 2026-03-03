@@ -76,6 +76,21 @@ class FacebookScraper(BaseScraper):
         self.seen_texts = set()
         self.driver = None
         self.proxy_tmp_dir = None
+        
+        # ── Persistent Profile Setup ──────────────────────────────────────────
+        # Profiles make the browser look like a "known device" to Facebook.
+        # It stores local storage, indexDB, and session data across runs.
+        email = kwargs.get('email') or os.getenv('FACEBOOK_EMAIL', 'default')
+        # Clean email for folder name (remove @, ., etc)
+        safe_email = re.sub(r'[^a-zA-Z0-9]', '_', email)
+        
+        # Base directory for all scraper profiles
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        self.profiles_base_dir = os.path.join(project_root, "scraper_profiles", "facebook")
+        self.user_profile_dir = os.path.join(self.profiles_base_dir, safe_email)
+        
+        os.makedirs(self.user_profile_dir, exist_ok=True)
+        self.logger.info("persistent_profile_path", path=self.user_profile_dir)
 
     def _init_driver(self, headless: bool = True):
         """Initialize the Selenium driver with stealth settings and proxies."""
@@ -136,6 +151,11 @@ class FacebookScraper(BaseScraper):
         options.add_argument('--metrics-recording-only')
         options.add_argument('--mute-audio')
         options.add_argument('--window-size=1280,720')       # Smaller than before saves GPU mem
+        # ── Persistent Profile Logic ──────────────────────────────────────────
+        # This tells Chrome where to store the profile data.
+        options.add_argument(f'--user-data-dir={self.user_profile_dir}')
+        options.add_argument('--profile-directory=Default') # Use the 'Default' profile within that dir
+
         # Cap JS heap so a heavy SPA like Facebook search can't OOM the renderer
         options.add_argument('--js-flags=--max-old-space-size=512')
         
@@ -766,22 +786,11 @@ class FacebookScraper(BaseScraper):
                     return True
                 
                 # Check for Security Checkpoint or CAPTCHA
-                # We only 'continue' if a solveable challenge is found to avoid 
-                # skipping the button-clicking logic for simple roadblocks.
                 if self._is_captcha_present():
                     self.logger.warning("security_challenge_detected_solving")
-                    if self._try_solve_captcha():
-                        time.sleep(10)
-                        continue
-                    else:
-                        self.logger.info("captcha_not_solveable_proceeding_to_action_checks")
-                
-                # Check for 2FA / Authentication Code screens
-                if "two_step_verification" in self.driver.current_url or "checkpoint" in self.driver.current_url:
-                    if self.driver.find_elements(By.CSS_SELECTOR, 'input[name="approvals_code"], input[id="approvals_code"]'):
-                        self.logger.error("2fa_code_required_manual_intervention_needed")
-                        # We can't solve this automatically without an OTP source
-                        return False
+                    self._try_solve_captcha()
+                    time.sleep(8) # Wait for page to process solve
+                    continue
                 
                 # Check for "Continue" / "Next" buttons common in security checkpoints
                 continue_selectors = [
@@ -850,15 +859,17 @@ class FacebookScraper(BaseScraper):
                         return True
                 except: continue
 
-            # 3. Text-based detection — ONLY use phrases highly specific to VISUAL puzzles.
-            # Roadblocks like 'Confirm Your Identity' are handled by the button-clicking
-            # logic in the login sequence, not the captcha solver.
+            # 3. Text-based detection — ONLY use long, highly specific phrases that won't
+            #    false-match unrelated page content (ads, nav labels, sidebar text, etc.).
+            #    Removed: 'checkpoint' (covered by URL check), 'puzzle'/'puzzel' (too short,
+            #    caused false positive matching e.g. "bus" substring in prior logs).
             captcha_texts = [
+                'Confirm Your Identity',
+                'Security Check',
                 'Please solve the puzzle',
-                'Enter the characters you see',
-                'Complete the security check to continue',
-                'solve the captcha',
-                'type the characters',
+                'Enter the code below',
+                'Help us confirm your identity',
+                'verify your account',
             ]
             for text in captcha_texts:
                 try:

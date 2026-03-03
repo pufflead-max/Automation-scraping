@@ -31,9 +31,9 @@ def trigger_cookie_rotation(context):
     # Determine which rotation DAG to trigger
     target_dag_id = None
     if "facebook" in context['dag'].dag_id.lower():
-        target_dag_id = 'facebook_cookie_rotation_dag'
+        target_dag_id = 'facebook_owner_cookie_rotation'
     elif "nextdoor" in context['dag'].dag_id.lower():
-        target_dag_id = 'nextdoor_cookie_rotation_dag'
+        target_dag_id = 'nextdoor_owner_cookie_rotation'
 
     if not target_dag_id:
         print(f"No specific rotation DAG found for {context['dag'].dag_id}. Skipping.")

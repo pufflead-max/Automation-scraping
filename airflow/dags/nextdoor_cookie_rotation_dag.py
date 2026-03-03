@@ -135,7 +135,7 @@ with DAG(
     'nextdoor_owner_cookie_rotation',
     default_args=default_args,
     description='Rotation of Nextdoor cookies for the central owner account',
-    schedule_interval='0 1 */2 * *',
+    schedule_interval=None, # Only triggered by on_failure_callback
     catchup=False,
     tags=['maintenance', 'cookies', 'nextdoor', 'owner'],
     max_active_runs=1,

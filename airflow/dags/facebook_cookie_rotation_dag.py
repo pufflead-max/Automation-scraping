@@ -62,7 +62,7 @@ with DAG(
     'facebook_owner_cookie_rotation',
     default_args=default_args,
     description='Rotation of Facebook cookies for the central owner account',
-    schedule_interval='0 2 */2 * *', # Every 2 days at 2 AM
+    schedule_interval=None, # Only triggered by on_failure_callback
     catchup=False,
     tags=['maintenance', 'cookies', 'facebook', 'owner'],
     max_active_runs=1,

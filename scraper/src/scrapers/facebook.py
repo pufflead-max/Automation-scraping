@@ -38,6 +38,7 @@ try:
     from models import FacebookLead, ScrapedLead
     from utils.buyer_intent import BuyerIntentDetector
     from user_credential_manager import UserCredentialManager
+    from utils.email_manager import EmailManager
 except ImportError:
     try:
         # Try relative imports (works when running as a package)
@@ -45,12 +46,21 @@ except ImportError:
         from ..models import FacebookLead, ScrapedLead
         from ..utils.buyer_intent import BuyerIntentDetector
         from ..user_credential_manager import UserCredentialManager
+        from ..utils.email_manager import EmailManager
     except (ImportError, ValueError):
         # Fallback for direct script execution
         from base import BaseScraper
         from models import FacebookLead, ScrapedLead
         from utils.buyer_intent import BuyerIntentDetector
         from user_credential_manager import UserCredentialManager
+        try:
+            from utils.email_manager import EmailManager
+        except ImportError:
+            # Maybe in the same dir
+            try:
+                from email_manager import EmailManager
+            except ImportError:
+                EmailManager = None
 
 
 class FacebookScraper(BaseScraper):
@@ -819,6 +829,50 @@ class FacebookScraper(BaseScraper):
                     time.sleep(8) # Wait for page to process solve
                     continue
                 
+                # Check for "Enter Code" / OTP screens (New Logic)
+                otp_input = None
+                otp_selectors = [
+                    'input[name="approvals_code"]',
+                    'input[id="approvals_code"]',
+                    'input[name="captcha_response"]',
+                    'input[placeholder*="Code"]',
+                    'input[aria-label*="Code"]',
+                    'input#code'
+                ]
+                
+                for sel in otp_selectors:
+                    try:
+                        el = self.driver.find_element(By.CSS_SELECTOR, sel)
+                        if el.is_displayed():
+                            otp_input = el
+                            break
+                    except: continue
+                
+                if otp_input:
+                    self.logger.info("otp_input_field_detected_attempting_auto_solve")
+                    email_user = os.getenv("FACEBOOK_EMAIL")
+                    app_pass = os.getenv("FACEBOOK_APP_PASSWORD")
+                    
+                    if EmailManager and email_user and app_pass:
+                        code = EmailManager.get_facebook_otp(email_user, app_pass)
+                        if code:
+                            self.logger.info("otp_fetched_successfully_entering_code", code=code)
+                            otp_input.clear()
+                            for char in code:
+                                otp_input.send_keys(char)
+                                time.sleep(random.uniform(0.1, 0.3))
+                            
+                            time.sleep(2)
+                            # Find and click continue after entering code
+                            # The loop will naturally pick up the continue button in the next section
+                        else:
+                            self.logger.warning("failed_to_fetch_otp_from_email")
+                    else:
+                        self.logger.warning("otp_solver_skipped_missing_creds", 
+                                         has_manager=EmailManager is not None, 
+                                         has_user=bool(email_user), 
+                                         has_pass=bool(app_pass))
+
                 # Check for "Continue" / "Next" buttons common in security checkpoints
                 continue_selectors = [
                     'button[type="submit"]',

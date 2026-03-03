@@ -95,17 +95,32 @@ def rotate_nextdoor_owner_cookies(**context):
                         page.keyboard.press("Enter")
                         page.wait_for_timeout(5000)
                     else:
-                        print("🔐 2FA detected but no secret found. Waiting for manual entry in 'nextdoor_owner_2fa' Airflow variable...")
-                        Variable.set("nextdoor_owner_2fa", "WAITING")
-                        # Simple poll logic
-                        for _ in range(30): # Wait 5 minutes max
-                            page.wait_for_timeout(10000)
-                            manual_code = Variable.get("nextdoor_owner_2fa", default_var="")
-                            if manual_code and manual_code != "WAITING":
-                                print(f"📥 Received manual code: {manual_code}")
-                                page.locator('input[name="code"], input[id*="id_code"]').first.fill(manual_code)
-                                page.keyboard.press("Enter")
-                                break
+                        print("🔐 2FA detected. Attempting to fetch OTP from Gmail...")
+                        from utils.email_manager import EmailManager
+                        email_user = Variable.get("nextdoor_owner_email", default_var=os.getenv("NEXTDOOR_EMAIL"))
+                        app_pass = os.getenv("NEXTDOOR_APP_PASSWORD") # Gmail App Password
+                        
+                        code = None
+                        if email_user and app_pass:
+                            code = EmailManager.get_nextdoor_otp(email_user, app_pass)
+                        
+                        if code:
+                            print(f"📥 Successfully fetched OTP from Gmail: {code}")
+                            page.locator('input[name="code"], input[id*="id_code"]').first.fill(code)
+                            page.keyboard.press("Enter")
+                            page.wait_for_timeout(5000)
+                        else:
+                            print("🔐 Email OTP fetch failed. Waiting for manual entry in 'nextdoor_owner_2fa' Airflow variable...")
+                            Variable.set("nextdoor_owner_2fa", "WAITING")
+                            # Simple poll logic
+                            for _ in range(30): # Wait 5 minutes max
+                                page.wait_for_timeout(10000)
+                                manual_code = Variable.get("nextdoor_owner_2fa", default_var="")
+                                if manual_code and manual_code != "WAITING":
+                                    print(f"📥 Received manual code: {manual_code}")
+                                    page.locator('input[name="code"], input[id*="id_code"]').first.fill(manual_code)
+                                    page.keyboard.press("Enter")
+                                    break
                 
             page.wait_for_url(lambda url: "login" not in url.lower(), timeout=30000)
             cookies = browser_context.cookies()

@@ -82,3 +82,59 @@ class EmailManager:
             
         logging.warning("otp_polling_timed_out")
         return None
+
+    @staticmethod
+    def get_nextdoor_otp(email_user: str, app_password: str, timeout: int = 120) -> Optional[str]:
+        """
+        Polls Gmail for the latest Nextdoor verification code.
+        """
+        logging.info(f"polling_gmail_for_nextdoor_otp user={email_user}")
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            try:
+                mail = imaplib.IMAP4_SSL("imap.gmail.com")
+                mail.login(email_user, app_password)
+                mail.select("inbox")
+                
+                # Nextdoor OTPs usually come from help@nextdoor.com
+                status, messages = mail.search(None, '(FROM "help@nextdoor.com")')
+                
+                if status == 'OK':
+                    mail_ids = messages[0].split()
+                    if mail_ids:
+                        latest_id = mail_ids[-1]
+                        status, data = mail.fetch(latest_id, '(RFC822)')
+                        
+                        if status == 'OK':
+                            raw_email = data[0][1]
+                            msg = email.message_from_bytes(raw_email)
+                            subject = str(msg.get("Subject", ""))
+                            
+                            body = ""
+                            if msg.is_multipart():
+                                for part in msg.walk():
+                                    if part.get_content_type() == "text/plain":
+                                        body = part.get_payload(decode=True).decode()
+                                        break
+                            else:
+                                body = msg.get_payload(decode=True).decode()
+
+                            combined_text = f"{subject} {body}"
+                            
+                            # Nextdoor codes are typically 6 digits
+                            match = re.search(r'\b(\d{6})\b', combined_text)
+                            if match:
+                                code = match.group(1)
+                                logging.info(f"found_nextdoor_otp code={code}")
+                                mail.logout()
+                                return code
+
+                mail.logout()
+            except Exception as e:
+                logging.error(f"gmail_poll_error_nextdoor error={str(e)}")
+            
+            time.sleep(10)
+            
+        logging.warning("nextdoor_otp_polling_timed_out")
+        return None

@@ -60,7 +60,7 @@ class FacebookScraper(BaseScraper):
         super().__init__("facebook", db_manager=kwargs.get('db_manager'))
         self.cookies = cookies or {}
         self.headless_default = kwargs.get('headless', True)
-        self.use_proxy = kwargs.get('use_proxy', False)
+        self.use_proxy = kwargs.get('use_proxy', True)
         
         # Load cookie file if path provided
         if isinstance(self.cookies, str) and os.path.exists(self.cookies):
@@ -84,26 +84,26 @@ class FacebookScraper(BaseScraper):
         options = Options()
         
         # 1. Setup Proxies (Bright Data Residential)
-        # proxy_server = self.cfg.get('brightdata_proxy_server')
-        # proxy_user = self.cfg.get('brightdata_proxy_user')
-        # proxy_pass = self.cfg.get('brightdata_proxy_pass')
-        # 
-        # if self.use_proxy and proxy_server:
-        #     try:
-        #         # Format: brd.superproxy.io:33335
-        #         host_port = proxy_server.replace("http://", "").replace("https://", "")
-        #         if ":" in host_port:
-        #             host, port = host_port.split(":")
-        #             if proxy_user and proxy_pass:
-        #                 self.logger.info("loading_proxy_with_auth", host=host, port=port)
-        #                 self.proxy_tmp_dir = tempfile.mkdtemp()
-        #                 extension_path = self._create_proxy_extension(host, port, proxy_user, proxy_pass, self.proxy_tmp_dir)
-        #                 options.add_extension(extension_path)
-        #             else:
-        #                 self.logger.info("loading_proxy_no_auth", host=host, port=port)
-        #                 options.add_argument(f'--proxy-server={proxy_server}')
-        #     except Exception as e:
-        #         self.logger.error("proxy_setup_failed", error=str(e))
+        proxy_server = self.cfg.get('brightdata_proxy_server')
+        proxy_user = self.cfg.get('brightdata_proxy_user')
+        proxy_pass = self.cfg.get('brightdata_proxy_pass')
+        
+        if self.use_proxy and proxy_server:
+            try:
+                # Format: brd.superproxy.io:33335
+                host_port = proxy_server.replace("http://", "").replace("https://", "")
+                if ":" in host_port:
+                    host, port = host_port.split(":")
+                    if proxy_user and proxy_pass:
+                        self.logger.info("loading_proxy_with_auth", host=host, port=port)
+                        self.proxy_tmp_dir = tempfile.mkdtemp()
+                        extension_path = self._create_proxy_extension(host, port, proxy_user, proxy_pass, self.proxy_tmp_dir)
+                        options.add_extension(extension_path)
+                    else:
+                        self.logger.info("loading_proxy_no_auth", host=host, port=port)
+                        options.add_argument(f'--proxy-server={proxy_server}')
+            except Exception as e:
+                self.logger.error("proxy_setup_failed", error=str(e))
 
         if headless:
             options.add_argument('--headless=new')
@@ -270,27 +270,61 @@ class FacebookScraper(BaseScraper):
         """Inject JavaScript to mask automation (enhanced version)"""
         try:
             stealth_js = """
-            // Overwrite the `navigator.webdriver` property
+            // 1. Overwrite the `navigator.webdriver` property
             Object.defineProperty(navigator, 'webdriver', {
                 get: () => false,
             });
             
-            // Overwrite the `plugins` property to use a custom getter
+            // 2. Overwrite the `plugins` property to look like a real browser
             Object.defineProperty(navigator, 'plugins', {
-                get: () => [1, 2, 3, 4, 5],
+                get: () => [
+                    { name: 'Chrome PDF Viewer', filename: 'internal-pdf-viewer' },
+                    { name: 'Chromium PDF Viewer', filename: 'internal-pdf-viewer' },
+                    { name: 'Microsoft Edge PDF Viewer', filename: 'internal-pdf-viewer' },
+                    { name: 'PDF Viewer', filename: 'internal-pdf-viewer' },
+                    { name: 'WebKit built-in PDF', filename: 'internal-pdf-viewer' }
+                ],
             });
             
-            // Overwrite the `languages` property to use a custom getter
-            Object.defineProperty(navigator, 'languages', {
-                get: () => ['en-US', 'en'],
-            });
+            // 3. Overwrite hardware and environment attributes
+            Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+            Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 4 });
+            Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+            Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
             
-            // Pass the Chrome Test
-            window.chrome = {
-                runtime: {},
+            // 4. Enhanced WebGL masking (Fixing "SwiftShader" bot indicator)
+            const getParameter = WebGLRenderingContext.prototype.getParameter;
+            WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                // UNMASKED_VENDOR_WEBGL
+                if (parameter === 37445) return 'Google Inc. (NVIDIA)';
+                // UNMASKED_RENDERER_WEBGL
+                if (parameter === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)';
+                return getParameter.apply(this, arguments);
+            };
+
+            // 5. Canvas Fingerprint Protection (Add slight noise to prevent deterministic hash)
+            const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
+            HTMLCanvasElement.prototype.toDataURL = function(type) {
+                if (type === 'image/png' && this.width > 0 && this.height > 0) {
+                    const ctx = this.getContext('2d');
+                    if (ctx) {
+                        const imageData = ctx.getImageData(0, 0, 1, 1);
+                        imageData.data[0] = imageData.data[0] ^ 1; // Subtle noise
+                        ctx.putImageData(imageData, 0, 0);
+                    }
+                }
+                return originalToDataURL.apply(this, arguments);
             };
             
-            // Pass the Permissions Test
+            // 6. Pass the Chrome Test
+            window.chrome = {
+                runtime: {},
+                loadTimes: function() {},
+                csi: function() {},
+                app: {}
+            };
+            
+            // 7. Pass the Permissions Test
             const originalQuery = window.navigator.permissions.query;
             window.navigator.permissions.query = (parameters) => (
                 parameters.name === 'notifications' ?
@@ -312,7 +346,7 @@ class FacebookScraper(BaseScraper):
             
         try:
             self.driver.get('https://www.facebook.com')
-            time.sleep(2)
+            time.sleep(random.uniform(3, 6)) # Human-like wait for initial load
             
             cookie_list = []
             if isinstance(self.cookies, list):
@@ -321,6 +355,7 @@ class FacebookScraper(BaseScraper):
                 cookie_list = [{'name': k, 'value': v, 'domain': '.facebook.com'} for k, v in self.cookies.items()]
 
             added_count = 0
+            # Inject cookies with slight jitter to mimic natural session resumption
             for cookie in cookie_list:
                 try:
                     c = {
@@ -336,12 +371,15 @@ class FacebookScraper(BaseScraper):
                     
                     self.driver.add_cookie(c)
                     added_count += 1
+                    if added_count % 5 == 0:
+                        time.sleep(random.uniform(0.1, 0.3)) # Micro-delay every few cookies
                 except:
                     continue
             
             self.logger.info("cookies_injected_to_browser", count=added_count)
+            time.sleep(random.uniform(1.5, 3))
             self.driver.refresh()
-            time.sleep(5)
+            time.sleep(random.uniform(5, 8))
             
             # Log final count of cookies in browser
             browser_cookies = self.driver.get_cookies()
@@ -644,22 +682,22 @@ class FacebookScraper(BaseScraper):
         try:
             # 0. Focus and wiggle to wake up event listeners
             self.driver.execute_script("document.body.focus();")
-            self.driver.execute_script("window.scrollBy(0, -50);")
-            time.sleep(0.2)
-            self.driver.execute_script("window.scrollBy(0, 50);")
-            time.sleep(0.3)
+            self.driver.execute_script(f"window.scrollBy(0, {-random.randint(30, 70)});")
+            time.sleep(random.uniform(0.2, 0.4))
+            self.driver.execute_script(f"window.scrollBy(0, {random.randint(40, 80)});")
+            time.sleep(random.uniform(0.3, 0.6))
             
             # 1. Random small scrolls (mimic mouse wheel)
-            for _ in range(3):
-                amount = random.randint(500, 1000)
+            for _ in range(random.randint(2, 4)):
+                amount = random.randint(400, 1200)
                 self.driver.execute_script(f"window.scrollBy(0, {amount});")
-                time.sleep(random.uniform(0.5, 1.0))
+                time.sleep(random.uniform(0.7, 1.4))
             
             # 2. Use Page Down keys (very effective for Facebook)
             actions = ActionChains(self.driver)
-            for _ in range(random.randint(2, 4)):
+            for _ in range(random.randint(1, 3)):
                 actions.send_keys(Keys.PAGE_DOWN)
-                time.sleep(random.uniform(0.2, 0.4))
+                time.sleep(random.uniform(0.3, 0.7))
             actions.perform()
             
             # 3. Use JavaScript to scroll to the last found article
@@ -674,23 +712,24 @@ class FacebookScraper(BaseScraper):
             """)
             
             # 4. Occasional 'End' key to trigger lazy loading
-            if scroll_count % 2 == 0:
+            if scroll_count % 3 == 0:
                 self.logger.info("sending_end_key_for_lazy_load")
                 ActionChains(self.driver).send_keys(Keys.END).perform()
-                time.sleep(2)
+                time.sleep(random.uniform(2, 4))
             
-            # 5. Check for "Loading" indicators or "See More" buttons at the bottom
-            self.driver.execute_script("""
-                const loadMore = Array.from(document.querySelectorAll('span, div')).find(el => 
-                    el.textContent && (el.textContent.includes('See more posts') || el.textContent.includes('Loading'))
-                );
-                if (loadMore) {
-                    loadMore.scrollIntoView();
-                    if (typeof loadMore.click === 'function') loadMore.click();
-                }
-            """)
-            
-            time.sleep(2.5) # Allow meaningful time for fetch
+            # 5. Simulated mouse micro-movements while loading
+            try:
+                self.driver.execute_script("""
+                    const e = new MouseEvent('mousemove', {
+                        view: window, bubbles: true, cancelable: true,
+                        clientX: Math.random() * window.innerWidth,
+                        clientY: Math.random() * window.innerHeight
+                    });
+                    document.dispatchEvent(e);
+                """)
+            except: pass
+
+            time.sleep(random.uniform(2.5, 4.5)) # Allow meaningful time for fetch
             
         except Exception as e:
             self.logger.debug("scroll_failed", error=str(e))

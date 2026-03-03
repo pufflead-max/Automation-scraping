@@ -1396,7 +1396,7 @@ class FacebookScraper(BaseScraper):
 
     def scrape(self, target: str = None, **kwargs) -> List[ScrapedLead]:
         """Main scraping method using Selenium."""
-        limit = kwargs.get('limit', 25)
+        limit = kwargs.get('limit', 15)
         # Handle limit -1 as unlimited
         if limit == -1:
             target_posts = 999999

@@ -54,7 +54,7 @@ def main():
     parser.add_argument("--no-headless", action="store_true")
     parser.add_argument("--cookies", help="Path to JSON cookies file")
     parser.add_argument("--max-pages", type=int, default=30)
-    parser.add_argument("--limit", type=int, default=25)
+    parser.add_argument("--limit", type=int, default=15)
     args = parser.parse_args()
     
     try:

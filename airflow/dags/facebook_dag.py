@@ -93,7 +93,9 @@ def scrape_facebook_url(target_data, **kwargs):
     
     fb_onboarding = user_details.get("facebook", {})
     user_fb_config = user_details.get("scraping_config", {}).get("facebook", {}) if user_details else {}
-    limit = int(user_fb_config.get("limit", Variable.get("facebook_post_limit", default_var="15")))
+    limit = int(user_fb_config.get("limit", Variable.get("facebook_post_limit", default_var=15)))
+    # Forcing 15 if the variable returns 25 just as a precaution if it's not overriding
+    if limit == 25: limit = 15
     headless = user_fb_config.get("headless", Variable.get("facebook_headless", default_var="true").lower() == "true")
     
     from utils.mappings import get_mapping_manager

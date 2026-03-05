@@ -183,10 +183,17 @@ class MappingManager:
                 
                 # 2. Craigslist Dynamic URLs - map state/city to correct area subdomain
                 cl_area = self._get_craigslist_area(state_code, user_city)
-                cl_region = self._get_region_path(region)
+                
+                # NOTE: We stop using cl_region (like /sob) as per user request for "specific results".
+                # Instead, we rely on scraping the main area and using the city filter in base.py.
+                # We also add the city as a query parameter to help Craigslist focus the search.
                 cl_urls = []
                 for cat in self._get_craigslist_categories(v_slug):
-                    cl_urls.append(f"https://{cl_area}.craigslist.org/search{cl_region}/{cat}")
+                    # Base search URL
+                    base_url = f"https://{cl_area}.craigslist.org/search/{cat}"
+                    # Add city query for specificity
+                    city_query = user_city.replace(" ", "+")
+                    cl_urls.append(f"{base_url}?query={city_query}")
 
                 # 3. Facebook Dynamic Search URLs
                 v_config = self.get_vertical_config(v_slug)
@@ -219,11 +226,12 @@ class MappingManager:
                 nd_url = f"https://nextdoor.com/city/{city_slug}--{state_code.lower()}/"
                 
                 for v_slug in v_slugs:
-                    cl_urls = []
                     cl_area = self._get_craigslist_area(state_code, city)
-                    cl_region = self._get_region_path(user_data.get("region"))
+                    cl_urls = []
                     for cat in self._get_craigslist_categories(v_slug):
-                        cl_urls.append(f"https://{cl_area}.craigslist.org/search{cl_region}/{cat}")
+                        base_url = f"https://{cl_area}.craigslist.org/search/{cat}"
+                        city_query = city.replace(" ", "+")
+                        cl_urls.append(f"{base_url}?query={city_query}")
                     
                     results.append({
                         "state": user_state,

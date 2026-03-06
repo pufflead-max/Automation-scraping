@@ -238,6 +238,40 @@ def init_master_data():
                 "https://www.facebook.com/groups/bostoncommunity"
             ],
         },
+        # ── Victor Moura (Weymouth, MA) ───────────────────────────
+        {
+            "state": "MA",
+            "city": "Weymouth",
+            "region": "South Shore",
+            "vertical": "plumbing",
+            "craigslist_subdomain": "boston",
+            "facebook_group_urls": [
+                "https://www.facebook.com/groups/weymouthma",
+                "https://www.facebook.com/groups/weymouthcommunity",
+            ],
+        },
+        {
+            "state": "MA",
+            "city": "Weymouth",
+            "region": "South Shore",
+            "vertical": "kitchen_and_bath",
+            "craigslist_subdomain": "boston",
+            "facebook_group_urls": [
+                "https://www.facebook.com/groups/weymouthma",
+                "https://www.facebook.com/groups/weymouthcommunity",
+            ],
+        },
+        {
+            "state": "MA",
+            "city": "Weymouth",
+            "region": "South Shore",
+            "vertical": "electrical",
+            "craigslist_subdomain": "boston",
+            "facebook_group_urls": [
+                "https://www.facebook.com/groups/weymouthma",
+                "https://www.facebook.com/groups/weymouthcommunity",
+            ],
+        },
     ]
 
     mappings = []

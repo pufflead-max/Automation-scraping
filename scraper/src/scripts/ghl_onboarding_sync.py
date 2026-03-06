@@ -214,7 +214,18 @@ def sync_ghl_onboarding():
             raw_verticals = [str(v).strip() for v in raw_v_data if str(v).strip()]
         else:
             raw_verticals = [str(raw_v_data).strip()] if raw_v_data else []
-            
+
+        # ── Key Fix: If GHL has no verticals, preserve what's already in MongoDB ──
+        if not raw_verticals:
+            existing_user = collection.find_one({"user.email": contact.get("email")})
+            if existing_user:
+                existing_verticals = existing_user.get("user", {}).get("verticals", [])
+                if existing_verticals:
+                    logger.info("preserving_existing_verticals_ghl_has_none",
+                                email=contact.get("email"),
+                                verticals=existing_verticals)
+                    raw_verticals = existing_verticals
+
         validated_verticals = validate_verticals(db, raw_verticals)
 
         onboarding_doc = {
@@ -242,15 +253,25 @@ def sync_ghl_onboarding():
         mapper = get_mapping_manager()
         mappings = mapper.get_mappings_for_user(onboarding_doc)
         
-        # Consolidate URLs across all mappings (Primary + Service Area)
+        # Consolidate URLs across all mappings — supports both old and new schema keys
         fb_urls = []
         nd_urls = []
         cl_urls = []
         
         for m in mappings:
-            fb_urls.extend(m.get("facebook", {}).get("group_urls", []))
-            nd_urls.extend(m.get("nextdoor", {}).get("group_urls", []))
-            cl_urls.extend(m.get("craigslist", {}).get("urls", []))
+            fb_data = m.get("facebook", {})
+            fb_urls.extend(fb_data.get("group_urls", []))
+            fb_urls.extend(fb_data.get("search_urls", []))
+
+            nd_data = m.get("nextdoor", {})
+            nd_urls.extend(nd_data.get("group_urls", []))
+            nd_urls.extend(nd_data.get("search_urls", []))
+            if nd_data.get("city_url"):
+                nd_urls.append(nd_data["city_url"])
+
+            cl_data = m.get("craigslist", {})
+            cl_urls.extend(cl_data.get("urls", []))
+            cl_urls.extend(cl_data.get("search_urls", []))
             
         onboarding_doc["facebook"] = {"group_urls": list(set(fb_urls)), "page_urls": []}
         onboarding_doc["nextdoor"] = {"group_urls": list(set(nd_urls))}

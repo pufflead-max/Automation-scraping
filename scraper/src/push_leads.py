@@ -2,7 +2,7 @@
 """Push leads from MongoDB to GoHighLevel  ."""
 
 import os, sys, argparse
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 
 # Add scraper/src to path for imports
@@ -57,10 +57,39 @@ def push_leads(source: str, limit: int = None, force: bool = False, user_email: 
         key = l.get('source_url') or str(l.get('_id', id(l)))
         dedup_map[key] = l
     unique_leads = dedup_map.values()
-    buyer_leads = [l for l in unique_leads if l.get('is_buyer_request') or l.get('is_service_request')]
+    
+    # ── Age Filter: 48 Hour Limit ───────────────────────────────────────────
+    now = datetime.utcnow()
+    age_limit = now - timedelta(hours=48)
+    
+    buyer_leads = []
+    for l in unique_leads:
+        if not (l.get('is_buyer_request') or l.get('is_service_request')):
+            continue
+            
+        # Check posted date
+        posted_date = l.get('posted_date')
+        if isinstance(posted_date, str):
+            try:
+                from dateutil import parser
+                posted_date = parser.parse(posted_date)
+            except:
+                posted_date = None
+                
+        if posted_date:
+            # Ensure posted_date is offset-naive if now is naive (standard for our app)
+            if posted_date.tzinfo is not None:
+                posted_date = posted_date.replace(tzinfo=None)
+                
+            if posted_date < age_limit:
+                age_hours = (now - posted_date).total_seconds() / 3600
+                logger.debug("skipping_old_lead", url=l.get('source_url'), age_hours=round(age_hours, 1))
+                continue
+        
+        buyer_leads.append(l)
     
     if not buyer_leads:
-        print(f"⚠️ No buyer leads for {source} after filtering.")
+        print(f"⚠️ No fresh buyer leads (last 48h) for {source} after filtering.")
         return
 
     # Group leads by user for better organization

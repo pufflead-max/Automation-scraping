@@ -33,6 +33,7 @@ class BuyerIntentDetector:
     )
 
     # ── Hard seller signals: post is from someone OFFERING a service ────────────
+    # Also includes irrelevant content categories like obituaries.
     SELLER_PATTERN = re.compile(
         r'(for sale|equipment|tools)\b|'
         r'\b(i |we )(offer|provide|do |can |am a|are a|specialize)|'
@@ -50,7 +51,8 @@ class BuyerIntentDetector:
         r'\b(build a business|no upfront cost|join our team|earn money|make money)\b|'
         r'\b(recruiting|franchise|partnership|work with us|grow your business)\b|'
         r'\bwe (serve|cover|specialize|do)\b|'
-        r'\b(starting at|rates? (start|from|as low))\b',
+        r'\b(starting at|rates? (start|from|as low))\b|'
+        r'\b(obituary|funeral|passing of|memorial service|celebration of life|deepest condolences)\b',
         re.IGNORECASE
     )
 

@@ -26,7 +26,10 @@ class MappingManager:
             "Carpentry Services": "carpentry",
             "Fence Installation & Repair": "fencing",
             "Flooring Installation & Repair": "flooring",
-            "Cleaning services": "cleaning"
+            "Cleaning services": "cleaning",
+            "Kitchen & Bath Renovations": "kitchen_and_bath",
+            "Plumbing": "plumbing",
+            "Electrical Services": "electrical"
         }
         
         # Load from MongoDB verticals collection dynamically
@@ -102,7 +105,10 @@ class MappingManager:
             "asphalt_paving": ["fgs", "hss", "lbg"],
             "carpentry": ["fgs", "hss", "lbg"],
             "fencing": ["fgs", "hss", "lbg"],
-            "flooring": ["fgs", "hss", "lbg"]
+            "flooring": ["fgs", "hss", "lbg"],
+            "kitchen_and_bath": ["fgs", "hss", "lbg"],
+            "plumbing": ["hss", "lbg"],
+            "electrical": ["hss", "lbg"]
         }
         return cats.get(vertical, ["fgs", "hss", "lbg", "sss"]) # Extended defaults
 

@@ -71,6 +71,27 @@ def init_master_data():
             "keywords": ["house cleaning", "maid service", "deep cleaning", "office cleaning", "carpet cleaning", "window cleaning", "move in cleaning", "move out cleaning"],
             "intent_indicators": ["looking for", "need", "recommendation", "cleaner"],
             "exclude_keywords": ["hiring", "job"]
+        },
+        {
+            "name": "Kitchen & Bath Renovations",
+            "slug": "kitchen_and_bath",
+            "keywords": ["kitchen remodel", "bathroom remodel", "cabinet installation", "countertop", "vanity installation", "shower remodel", "bath renovation", "kitchen renovation"],
+            "intent_indicators": ["looking for", "need", "recommendation", "quote", "estimate"],
+            "exclude_keywords": ["hiring", "job"]
+        },
+        {
+            "name": "Plumbing",
+            "slug": "plumbing",
+            "keywords": ["plumber", "plumbing", "leak", "clog", "faucet repair", "pipe burst", "water heater", "drain cleaning", "sewer line", "toilet repair"],
+            "intent_indicators": ["looking for", "need", "recommendation", "quote", "estimate", "clogged"],
+            "exclude_keywords": ["hiring", "job"]
+        },
+        {
+            "name": "Electrical Services",
+            "slug": "electrical",
+            "keywords": ["electrician", "electrical", "wiring", "outlets", "circuit breaker", "lighting installation", "panel upgrade", "generator installation"],
+            "intent_indicators": ["looking for", "need", "recommendation", "quote", "estimate"],
+            "exclude_keywords": ["hiring", "job"]
         }
     ]
     

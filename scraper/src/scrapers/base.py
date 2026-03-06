@@ -2,7 +2,7 @@
 
 import uuid, json, os, requests, time
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from requests.exceptions import RequestException, Timeout
@@ -106,11 +106,42 @@ class BaseScraper(ABC):
                     l.extra_data = l.extra_data or {}
                     l.extra_data['user_detail'] = user_data
             
-            # 2. Save ALL leads to Raw Data collection
+            # 2. ── Age Filter: Drop leads older than 48 hours ─────────────────
+            age_limit = datetime.utcnow() - timedelta(hours=48)
+            fresh_leads = []
+            stale_count = 0
+            for l in leads:
+                posted = getattr(l, 'posted_date', None)
+                if posted:
+                    try:
+                        # Normalize to naive datetime if timezone-aware
+                        if hasattr(posted, 'tzinfo') and posted.tzinfo is not None:
+                            posted = posted.replace(tzinfo=None)
+                        elif isinstance(posted, str):
+                            from dateutil import parser as dateparser
+                            posted = dateparser.parse(posted)
+                            if posted and posted.tzinfo:
+                                posted = posted.replace(tzinfo=None)
+                    except Exception:
+                        posted = None
+
+                    if posted and posted < age_limit:
+                        stale_count += 1
+                        self.logger.debug("lead_too_old_skipped",
+                                          url=getattr(l, 'source_url', ''),
+                                          age_hours=round((datetime.utcnow() - posted).total_seconds() / 3600, 1))
+                        continue
+                fresh_leads.append(l)
+
+            if stale_count:
+                self.logger.info("stale_leads_dropped", count=stale_count, kept=len(fresh_leads))
+            leads = fresh_leads
+
+            # 3. Save ALL fresh leads to Raw Data collection
             if save and leads:
                 self.save_leads(leads, f"{self.name.capitalize()}_raw_data")
-            
-            # 3. Filter and Enrich Buyer Requests
+
+            # 4. Filter and Enrich Buyer Requests
             buyers = [l for l in leads if getattr(l, 'is_buyer_request', False) or getattr(l, 'is_service_request', False)]
             self.logger.info("filtered", total=len(leads), buyers=len(buyers))
             

@@ -606,23 +606,37 @@ class FacebookScraper(BaseScraper):
         """Extract exact post date using heuristics and handle relative time."""
         try:
             candidate_dates = []
-            links = article.find_elements(By.CSS_SELECTOR, 'a[role="link"], a')
             
-            for link in links:
+            # 1. Broadly search links and spans for dates
+            date_elements = article.find_elements(By.CSS_SELECTOR, 'a[role="link"], a, span[aria-label], span[aria-labelledby], span')
+            
+            relative_regex = re.compile(r'^(\d+[mhdw])(\s*ago)?$', re.IGNORECASE)
+            
+            for el in date_elements:
                 try:
-                    href = link.get_attribute('href') or ""
-                    aria = link.get_attribute('aria-label') or ""
+                    aria = el.get_attribute('aria-label') or ""
                     
-                    if aria or any(x in href for x in ['/posts/', '/videos/', '/reel/', '/photo', 'fbid=']):
-                        text = self.driver.execute_script("return arguments[0].innerText;", link).strip()
-                        if text:
-                            candidate_dates.append(text)
-                        elif aria:
-                            candidate_dates.append(aria)
-                    elif "Sponsored" in (link.text or ""):
-                        candidate_dates.append("Sponsored")
+                    # If aria-label contains a months name, it's very likely the date
+                    months_regex = r'(January|February|March|April|May|June|July|August|September|October|November|December)'
+                    if aria and re.search(months_regex, aria):
+                        # print(f"DEBUG: Found date in aria-label: {aria}")
+                        return aria.strip()
+
+                    text = self.driver.execute_script("return arguments[0].innerText;", el).strip()
+                    
+                    # Exact matches for relative patterns (2h, 1d etc)
+                    if relative_regex.match(text) or text.lower() in ["just now", "yesterday"]:
+                        candidate_dates.append(text)
+                        
+                    href = el.get_attribute('href') or ""
+                    if any(x in href for x in ['/posts/', '/videos/', '/reel/', '/photo', 'fbid=']):
+                        if text and len(text) < 30: candidate_dates.append(text)
+                    
+                    if "Sponsored" in text: candidate_dates.append("Sponsored")
                 except: 
                     continue
+            
+            # print(f"DEBUG: Facebook candidate dates: {candidate_dates}")
 
             # Sponsored check
             if any("Sponsored" in d for d in candidate_dates):
@@ -633,48 +647,49 @@ class FacebookScraper(BaseScraper):
 
             for d in candidate_dates:
                 clean_d = d.strip()
-                if len(clean_d) > 50: 
+                if not clean_d or len(clean_d) > 50: 
                     continue
                 
-                # Relative time patterns
-                if re.match(r'^\d+[mh]$', clean_d): 
-                    return datetime.now().strftime("%d %B %Y")
+                # Relative time patterns (1h, 10m, Just now)
+                if relative_regex.match(clean_d) or "Just now" in clean_d: 
+                    return clean_d
                 
-                match_d = re.match(r'^(\d+)d$', clean_d)
-                if match_d:
-                    past = datetime.now() - timedelta(days=int(match_d.group(1)))
+                if "Yesterday" in clean_d:
+                    past = datetime.now() - timedelta(days=1)
                     return past.strftime("%d %B %Y")
 
-                match_w = re.match(r'^(\d+)w$', clean_d)
-                if match_w:
-                    past = datetime.now() - timedelta(weeks=int(match_w.group(1)))
-                    return past.strftime("%d %B %Y")
-                
-                match_y = re.match(r'^(\d+)y$', clean_d)
-                if match_y:
-                    past = datetime.now() - timedelta(days=int(match_y.group(1))*365)
-                    return past.strftime("%d %B %Y")
-
-                # Absolute dates
-                if any(m in clean_d for m in months):
+                # Absolute dates (e.g. "February 10", "10 Feb")
+                if any(m in clean_d for m in months) or any(m[:3] in clean_d for m in months):
                     if not re.search(r'\d{4}', clean_d):
                         clean_d = f"{clean_d} {datetime.now().year}"
                     return clean_d
 
-            # Regex search in article text
+            # Regex search in article header text as a strong fallback
             try:
-                date_pattern = re.compile(r'\b(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\b', re.IGNORECASE)
-                header_text = article.text[:300]
+                # Common patterns including MM/DD or "Mar 6"
+                header_text = article.text[:400]
+                
+                # Try simple relative pattern in header
+                if h_rel := re.search(r'\b\d+[mhdw]\b', header_text):
+                    return h_rel.group(0)
+
+                date_pattern = re.compile(r'\b(\d{1,2})?\s*(January|February|March|April|May|June|July|August|September|October|November|December|[A-Z][a-z]{2})\s*(\d{1,2})?\b', re.IGNORECASE)
                 match = date_pattern.search(header_text)
                 if match:
-                    found_date = match.group(0)
-                    has_year = re.search(r'\d{4}', header_text[match.end():match.end()+10])
-                    if has_year:
-                        found_date = f"{found_date} {has_year.group(0)}"
-                    else:
-                        found_date = f"{found_date} {datetime.now().year}"
+                    found_date = match.group(0).strip()
+                    if not re.search(r'\d{4}', found_date):
+                        following_text = header_text[match.end():match.end()+10]
+                        year_match = re.search(r'\d{4}', following_text)
+                        if year_match:
+                            found_date = f"{found_date} {year_match.group(0)}"
+                        else:
+                            found_date = f"{found_date} {datetime.now().year}"
                     return found_date
             except:
+                pass
+            
+            # Final debug if nothing worked
+            if article.text:
                 pass
 
             return "Date not found"
@@ -686,16 +701,7 @@ class FacebookScraper(BaseScraper):
                    custom_indicators: Optional[list] = None) -> Optional[FacebookLead]:
         """Parse raw data into a FacebookLead model."""
         try:
-            post_date_str = raw_data.get('post_date')
-            posted_date = None
-            if post_date_str and post_date_str != "Date not found":
-                date_formats = ["%d %B %Y", "%Y-%m-%d"]
-                for fmt in date_formats:
-                    try:
-                        posted_date = datetime.strptime(post_date_str, fmt)
-                        break
-                    except: 
-                        continue
+            post_date_raw = raw_data.get('post_date')
             
             # Combine title and description for buyer intent analysis
             text = f"{raw_data.get('title', '')} {raw_data.get('text', '')}"
@@ -720,7 +726,7 @@ class FacebookScraper(BaseScraper):
                 source_id=raw_data.get('id'),
                 title=raw_data.get('title'),
                 description=raw_data.get('text'),
-                posted_date=posted_date,
+                posted_date=post_date_raw if post_date_raw != "Date not found" else None,
                 images=raw_data.get('images', []),
                 videos=raw_data.get('videos', []),
                 image_count=raw_data.get('image_count', 0),
@@ -728,7 +734,7 @@ class FacebookScraper(BaseScraper):
                 has_media=raw_data.get('has_media', False),
                 word_count=raw_data.get('word_count', 0),
                 is_buyer_request=is_buyer_request,
-                extra_data={'raw_date': post_date_str, 'scraped_at': raw_data.get('scraped_at')}
+                extra_data={'raw_date': post_date_raw, 'scraped_at': raw_data.get('scraped_at')}
             )
         except Exception as e:
             self.logger.warning("failed_to_create_facebook_lead", error=str(e))

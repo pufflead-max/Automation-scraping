@@ -72,18 +72,15 @@ class BaseScraper(ABC):
             # 1. Ensure Index for fast lookups
             self.db.get_collection(col).create_index("source_url", background=True)
             
-            # 2. Batch check existence
-            urls = [l.source_url for l in leads]
-            existing = self.db.get_collection(col).find({"source_url": {"$in": urls}}, {"source_url": 1})
-            existing_urls = {doc["source_url"] for doc in existing}
+            # 2. Convert to dicts for bulk update
+            # We no longer filter by existing_urls here because we want to allow 
+            # existing leads to be updated with enriched information (like dates).
+            leads_to_save = [l.model_dump() for l in leads]
             
-            new_leads = [l.model_dump() for l in leads if l.source_url not in existing_urls]
-            
-            if not new_leads:
-                self.logger.info("no_new_leads_to_save", col=col)
+            if not leads_to_save:
                 return 0
                 
-            count = self.db.bulk_upsert(col, new_leads, key="source_url")
+            count = self.db.bulk_upsert(col, leads_to_save, key="source_url")
             self.logger.info("leads_saved", col=col, count=count)
             return count
         except Exception as e:

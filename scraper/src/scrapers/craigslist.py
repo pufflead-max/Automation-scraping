@@ -27,24 +27,45 @@ class CraigslistScraper(BaseScraper):
     def parse_search_item(self, soup_element) -> Dict[str, Any]:
         """Parse a single Craigslist result-node HTML block."""
         link = soup_element.select_one("a")
+        
+        # 1. New Craigslist HTML structure often uses time[datetime]
+        # 2. Static layout often uses .result-date
+        # 3. Fallback layout often uses .meta > span
+        date_elem = soup_element.select_one("time") or soup_element.select_one(".result-date") or soup_element.select_one(".meta > span")
+        
+        date_val = None
+        date_text = None
+        if date_elem:
+            date_val = date_elem.get("datetime") or date_elem.get("title")
+            date_text = date_elem.get_text(strip=True)
+        
+        # 4. Aggressive fallback: search ALL spans for something that LOOKS like a date (e.g. "28/02" or "Feb 28")
+        if not date_text:
+            import re
+            for tag in soup_element.select("span, div"):
+                txt = tag.get_text(strip=True)
+                if re.match(r'^\d{1,2}/\d{1,2}$', txt) or re.match(r'^[A-Z][a-z]{2}\s\d{1,2}$', txt):
+                    date_text = txt
+                    break
+
         if link:
             title_elem = link.select_one(".title") or link.select_one("div.title")
             location_elem = link.select_one(".location") or link.select_one("div.location")
             price_elem = link.select_one(".price") or link.select_one("div.price")
-            return {
+            res = {
                 "title": title_elem.get_text(strip=True) if title_elem else soup_element.get("title"),
                 "url": link.get("href"),
                 "location": location_elem.get_text(strip=True) if location_elem else None,
                 "price": price_elem.get_text(strip=True) if price_elem else None,
-                "date_short": (ds := soup_element.select_one(".meta > span") or soup_element.select_one(".result-date")) and ds.get_text(strip=True),
-                "date_full": (ds := soup_element.select_one(".meta > span") or soup_element.select_one(".result-date")) and ds.get("title"),
+                "date_short": date_text,
+                "date_full": date_val or date_text,
                 "image_url": (img := soup_element.select_one("img")) and img.get("src"),
                 "image_alt": (img := soup_element.select_one("img")) and img.get("alt"),
             }
+            return res
         
         title_link = soup_element.select_one("a.posting-title") or soup_element.select_one("a.cl-search-anchor") or soup_element.select_one("a")
         location_elem = soup_element.select_one(".result-info > div") or soup_element.select_one(".result-hood") or soup_element.select_one(".location")
-        date_span = soup_element.select_one(".meta > span") or soup_element.select_one(".result-date")
         img = soup_element.select_one("img")
         
         # Try to find a description snippet if available
@@ -52,17 +73,18 @@ class CraigslistScraper(BaseScraper):
         if desc_elem := soup_element.select_one(".cl-static-search-result-body"):
             description = desc_elem.get_text(strip=True)
 
-        return {
+        res = {
             "title": title_link.get_text(strip=True) if title_link else None,
             "url": title_link.get("href") if title_link else None,
             "location": location_elem.get_text(strip=True) if location_elem else None,
             "price": None,
-            "date_short": date_span.get_text(strip=True) if date_span else None,
-            "date_full": date_span.get("title") if date_span else None,
+            "date_short": date_text,
+            "date_full": date_val or date_text,
             "description": description,
             "image_url": img.get("src") if img else None,
             "image_alt": img.get("alt") if img else None,
         }
+        return res
     
     def get_total_count(self, soup: bs) -> int:
         """Extract total number of results from the page."""
@@ -104,7 +126,7 @@ class CraigslistScraper(BaseScraper):
     def parse_item(self, raw_data: Dict[str, Any], custom_keywords: Optional[list] = None, 
                    exclude_keywords: Optional[list] = None, 
                    custom_indicators: Optional[list] = None) -> Optional[CraigslistLead]:
-        """Parse raw scraped data into a CraigslistLead model."""
+        """Parse raw scraped data into a CraigslistLead model with date enrichment."""
         try:
             posting_id = None
             url = raw_data.get('url')
@@ -117,11 +139,31 @@ class CraigslistScraper(BaseScraper):
             # Combine title and description for buyer intent analysis
             text = f"{raw_data.get('title', '')} {raw_data.get('description', '')}"
             
+            # ── Date Enrichment ──────────────────────────────────────────────────
+            # If the search results (requests-based) are missing the date, fetch it from the detail page
+            date_full = raw_data.get('date_full')
+            date_short = raw_data.get('date_short')
+            
+            if not date_full and not date_short and url:
+                try:
+                    # Quick fetch of the detail page to get the exact time
+                    self.logger.debug("fetching_detail_for_date", url=url)
+                    resp = self.make_request(url, headers=self.headers, use_proxy=False)
+                    detail_soup = bs(resp.text, "html.parser")
+                    # Craigslist detail pages have dates in <time class="date timeago" datetime="...">
+                    if time_tag := detail_soup.select_one('time.date, time.timeago, .postinginfo time'):
+                        date_full = time_tag.get('datetime')
+                        date_short = time_tag.get_text(strip=True)
+                    else:
+                        pass
+                except Exception as e:
+                    self.logger.warning("date_enrichment_failed", url=url, error=str(e))
+
             # Use centralized buyer intent detector
             is_buyer_request = BuyerIntentDetector.is_buyer_request(
                 text=text,
                 require_url=True,
-                url=raw_data.get('url'),
+                url=url,
                 custom_keywords=custom_keywords,
                 exclude_keywords=exclude_keywords,
                 custom_indicators=custom_indicators
@@ -133,16 +175,16 @@ class CraigslistScraper(BaseScraper):
                 self.logger.debug("filtered_non_buyer_post", reason=reason, title=raw_data.get('title'))
             
             return CraigslistLead(
-                source_url=raw_data.get('url', ''),
+                source_url=url or '',
                 source_id=posting_id,
                 posting_id=posting_id,
                 title=raw_data.get('title'),
                 description=raw_data.get('description'),
                 location=raw_data.get('location'),
                 category=raw_data.get('category'),
-                date_short=raw_data.get('date_short'),
-                date_full=raw_data.get('date_full') or raw_data.get('date_short'),
-                posted_date=raw_data.get('date_full') or raw_data.get('date_short'), # Ensure posted_date is populated
+                date_short=date_short,
+                date_full=date_full,
+                posted_date=date_full or date_short, # Pass raw string to model validator
                 image_thumbnail=raw_data.get('image_url'),
                 images=[raw_data.get('image_url')] if raw_data.get('image_url') else [],
                 is_buyer_request=is_buyer_request,

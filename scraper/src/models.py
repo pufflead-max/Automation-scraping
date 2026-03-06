@@ -33,18 +33,74 @@ class ScrapedLead(BaseModel):
     @field_validator('posted_date', mode='before')
     @classmethod
     def parse_posted_date(cls, v: Any) -> Any:
-        if isinstance(v, str):
+        if not v:
+            return None
+        if isinstance(v, datetime):
+            return v
+        if not isinstance(v, str):
+            return None
+
+        v = v.strip()
+        if not v or v.lower() == "date not found" or v.lower() == "sponsored":
+            return None
+
+        import re
+        from datetime import timedelta
+        from dateutil import parser
+
+        now = datetime.utcnow()
+
+        # 1. Handle "Xh ago", "Xm ago", "Xd ago", "Xw ago" (Craigslist/FB)
+        # Patterns like: "2h ago", "6h ago", "10m ago", "2d ago"
+        relative_match = re.search(r'(\d+)\s*([mhdw])(\s*ago)?', v, re.IGNORECASE)
+        if relative_match:
+            amount = int(relative_match.group(1))
+            unit = relative_match.group(2).lower()
+            res = None
+            if unit == 'm': res = now - timedelta(minutes=amount)
+            elif unit == 'h': res = now - timedelta(hours=amount)
+            elif unit == 'd': res = now - timedelta(days=amount)
+            elif unit == 'w': res = now - timedelta(weeks=amount)
+            if res:
+                return res
+
+        if "just now" in v.lower():
+            return now
+
+        # 2. Handle "MM/DD" or "DD/MM" (Craigslist/FB ambiguous formats like 06/03)
+        mmdd_match = re.match(r'^(\d{1,2})[/-](\d{1,2})$', v)
+        if mmdd_match:
+            v1, v2 = int(mmdd_match.group(1)), int(mmdd_match.group(2))
+            
+            # Try both (Month=v1, Day=v2) and (Month=v2, Day=v1)
+            options = []
+            for m, d in [(v1, v2), (v2, v1)]:
+                if 1 <= m <= 12 and 1 <= d <= 31:
+                    try:
+                        # Guess year: if month is in the future, assume last year
+                        year = now.year
+                        if m > now.month or (m == now.month and d > now.day):
+                            year -= 1
+                        options.append(datetime(year, m, d))
+                    except ValueError:
+                        continue
+            
+            if options:
+                # Prefer the date closest to 'now' (most recent)
+                options.sort(key=lambda x: abs((now - x).total_seconds()))
+                return options[0]
+
+        # 3. Handle standard formats with isoformat / dateutil
+        try:
+            res = datetime.fromisoformat(v.split('.')[0])
+            return res
+        except (ValueError, TypeError):
             try:
-                # Handle Craigslist format: "2024-02-11 12:34:56"
-                return datetime.fromisoformat(v.split('.')[0])
-            except (ValueError, TypeError):
-                try:
-                    # Try simpler format if isoformat fails
-                    from dateutil import parser
-                    return parser.parse(v)
-                except:
-                    return None
-        return v
+                # dateutil handles "2 hours ago" natively, but we already handled short relative forms
+                res = parser.parse(v)
+                return res
+            except:
+                return None
     
     # User association fields for multi-user support
     user_email: Optional[str] = Field(None, description="Email of the user who owns this lead")

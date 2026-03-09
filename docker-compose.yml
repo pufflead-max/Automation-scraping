@@ -131,9 +131,20 @@ services:
       start_period: 30s
     command: scheduler
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    networks: [ appnet ]
+    ports:
+      - "11434:11434"
+
 volumes:
   mongo_data:
   pg_data:
+  ollama_data:
 
 
 networks:

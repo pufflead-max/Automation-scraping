@@ -7,31 +7,36 @@ Optimized for fewer lines while maintaining accuracy.
 
 import re
 import phonenumbers
-from typing import Optional, Dict
+from typing import Optional, Dict, List
+try:
+    from .mappings import get_mapping_manager
+except ImportError:
+    from mappings import get_mapping_manager
 
 class LeadEnricher:
     """Enriches lead data with vertical, phone, and location info."""
 
     # Vertical Keywords Mapping (condensed)
+    # These are defaults; we prefer loading from MongoDB/MappingManager
     VERTICALS = {
         "Landscaping": ["landscap", "lawn", "mow", "grass", "yard work", "garden", "mulch", "leaf removal", 
                         "weeding", "trimming bushes", "hedge", "tree service", "stump", "sprinkler", "yard cleanup", "yard",
-                        "branch removal", "clean up", "cleanup", "brush removal", "leaves"],
-        "Snow Removal": ["snow", "plow", "shovel", "ice", "salting", "driveway clearing", "snowblow", "hiring"],
+                        "branch removal", "clean up", "cleanup", "brush removal", "leaves", "fall clean", "spring clean"],
+        "Snow Removal": ["snow", "plow", "shovel", "ice", "salting", "driveway clearing", "snowblow"],
         "Cleaning": ["clean", "maid", "housekeeping", "house keeping", "deep clean", "move out clean", 
                      "janitor", "commercial cleaning", "office cleaning", "carpet clean", "window wash"],
         "Kitchen & Bath Renovations": ["remodel", "renovat", "addition", "construction", "basement finish", 
                                        "kitchen remodel", "bathroom remodel", "deck build", "new build", 
-                                       "cabinet installation", "countertop", "vanity installation"],
+                                       "cabinet installation", "countertop", "vanity installation", "cabinets", "countertops"],
         "Plumbing": ["plumb", "leak", "clog", "drain", "pipe", "faucet", "toilet", "water heater", 
-                     "sewer", "disposal", "shower valve"],
+                     "sewer", "disposal", "shower valve", "sump pump", "water heater"],
         "Electrical Services": ["electric", "wires", "outlet", "switch", "fixture", "breaker", "panel", 
-                                "lighting", "ceiling fan"],
-        "Painting": ["paint", "stain", "interior", "exterior", "cabinet refinish", "wallpaper"],
-        "Roofing": ["roof", "shingle", "leak in ceiling", "gutter", "downspout", "chimney"],
-        "Fencing": ["fence", "fencing", "gate repair", "post replacement"],
+                                "lighting", "ceiling fan", "generator", "wiring"],
+        "Painting": ["paint", "stain", "interior", "exterior", "cabinet refinish", "wallpaper", "painter"],
+        "Roofing": ["roof", "shingle", "leak in ceiling", "gutter", "downspout", "chimney", "skylight"],
+        "Fencing": ["fence", "fencing", "gate repair", "post replacement", "vinyl fence"],
         "Handyman": ["handyman", "handy man", "small repairs", "fix it", "assembly", "mounting", 
-                     "odd jobs", "honey do list", "general repair"],
+                     "odd jobs", "honey do list", "general repair", "drywall", "patching"],
         "Mechanic": ["mechanic", "auto repair", "car repair", "brake", "oil change", "engine", 
                      "transmission", "tire", "truck repair", "automotive"]
     }
@@ -49,6 +54,28 @@ class LeadEnricher:
             return None
         
         text_lower = text.lower()
+        
+        # 1. Try to get dynamic vertical list from MappingManager/MongoDB
+        try:
+            mapper = get_mapping_manager()
+            master_verticals = mapper.db.find_many("verticals", {})
+            if master_verticals:
+                # Build score map dynamically from DB keywords
+                scores = {}
+                for mv in master_verticals:
+                    name = mv.get('name')
+                    keywords = mv.get('keywords', [])
+                    if name and keywords:
+                        score = sum(1 for kw in keywords if kw.lower() in text_lower)
+                        if score > 0:
+                            scores[name] = score
+                
+                if scores:
+                    return max(scores.items(), key=lambda x: x[1])[0]
+        except Exception:
+            pass # Fallback to hardcoded
+
+        # 2. Hardcoded fallback
         scores = {vertical: sum(1 for kw in keywords if kw in text_lower) 
                   for vertical, keywords in cls.VERTICALS.items()}
         scores = {k: v for k, v in scores.items() if v > 0}

@@ -1,6 +1,6 @@
 """Base scraper class with common functionality  ."""
 
-import uuid, json, os, requests, time
+import uuid, os, requests, time
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
@@ -14,6 +14,7 @@ try:
     from ..models import ScrapedLead, ScrapeJob
     from ..integrations.ghl import GHLClient
     from ..utils.lead_enrichment import LeadEnricher
+    from ..utils.mappings import get_mapping_manager
 except ImportError:
     from logger import ScraperLogger
     from database import DatabaseManager, get_db_manager
@@ -21,6 +22,7 @@ except ImportError:
     from models import ScrapedLead, ScrapeJob
     from integrations.ghl import GHLClient
     from utils.lead_enrichment import LeadEnricher
+    from utils.mappings import get_mapping_manager
 
 class BaseScraper(ABC):
     def __init__(self, scraper_name: str, db_manager: Optional[DatabaseManager] = None):
@@ -137,92 +139,70 @@ class BaseScraper(ABC):
                 self.logger.info("stale_leads_dropped", count=stale_count, kept=len(fresh_leads))
             leads = fresh_leads
 
-            # 3. Save ALL fresh leads to Raw Data collection
-            if save and leads:
-                self.save_leads(leads, f"{self.name.capitalize()}_raw_data")
-
-            # 4. Hybrid Filtering and Enrichment
-            # Determine user's allowed verticals for cross-referencing
-            user_allowed_slugs = []
-            mapper = None
-            if user_data and user_data.get('verticals'):
-                try:
-                    from ..utils.mappings import get_mapping_manager
-                    mapper = get_mapping_manager()
-                    user_allowed_slugs = [mapper._resolve_vertical_slug(v) for v in user_data.get('verticals', [])]
-                    self.logger.info("user_verticals_filter", email=self.user_email, allowed=user_allowed_slugs)
-                except Exception as e:
-                    self.logger.warning("failed_to_load_mapping_manager", error=str(e))
-
-            # Initial intent filter
-            intent_leads = [l for l in leads if getattr(l, 'is_buyer_request', False) or getattr(l, 'is_service_request', False)]
-            self.logger.info("intent_filter_results", total=len(leads), initial_buyers=len(intent_leads))
-            
-            # Initialize Cloud AI Classifier
+            # 3. ── Enriched Pipeline: AI Intent + Vertical Match Check ────────
             ai = None
             try:
                 from ..utils.ai_classifier import get_ai_classifier
                 ai = get_ai_classifier()
             except Exception as e:
-                self.logger.warning("failed_to_initialize_ai_classifier", error=str(e))
+                self.logger.warning("ai_classifier_unavailable", error=str(e))
 
-            final_leads = []
-            if intent_leads:
-                for l in intent_leads:
-                    text = f"{l.title or ''} {l.description or ''}"
-                    
-                    # ── Stage 4: Cloud AI Validation (Buyer Intent) ──
-                    if ai:
-                        try:
-                            # Intent Check (Buyer vs Seller vs Noise)
-                            intent_res = ai.classify_intent(text)
-                            if intent_res.get('label') in ['seller', 'noise'] and intent_res.get('confidence', 0) > 0.7:
-                                self.logger.debug("ai_intent_filtered", url=getattr(l, 'source_url', ''), label=intent_res.get('label'), reason=intent_res.get('reason'))
-                                continue
-                            
-                            # If AI strongly confirms buyer, update local intent
-                            if intent_res.get('label') == 'buyer' and intent_res.get('confidence', 0) > 0.8:
-                                l.is_buyer_request = True
-                                
-                        except Exception as e:
-                            self.logger.warning("ai_classification_failed_continuing_with_regex", error=str(e))
+            user_allowed_slugs = set()
+            mapper = None
+            if user_data and user_data.get('verticals'):
+                try:
+                    mapper = get_mapping_manager()
+                    user_allowed_slugs = {
+                        mapper._resolve_vertical_slug(v)
+                        for v in user_data.get('verticals', [])
+                    }
+                    self.logger.info("user_verticals_loaded",
+                                     email=self.user_email, slugs=list(user_allowed_slugs))
+                except Exception as e:
+                    self.logger.warning("failed_to_load_user_verticals", error=str(e))
 
-                    # Enrich: Extract Vertical, Phone, and City
-                    detected_v_name = LeadEnricher.extract_vertical(text)
-                    l.vertical = detected_v_name
-                    l.phone = LeadEnricher.extract_phone(text)
-                    if not l.city: 
-                        l.city = LeadEnricher.extract_city(text, l.location)
-                    
-                    # ── Phase 2: Hybrid Vertical Validation ──────────────────
-                    # If we have user verticals, only pass leads that match the vertical
-                    if user_allowed_slugs and mapper:
-                        detected_slug = mapper._resolve_vertical_slug(detected_v_name) if detected_v_name else "unknown"
-                        if detected_slug not in user_allowed_slugs:
-                            self.logger.debug("hybrid_filter_vertical_mismatch", 
-                                             url=getattr(l, 'source_url', ''), 
-                                             detected=detected_slug, 
-                                             allowed=user_allowed_slugs)
-                            continue
-                    
-                    final_leads.append(l)
-                
-                self.logger.info("hybrid_filter_complete", 
-                                 intent_only=len(intent_leads), 
-                                 after_vertical_match=len(final_leads))
+            for l in leads:
+                text = f"{l.title or ''} {l.description or ''}".strip()
+                if not text:
+                    continue
 
-                # JSON Backup for audit trail
-                path = os.path.join(os.getcwd(), "scraped_data")
-                os.makedirs(path, exist_ok=True)
-                fname = os.path.join(path, f"{self.name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
-                with open(fname, 'w') as f: 
-                    json.dump([l.model_dump(mode='json') for l in final_leads], f, indent=2)
-                
-                # 5. Save enriched leads to Final Data collection
-                if save and final_leads:
-                    self.save_leads(final_leads, f"{self.name.capitalize()}_final_data")
-            
+                # A. AI Intent Check (Buyer / Seller / Spam)
+                if ai:
+                    try:
+                        result = ai.classify_intent(text)
+                        label = result.get('label', 'noise')
+                        conf  = result.get('confidence', 0)
+                        l.is_buyer_request = (label == 'buyer' and conf > 0.7)
+                        l.is_spam          = (label in ['seller', 'noise'] and conf > 0.6)
+                    except Exception as e:
+                        self.logger.warning("ai_classification_failed", url=getattr(l, 'source_url', ''), error=str(e))
+
+                # B. Vertical Detection & Match Check
+                detected_vertical = LeadEnricher.extract_vertical(text)
+                l.vertical = detected_vertical
+
+                if user_allowed_slugs and mapper and detected_vertical:
+                    detected_slug = mapper._resolve_vertical_slug(detected_vertical)
+                    l.is_vertical_match = (detected_slug in user_allowed_slugs)
+                else:
+                    # If no user vertical constraint, mark as matching
+                    l.is_vertical_match = True
+
+                self.logger.debug("lead_flagged",
+                                  url=getattr(l, 'source_url', ''),
+                                  is_buyer=l.is_buyer_request,
+                                  is_spam=l.is_spam,
+                                  is_vertical_match=l.is_vertical_match,
+                                  vertical=detected_vertical)
+
+            # 4. Save ALL classified leads to MongoDB raw collection
+            if save and leads:
+                self.save_leads(leads, f"{self.name.capitalize()}_raw_data")
+                buyers = sum(1 for l in leads if getattr(l, 'is_buyer_request', False))
+                self.logger.info("leads_processed_and_saved",
+                                 total=len(leads), buyers=buyers, spam=sum(1 for l in leads if l.is_spam))
+
             self.complete_job("completed")
-            return final_leads
+            return leads
         except Exception as e:
             self.complete_job("failed", e); raise

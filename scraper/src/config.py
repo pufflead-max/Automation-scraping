@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     ghl_live_crm_url: str = "https://services.leadconnectorhq.com"
 
     # Ollama Cloud
-    ollama_cloud_url: str = Field(default="http://72.60.113.252:11434/api/chat")
-    ollama_cloud_model: str = Field(default="gpt-oss:120b")
+    ollama_cloud_url: str = Field(default="http://localhost:11434/api/chat")
+    ollama_cloud_model: str = Field(default="qwen2.5:7b")
 
     # Bright Data Proxy
     brightdata_proxy_server: Optional[str] = None

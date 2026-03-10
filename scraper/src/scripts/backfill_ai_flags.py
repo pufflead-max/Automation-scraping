@@ -54,19 +54,15 @@ def backfill_facebook_leads():
             intent_res = ai.classify_intent(text)
             
             # Update Document
+            label = intent_res.get("label")
+            conf = intent_res.get("confidence", 0)
+            
             update_data = {
                 "ai_processed": True,
                 "ai_last_updated": datetime.utcnow(),
-                "ai_classification": {
-                    "intent": intent_res.get("label", "unknown"),
-                    "intent_confidence": intent_res.get("confidence", 0),
-                    "reason": intent_res.get("reason", "")
-                }
+                "is_buyer_request": bool(label == "buyer" and conf > 0.8),
+                "is_spam": bool(label in ["noise", "seller"] and conf > 0.7)
             }
-            
-            # Legacy field sync if confirmed buyer
-            if intent_res.get("label") == "buyer" and intent_res.get("confidence", 0) > 0.8:
-                update_data["is_buyer_request"] = True
             
             collection.update_one({"_id": lead_id}, {"$set": update_data})
             print(f"✅ Updated lead {lead_id} -> {intent_res.get('label')} (Conf: {intent_res.get('confidence')})")

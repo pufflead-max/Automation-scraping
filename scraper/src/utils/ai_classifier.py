@@ -17,8 +17,8 @@ class AIClassifier:
             self.model = settings.ollama_cloud_model
         except (ImportError, ValueError, AttributeError):
             # Fallback values matching user environment
-            self.api_url = "http://72.60.113.252:11434/api/chat"
-            self.model = "gpt-oss:120b"
+            self.api_url = "http://localhost:11434/api/chat"
+            self.model = "qwen2.5:7b"
 
     def _call_api(self, messages: list) -> Dict[str, Any]:
         """Generic Ollama /api/chat caller returning JSON."""

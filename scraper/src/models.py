@@ -29,6 +29,9 @@ class ScrapedLead(BaseModel):
     extra_data: dict = Field(default_factory=dict)
     phone: Optional[str] = None
     vertical: Optional[str] = None
+    is_buyer_request: bool = False
+    is_spam: bool = False
+    is_vertical_match: bool = False
     
     @field_validator('posted_date', mode='before')
     @classmethod
@@ -116,7 +119,7 @@ class CraigslistLead(ScrapedLead):
     map_address: Optional[str] = None
     has_image: bool = False
     has_map: bool = False
-    is_buyer_request: bool = False
+    has_map: bool = False
     
     @field_validator('price')
     @classmethod
@@ -135,7 +138,7 @@ class NextdoorLead(ScrapedLead):
     tagged_business: Optional[str] = None
     tagged_business_category: Optional[str] = None
     topics: List[str] = Field(default_factory=list)
-    is_service_request: bool = False
+    topics: List[str] = Field(default_factory=list)
 
 
 class FacebookLead(ScrapedLead):
@@ -146,7 +149,7 @@ class FacebookLead(ScrapedLead):
     video_count: int = Field(default=0, ge=0)
     has_media: bool = False
     word_count: int = Field(default=0, ge=0)
-    is_buyer_request: bool = False
+    word_count: int = Field(default=0, ge=0)
 
 
 class ScrapeJob(BaseModel):

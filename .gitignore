@@ -90,12 +90,22 @@ scraped_data/
 output/
 downloads/
 scraper/cookies
+scraper/scraper/cookies
 # Browser Profiles & Cookies
 scraper_profiles/
 scraper/browser_profiles/
+scraper/facebook_profiles/
 scraper/cookies/*.json
 !scraper/cookies/.gitkeep
 scraper/cookies/
+
+# Scripts & Test files
+google_credentials.json
+test_sheets_conn.py
+update_fb_cookies_amit.py
+test_full_flow.py
+debug_fb_login.py
+
 # Secrets
 secrets/
 *.pem

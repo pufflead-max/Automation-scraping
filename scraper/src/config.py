@@ -27,13 +27,22 @@ class Settings(BaseSettings):
     ghl_live_api_key: Optional[str] = None
     ghl_live_location_id: Optional[str] = None
     ghl_live_crm_url: str = "https://services.leadconnectorhq.com"
-
-    airflow_executor: str = "LocalExecutor"
     
+    # Google Sheets
+    google_sheet_id: Optional[str] = Field(default=None, description="Google Spreadsheet ID")
+    google_credentials_path: str = Field(default="google_credentials.json")
+
+    # Ollama Cloud
+    ollama_cloud_url: str = Field(default="http://localhost:11434/api/chat")
+    ollama_cloud_model: str = Field(default="qwen2.5:7b")
+
     # Bright Data Proxy
     brightdata_proxy_server: Optional[str] = None
     brightdata_proxy_user: Optional[str] = None
     brightdata_proxy_pass: Optional[str] = None
+
+    # Facebook 2FA
+    facebook_2fa_secret: Optional[str] = None
 
     @field_validator('log_level')
     @classmethod

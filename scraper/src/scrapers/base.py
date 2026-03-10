@@ -1,6 +1,6 @@
 """Base scraper class with common functionality  ."""
 
-import uuid, json, os, requests, time
+import uuid, os, requests, time
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
@@ -14,6 +14,7 @@ try:
     from ..models import ScrapedLead, ScrapeJob
     from ..integrations.ghl import GHLClient
     from ..utils.lead_enrichment import LeadEnricher
+    from ..utils.mappings import get_mapping_manager
 except ImportError:
     from logger import ScraperLogger
     from database import DatabaseManager, get_db_manager
@@ -21,6 +22,7 @@ except ImportError:
     from models import ScrapedLead, ScrapeJob
     from integrations.ghl import GHLClient
     from utils.lead_enrichment import LeadEnricher
+    from utils.mappings import get_mapping_manager
 
 class BaseScraper(ABC):
     def __init__(self, scraper_name: str, db_manager: Optional[DatabaseManager] = None):
@@ -137,33 +139,83 @@ class BaseScraper(ABC):
                 self.logger.info("stale_leads_dropped", count=stale_count, kept=len(fresh_leads))
             leads = fresh_leads
 
-            # 3. Save ALL fresh leads to Raw Data collection
-            if save and leads:
-                self.save_leads(leads, f"{self.name.capitalize()}_raw_data")
+            # 3. ── Enriched Pipeline: AI Intent + Vertical Match Check ────────
+            ai = None
+            try:
+                from ..utils.ai_classifier import get_ai_classifier
+                ai = get_ai_classifier()
+            except Exception as e:
+                self.logger.warning("ai_classifier_unavailable", error=str(e))
 
-            # 4. Filter and Enrich Buyer Requests
-            buyers = [l for l in leads if getattr(l, 'is_buyer_request', False) or getattr(l, 'is_service_request', False)]
-            self.logger.info("filtered", total=len(leads), buyers=len(buyers))
-            
-            final_leads = []
-            if buyers:
-                for l in buyers:
-                    text = f"{l.title or ''} {l.description or ''}"
-                    l.vertical, l.phone = LeadEnricher.extract_vertical(text), LeadEnricher.extract_phone(text)
-                    if not l.city: l.city = LeadEnricher.extract_city(text, l.location)
-                    final_leads.append(l)
+            user_allowed_slugs = set()
+            mapper = None
+            if user_data and user_data.get('verticals'):
+                try:
+                    mapper = get_mapping_manager()
+                    user_allowed_slugs = {
+                        mapper._resolve_vertical_slug(v)
+                        for v in user_data.get('verticals', [])
+                    }
+                    self.logger.info("user_verticals_loaded",
+                                     email=self.user_email, slugs=list(user_allowed_slugs))
+                except Exception as e:
+                    self.logger.warning("failed_to_load_user_verticals", error=str(e))
+
+            for l in leads:
+                text = f"{l.title or ''} {l.description or ''}".strip()
+                if not text:
+                    continue
+
+                # A. AI Intent Check (Buyer / Seller / Spam)
+                if ai:
+                    try:
+                        result = ai.classify_intent(text)
+                        label = result.get('label', 'noise')
+                        conf  = result.get('confidence', 0)
+                        l.is_buyer_request = (label == 'buyer' and conf > 0.7)
+                        l.is_spam          = (label in ['seller', 'noise'] and conf > 0.6)
+                    except Exception as e:
+                        self.logger.warning("ai_classification_failed", url=getattr(l, 'source_url', ''), error=str(e))
+
+                # B. Vertical Detection & Match Check
+                detected_vertical = LeadEnricher.extract_vertical(text)
+                l.vertical = detected_vertical
+
+                if user_allowed_slugs and mapper and detected_vertical:
+                    detected_slug = mapper._resolve_vertical_slug(detected_vertical)
+                    l.is_vertical_match = (detected_slug in user_allowed_slugs)
+                else:
+                    # If no user vertical constraint, mark as matching
+                    l.is_vertical_match = True
+
+                self.logger.debug("lead_flagged",
+                                  url=getattr(l, 'source_url', ''),
+                                  is_buyer=l.is_buyer_request,
+                                  is_spam=l.is_spam,
+                                  is_vertical_match=l.is_vertical_match,
+                                  vertical=detected_vertical)
+
+            # 4. Save leads to MongoDB collections
+            if save and leads:
+                # Always save everything to raw collection
+                self.save_leads(leads, f"{self.name.capitalize()}_raw_data")
                 
-                # JSON Backup for buyers
-                path = os.path.join(os.getcwd(), "scraped_data")
-                os.makedirs(path, exist_ok=True)
-                fname = os.path.join(path, f"{self.name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
-                with open(fname, 'w') as f: json.dump([l.model_dump(mode='json') for l in final_leads], f, indent=2)
+                # Filter results for "Final" data (Buyer, Matching Vertical, Not Spam)
+                final_leads = [
+                    l for l in leads 
+                    if l.is_buyer_request and l.is_vertical_match and not l.is_spam
+                ]
                 
-                # 4. Save enriched leads to Final Data collection
-                if save:
+                if final_leads:
                     self.save_leads(final_leads, f"{self.name.capitalize()}_final_data")
-            
+                    self.logger.info("final_leads_saved", count=len(final_leads))
+
+                buyers = sum(1 for l in leads if l.is_buyer_request)
+                self.logger.info("leads_processed_and_saved",
+                                 total=len(leads), buyers=buyers, final=len(final_leads), 
+                                 spam=sum(1 for l in leads if l.is_spam))
+
             self.complete_job("completed")
-            return final_leads
+            return leads
         except Exception as e:
             self.complete_job("failed", e); raise

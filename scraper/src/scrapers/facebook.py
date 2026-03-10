@@ -12,6 +12,7 @@ import logging
 import zipfile
 import tempfile
 from selenium import webdriver
+import pyotp
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.options import Options
@@ -91,14 +92,20 @@ class FacebookScraper(BaseScraper):
         # Profiles make the browser look like a "known device" to Facebook.
         # It stores local storage, indexDB, and session data across runs.
         email = kwargs.get('email') or os.getenv('FACEBOOK_EMAIL', 'default')
-        # Clean email for folder name (remove @, ., etc)
         safe_email = re.sub(r'[^a-zA-Z0-9]', '_', email)
         
-        # Base directory for all scraper profiles
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        self.profiles_base_dir = os.path.join(project_root, "scraper_profiles", "facebook")
-        self.user_profile_dir = os.path.join(self.profiles_base_dir, safe_email)
+        # We store profiles in the cookies dir which is already persisted via volume
+        if os.path.exists("/opt/airflow"):
+            # Inside Docker
+            self.profiles_base_dir = "/opt/airflow/scraper/cookies/facebook_profiles"
+        else:
+            # Local development
+            # Get the path to scraper/src/scrapers/facebook.py, then go up 4 levels to project root
+            # facebook.py -> scrapers -> src -> scraper -> ROOT
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+            self.profiles_base_dir = os.path.join(project_root, "scraper", "cookies", "facebook_profiles")
         
+        self.user_profile_dir = os.path.join(self.profiles_base_dir, safe_email)
         os.makedirs(self.user_profile_dir, exist_ok=True)
         self.logger.info("persistent_profile_path", path=self.user_profile_dir)
 
@@ -863,28 +870,45 @@ class FacebookScraper(BaseScraper):
                 
                 if otp_input:
                     self.logger.info("otp_input_field_detected_attempting_auto_solve")
-                    email_user = os.getenv("FACEBOOK_EMAIL")
-                    app_pass = os.getenv("FACEBOOK_APP_PASSWORD")
                     
-                    if EmailManager and email_user and app_pass:
-                        code = EmailManager.get_facebook_otp(email_user, app_pass)
-                        if code:
-                            self.logger.info("otp_fetched_successfully_entering_code", code=code)
-                            otp_input.clear()
-                            for char in code:
-                                otp_input.send_keys(char)
-                                time.sleep(random.uniform(0.1, 0.3))
-                            
-                            time.sleep(2)
-                            # Find and click continue after entering code
-                            # The loop will naturally pick up the continue button in the next section
-                        else:
-                            self.logger.warning("failed_to_fetch_otp_from_email")
+                    # 1. Try TOTP (Authentictor App) first - Most Reliable
+                    fa_secret = self.cfg.get("facebook_2fa_secret")
+                    if fa_secret:
+                        try:
+                            self.logger.info("generating_totp_code_from_secret")
+                            totp = pyotp.TOTP(fa_secret.replace(" ", ""))
+                            code = totp.now()
+                            if code:
+                                self.logger.info("totp_generated_successfully", code="******")
+                                otp_input.clear()
+                                otp_input.send_keys(code)
+                                time.sleep(2)
+                                button_clicked = False # Let the next block handle the button click
+                        except Exception as e:
+                            self.logger.error("totp_generation_failed", error=str(e))
+                    
+                    # 2. Fallback to Email OTP if TOTP failed or not available
                     else:
-                        self.logger.warning("otp_solver_skipped_missing_creds", 
-                                         has_manager=EmailManager is not None, 
-                                         has_user=bool(email_user), 
-                                         has_pass=bool(app_pass))
+                        email_user = os.getenv("FACEBOOK_EMAIL")
+                        app_pass = os.getenv("FACEBOOK_APP_PASSWORD")
+                        
+                        if EmailManager and email_user and app_pass:
+                            code = EmailManager.get_facebook_otp(email_user, app_pass)
+                            if code:
+                                self.logger.info("otp_fetched_successfully_entering_code", code=code)
+                                otp_input.clear()
+                                for char in code:
+                                    otp_input.send_keys(char)
+                                    time.sleep(random.uniform(0.1, 0.3))
+                                
+                                time.sleep(2)
+                            else:
+                                self.logger.warning("failed_to_fetch_otp_from_email")
+                        else:
+                            self.logger.warning("otp_solver_skipped_missing_creds", 
+                                             has_manager=EmailManager is not None, 
+                                             has_user=bool(email_user), 
+                                             has_pass=bool(app_pass))
 
                 # Check for "Continue" / "Next" buttons common in security checkpoints
                 continue_selectors = [
@@ -926,6 +950,12 @@ class FacebookScraper(BaseScraper):
             
         except Exception as e:
             self.logger.error("login_exception", error=str(e), url=self.driver.current_url)
+            try:
+                # Save screenshot for debugging on crash
+                dump_path = "/tmp/fb_login_crash.png"
+                self.driver.save_screenshot(dump_path)
+                self.logger.info("debug_screenshot_saved", path=dump_path)
+            except: pass
             return False
 
     def _is_captcha_present(self):
@@ -1184,7 +1214,9 @@ class FacebookScraper(BaseScraper):
             "//button[contains(., 'Only allow essential cookies')]",
             "//button[contains(., 'Decline optional cookies')]",
             "//button[@data-cookiebanner='accept_button']",
-            "//button[@id='cookie_banner_accept_button']"
+            "//button[@id='cookie_banner_accept_button']",
+            "//button[contains(., 'Permitir todos os cookies')]",
+            "//button[contains(., 'Allow all')]"
         ]
         for xpath in cookie_selectors:
             try:
@@ -1211,7 +1243,14 @@ class FacebookScraper(BaseScraper):
             self.logger.info("filling_credentials", url=self.driver.current_url)
             # 1. Enter Email
             email_field = None
-            email_selectors = ['input[name="email"]', '#email', 'input[type="text"]', 'input[placeholder*="Email"]', 'input[aria-label*="email"]']
+            email_selectors = [
+                'input[name="email"]', 
+                'input[data-testid="royal_email"]',
+                '#email', 
+                'input[type="text"]', 
+                'input[placeholder*="Email"]', 
+                'input[aria-label*="email"]'
+            ]
             
             for selector in email_selectors:
                 try:
@@ -1257,7 +1296,14 @@ class FacebookScraper(BaseScraper):
 
             # 2. Enter Password
             password_field = None
-            password_selectors = ['input[name="pass"]', '#pass', 'input[type="password"]', 'input[placeholder*="Password"]', 'input[aria-label*="password"]']
+            password_selectors = [
+                'input[name="pass"]', 
+                'input[data-testid="royal_pass"]',
+                '#pass', 
+                'input[type="password"]', 
+                'input[placeholder*="Password"]', 
+                'input[aria-label*="password"]'
+            ]
             
             for selector in password_selectors:
                 try:
@@ -1317,12 +1363,26 @@ class FacebookScraper(BaseScraper):
                 
             return True
         except Exception as e:
-            self.logger.error("credential_fill_failed", error=str(e), url=self.driver.current_url, title=self.driver.title)
+            url = self.driver.current_url
+            title = self.driver.title
+            self.logger.error("credential_fill_failed", error=str(e), url=url, title=title)
+            
+            # Diagnostic: Log page source and save screenshot
+            try:
+                source_snippet = self.driver.page_source[:2000].replace('\n', ' ')
+                self.logger.info("page_source_snippet", source=source_snippet)
+                
+                dump_path = "/tmp/fb_fill_fail.png"
+                self.driver.save_screenshot(dump_path)
+                self.logger.info("debug_screenshot_saved", path=dump_path)
+            except: pass
+
             # Check for captcha one last time if failed
-            if self._is_captcha_present():
-                self.logger.warning("captcha_detected_after_fill_failure")
+            if retry_count < 2 and self._is_captcha_present():
+                self.logger.warning("captcha_detected_after_fill_failure_attempting_solve")
                 if self._try_solve_captcha():
-                    return self._fill_credentials(email, password, retry_count + 1) # Recursive retry
+                    time.sleep(5)
+                    return self._fill_credentials(email, password, retry_count + 1)
             return False
 
     def _save_cookies(self):

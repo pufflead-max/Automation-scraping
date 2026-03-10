@@ -35,24 +35,25 @@ class BuyerIntentDetector:
     # ── Hard seller signals: post is from someone OFFERING a service ────────────
     # Also includes irrelevant content categories like obituaries.
     SELLER_PATTERN = re.compile(
-        r'(for sale|equipment|tools)\b|'
-        r'\b(i |we )(offer|provide|do |can |am a|are a|specialize)|'
-        r'\b(my|our) (company|business|team|services|work)\b|'
-        r'\b(call|contact|dm|message|text|email) (me|us|today|now)\b|'
+        r'(for sale|equipment|tools|supplies)\b|'
+        r'\b(i |we )(offer|provide|do |can |am a|are a|specialize|started a)\b|'
+        r'\b(my|our) (company|business|team|services|work|shop)\b|'
+        r'\b(call|contact|dm|message|text|email) (me|us|today|now|for (details|info))\b|'
         r'\b(free (estimate|quote|consultation)|licensed and insured|years of experience|'
         r'professional service|affordable rates?|discount|book now|available now|'
         r'fully insured|bonded and insured)\b|'
-        r'\blooking for (work|projects|side work|new (projects|clients))\b|'
+        r'\blooking for (work|projects|side work|new (projects|clients|opportunities))\b|'
         r'\b(seeking|available for) (work|projects)\b|'
-        r'\b(before you hire|look no further|give (me|us) a call)\b|'
+        r'\b(before you hire|look no further|give (me|us) a call|check out my)\b|'
         r'\b(24 hour|24/7|emergency service|asap service)\b|'
-        r'\b(services available|for hire|now hiring|serving|appointments available)\b|'
+        r'\b(services available|for hire|now hiring|serving|appointments available|accepting new)\b|'
         r'\bat your (home|location|door)\b|'
         r'\b(build a business|no upfront cost|join our team|earn money|make money)\b|'
         r'\b(recruiting|franchise|partnership|work with us|grow your business)\b|'
         r'\bwe (serve|cover|specialize|do)\b|'
         r'\b(starting at|rates? (start|from|as low))\b|'
-        r'\b(obituary|funeral|passing of|memorial service|celebration of life|deepest condolences)\b',
+        r'\b(obituary|funeral|passing of|memorial service|celebration of life|deepest condolences|'
+        r'in memory of|rest in peace|passed away)\b',
         re.IGNORECASE
     )
 

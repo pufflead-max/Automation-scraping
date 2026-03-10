@@ -48,6 +48,10 @@ email-validator>=2.0.0
 # ============================================
 # UTILITIES
 # ============================================
+# GOOGLE SERVICES
+gspread>=5.10.0
+oauth2client>=4.1.0
+pandas>=1.5.0
 pytz>=2023.3
 gohighlevel-api-client
 2captcha-python

@@ -50,10 +50,7 @@ def backfill_facebook_leads():
         try:
             print(f"🤖 Classifying: {text[:50]}...")
             
-            # Step 1: Spam Check
-            spam_res = ai.classify_spam(text)
-            
-            # Step 2: Intent Check
+            # Intent Check
             intent_res = ai.classify_intent(text)
             
             # Update Document
@@ -61,8 +58,6 @@ def backfill_facebook_leads():
                 "ai_processed": True,
                 "ai_last_updated": datetime.utcnow(),
                 "ai_classification": {
-                    "is_spam": spam_res.get("label") == "spam",
-                    "spam_confidence": spam_res.get("confidence", 0),
                     "intent": intent_res.get("label", "unknown"),
                     "intent_confidence": intent_res.get("confidence", 0),
                     "reason": intent_res.get("reason", "")

@@ -171,16 +171,10 @@ class BaseScraper(ABC):
                 for l in intent_leads:
                     text = f"{l.title or ''} {l.description or ''}"
                     
-                    # ── Stage 4: Cloud AI Validation (Dual Pass: Spam -> Intent) ──
+                    # ── Stage 4: Cloud AI Validation (Buyer Intent) ──
                     if ai:
                         try:
-                            # Pass 1: Spam Check
-                            spam_res = ai.classify_spam(text)
-                            if spam_res.get('label') == 'spam' and spam_res.get('confidence', 0) > 0.8:
-                                self.logger.debug("ai_spam_filtered", url=getattr(l, 'source_url', ''), confidence=spam_res.get('confidence'))
-                                continue
-                            
-                            # Pass 2: Intent Check (Buyer vs Seller vs Noise)
+                            # Intent Check (Buyer vs Seller vs Noise)
                             intent_res = ai.classify_intent(text)
                             if intent_res.get('label') in ['seller', 'noise'] and intent_res.get('confidence', 0) > 0.7:
                                 self.logger.debug("ai_intent_filtered", url=getattr(l, 'source_url', ''), label=intent_res.get('label'), reason=intent_res.get('reason'))

@@ -37,28 +37,21 @@ class AIClassifier:
         except Exception as e:
             return {"error": str(e), "label": "error", "confidence": 0}
 
-    def classify_spam(self, text: str) -> Dict[str, Any]:
-        """
-        Classify if the post is spam or not_spam.
-        As integrated by user for the initial version.
-        """
-        messages = [{
-            "role": "system",
-            "content": "Analyze the text and return only a JSON object: {\"label\": \"spam\" | \"not_spam\", \"confidence\": float}"
-        }, {
-            "role": "user",
-            "content": f"Text: {text[:1000]}"
-        }]
-        return self._call_api(messages)
-
     def classify_intent(self, text: str) -> Dict[str, Any]:
         """
         Classify if the post is a buyer, seller, or noise.
-        This extends the cloud classification to intent analysis.
+        Fine-tuned prompt to ensure accurate buyer intent detection.
         """
+        system_prompt = (
+            "You are an expert lead classifier for home services. Analyze the post and classify it into exactly one of these labels:\n"
+            "1. 'buyer': The person writing the post is ACTIVELY LOOKING TO HIRE someone or get quotes/recommendations for a service they need done (e.g. 'I need a plumber', 'Looking for recommendations for a landscaper', 'Who can fix my roof').\n"
+            "2. 'seller': The person writing the post is ADVERTISING their own business or offering to do work for others (e.g. 'I do landscaping', 'Call me for a free quote', 'Hire us').\n"
+            "3. 'noise': Unrelated posts, news, spam, lost pets, or just generic questions not related to hiring.\n\n"
+            "Return ONLY a JSON object: {\"label\": \"buyer\" | \"seller\" | \"noise\", \"confidence\": float (0.0 to 1.0), \"reason\": \"short reason\"}"
+        )
         messages = [{
             "role": "system",
-            "content": "Analyze the Service/Post and determine if it's a BUYER (looking to hire), SELLER (offering service), or NOISE (unrelated). Return ONLY JSON: {\"label\": \"buyer\" | \"seller\" | \"noise\", \"confidence\": float, \"reason\": \"short_reason\"}"
+            "content": system_prompt
         }, {
             "role": "user",
             "content": f"Post: {text[:1000]}"

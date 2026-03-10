@@ -30,7 +30,7 @@ def backfill_facebook_leads():
     collection = db["Facebook_raw_data"]
     
     # Process leads that haven't been AI-classified yet
-    query = {"ai_processed": {"$ne": True}}
+    query = {"is_buyer_request": {"$exists": False}}
     leads = list(collection.find(query).limit(50)) # Limit for test
     
     if not leads:
@@ -44,7 +44,7 @@ def backfill_facebook_leads():
         text = f"{lead.get('title', '')} {lead.get('description', '')}".strip()
         
         if not text:
-            collection.update_one({"_id": lead_id}, {"$set": {"ai_processed": True, "ai_skip": "empty_text"}})
+            collection.update_one({"_id": lead_id}, {"$set": {"is_buyer_request": False, "is_spam": True}})
             continue
 
         try:
@@ -58,8 +58,6 @@ def backfill_facebook_leads():
             conf = intent_res.get("confidence", 0)
             
             update_data = {
-                "ai_processed": True,
-                "ai_last_updated": datetime.utcnow(),
                 "is_buyer_request": bool(label == "buyer" and conf > 0.8),
                 "is_spam": bool(label in ["noise", "seller"] and conf > 0.7)
             }

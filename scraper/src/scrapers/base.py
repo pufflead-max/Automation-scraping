@@ -166,27 +166,37 @@ class BaseScraper(ABC):
                 if not text:
                     continue
 
-                # A. AI Intent Check (Buyer / Seller / Spam)
                 if ai:
                     try:
-                        result = ai.classify_intent(text)
-                        label = result.get('label', 'noise')
-                        conf  = result.get('confidence', 0)
-                        l.is_buyer_request = (label == 'buyer' and conf > 0.7)
-                        l.is_spam          = (label in ['seller', 'noise'] and conf > 0.6)
+                        # Get user's verticals names (not slugs) for better AI understanding
+                        user_v_names = user_data.get('verticals', ["Home Services"]) if user_data else ["Home Services"]
+                        
+                        result = ai.classify_lead(
+                            post_text=text, 
+                            verticals=user_v_names,
+                            platform=self.name,
+                            location=getattr(l, 'location', 'unknown')
+                        )
+                        
+                        is_qualified = result.get('is_qualified_lead', False)
+                        l.is_buyer_request = is_qualified
+                        l.is_vertical_match = is_qualified # If qualified, it matched a vertical
+                        l.is_spam = not is_qualified
+                        l.vertical = result.get('vertical')
+                        l.extra_data = l.extra_data or {}
+                        l.extra_data['ai_reason'] = result.get('reason')
+                        l.extra_data['ai_confidence'] = result.get('confidence')
                     except Exception as e:
                         self.logger.warning("ai_classification_failed", url=getattr(l, 'source_url', ''), error=str(e))
-
-                # B. Vertical Detection & Match Check
-                detected_vertical = LeadEnricher.extract_vertical(text)
-                l.vertical = detected_vertical
-
-                if user_allowed_slugs and mapper and detected_vertical:
-                    detected_slug = mapper._resolve_vertical_slug(detected_vertical)
-                    l.is_vertical_match = (detected_slug in user_allowed_slugs)
                 else:
-                    # If no user vertical constraint, mark as matching
-                    l.is_vertical_match = True
+                    # Fallback if AI is unavailable (Legacy detection)
+                    detected_vertical = LeadEnricher.extract_vertical(text)
+                    l.vertical = detected_vertical
+                    if user_allowed_slugs and mapper and detected_vertical:
+                        detected_slug = mapper._resolve_vertical_slug(detected_vertical)
+                        l.is_vertical_match = (detected_slug in user_allowed_slugs)
+                    else:
+                        l.is_vertical_match = True
 
                 self.logger.debug("lead_flagged",
                                   url=getattr(l, 'source_url', ''),

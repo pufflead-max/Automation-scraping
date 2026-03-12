@@ -58,3 +58,9 @@ pytz>=2023.3
 gohighlevel-api-client
 2captcha-python
 pyotp>=2.9.0
+
+# ============================================
+# OCR IMAGE SCANNING
+# ============================================
+pytesseract>=0.3.10
+Pillow>=10.0.0

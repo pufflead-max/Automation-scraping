@@ -172,7 +172,7 @@ class CraigslistScraper(BaseScraper):
 
             # Combine title and description for buyer intent analysis AFTER enrichment
             text = f"{raw_data.get('title', '')} {description or ''}"
-            
+
             # Use centralized buyer intent detector
             is_buyer_request = BuyerIntentDetector.is_buyer_request(
                 text=text,

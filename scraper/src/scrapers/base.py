@@ -179,6 +179,21 @@ class BaseScraper(ABC):
                         )
                         
                         is_qualified = result.get('is_qualified_lead', False)
+
+                        # ── CRITICAL: Regex hard-rejects cannot be overridden by AI ──────
+                        # If BuyerIntentDetector already flagged this as NOT a buyer,
+                        # we trust the regex (it caught hard seller signals like phone
+                        # numbers, "services offered", company names, etc.).
+                        # AI can only CONFIRM a buyer; it cannot PROMOTE a rejected post.
+                        if not l.is_buyer_request and is_qualified:
+                            self.logger.debug(
+                                "ai_overridden_by_regex_reject",
+                                url=getattr(l, 'source_url', ''),
+                                ai_said=True,
+                                reason="Regex hard-rejected this post as a seller — AI override blocked"
+                            )
+                            is_qualified = False  # Regex wins over AI on hard rejects
+
                         l.is_buyer_request = is_qualified
                         l.is_vertical_match = is_qualified # If qualified, it matched a vertical
                         l.is_spam = not is_qualified
@@ -187,6 +202,9 @@ class BaseScraper(ABC):
                         l.extra_data['ai_reason'] = result.get('reason')
                         l.extra_data['ai_confidence'] = result.get('confidence')
                     except Exception as e:
+                        # AI failed — trust the regex result already set on the lead
+                        # but ensure is_spam is consistent with is_buyer_request
+                        l.is_spam = not l.is_buyer_request
                         self.logger.warning("ai_classification_failed", url=getattr(l, 'source_url', ''), error=str(e))
                 else:
                     # Fallback if AI is unavailable (Legacy detection)

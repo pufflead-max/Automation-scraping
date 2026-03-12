@@ -53,7 +53,14 @@ class BuyerIntentDetector:
         r'\bwe (serve|cover|specialize|do)\b|'
         r'\b(starting at|rates? (start|from|as low))\b|'
         r'\b(obituary|funeral|passing of|memorial service|celebration of life|deepest condolences|'
-        r'in memory of|rest in peace|passed away)\b',
+        r'in memory of|rest in peace|passed away)\b|'
+        # ── Rhetorical seller openers: seller fakes a buyer question then pitches ──
+        r'looking for a (dependable|reliable|professional|trusted|affordable|quality|great|top)'
+        r'\s+(cleaning|landscaping|painting|plumbing|handyman|roofing|flooring|moving|hvac)\s+service|'
+        r'\b(\w+\s+){0,3}(provides?|delivers?|offers?) (high.quality|professional|reliable|affordable|quality)|'
+        r'\b(\w+ (cleaning|landscaping|painting|services?|solutions?))\s+(provides?|offers?|specializes?|delivers?)\b|'
+        r'\bservices? offered\b|'
+        r'\b(we are|i am|we\'re|i\'m) (a |an )?(professional|licensed|insured|certified|experienced)\b',
         re.IGNORECASE
     )
 

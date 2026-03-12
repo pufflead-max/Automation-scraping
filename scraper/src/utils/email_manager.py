@@ -97,8 +97,10 @@ class EmailManager:
                 mail.login(email_user, app_password)
                 mail.select("inbox")
                 
-                # Nextdoor OTPs can come from help@nextdoor.com or no-reply@hs.email.nextdoor.com
+                # Try with UNSEEN first, then fallback to any recent from Nextdoor
                 status, messages = mail.search(None, '(UNSEEN FROM "nextdoor.com")')
+                if status != 'OK' or not messages[0]:
+                    status, messages = mail.search(None, '(FROM "nextdoor.com")')
                 
                 if status == 'OK':
                     mail_ids = messages[0].split()

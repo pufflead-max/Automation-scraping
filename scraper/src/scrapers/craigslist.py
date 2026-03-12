@@ -136,29 +136,43 @@ class CraigslistScraper(BaseScraper):
                     if (clean_part := parts[-1].replace('.html', '')).isdigit():
                         posting_id = clean_part
             
-            # Combine title and description for buyer intent analysis
-            text = f"{raw_data.get('title', '')} {raw_data.get('description', '')}"
-            
-            # ── Date Enrichment ──────────────────────────────────────────────────
-            # If the search results (requests-based) are missing the date, fetch it from the detail page
+            description = raw_data.get('description')
             date_full = raw_data.get('date_full')
             date_short = raw_data.get('date_short')
             
-            if not date_full and not date_short and url:
+            # ── Enrichment ──────────────────────────────────────────────────
+            # If the search results (requests-based) are missing the date or description, fetch from the detail page
+            print(f"DEBUG_ENRICHMENT: url={url}, date_full={date_full}, date_short={date_short}, description={bool(description)}")
+            if (not date_full and not date_short or not description) and url:
                 try:
-                    # Quick fetch of the detail page to get the exact time
-                    self.logger.debug("fetching_detail_for_date", url=url)
+                    print(f"DEBUG_ENRICHMENT: Fetching url={url}")
+                    self.logger.debug("fetching_detail_for_enrichment", url=url)
                     resp = self.make_request(url, headers=self.headers, use_proxy=False)
                     detail_soup = bs(resp.text, "html.parser")
-                    # Craigslist detail pages have dates in <time class="date timeago" datetime="...">
-                    if time_tag := detail_soup.select_one('time.date, time.timeago, .postinginfo time'):
-                        date_full = time_tag.get('datetime')
-                        date_short = time_tag.get_text(strip=True)
-                    else:
-                        pass
-                except Exception as e:
-                    self.logger.warning("date_enrichment_failed", url=url, error=str(e))
+                    
+                    if not date_full and not date_short:
+                        if time_tag := detail_soup.select_one('time.date, time.timeago, .postinginfo time'):
+                            date_full = time_tag.get('datetime')
+                            date_short = time_tag.get_text(strip=True)
+                            
+                    if not description:
+                        if desc_tag := detail_soup.select_one('#postingbody'):
+                            # remove the "QR Code Link to This Post" print info
+                            if qr_text := desc_tag.select_one('.print-information'):
+                                qr_text.decompose()
+                            description = desc_tag.get_text(separator="\n", strip=True)
+                            description = description.replace('QR Code Link to This Post', '').strip()
+                            print(f"DEBUG_ENRICHMENT: Found description, mapped {len(description)} chars")
 
+                except Exception as e:
+                    import traceback
+                    print(f"DEBUG_ENRICHMENT: EXCEPTION! {e}")
+                    traceback.print_exc()
+                    self.logger.warning("enrichment_failed", url=url, error=str(e))
+
+            # Combine title and description for buyer intent analysis AFTER enrichment
+            text = f"{raw_data.get('title', '')} {description or ''}"
+            
             # Use centralized buyer intent detector
             is_buyer_request = BuyerIntentDetector.is_buyer_request(
                 text=text,
@@ -179,7 +193,7 @@ class CraigslistScraper(BaseScraper):
                 source_id=posting_id,
                 posting_id=posting_id,
                 title=raw_data.get('title'),
-                description=raw_data.get('description'),
+                description=description,
                 location=raw_data.get('location'),
                 category=raw_data.get('category'),
                 date_short=date_short,

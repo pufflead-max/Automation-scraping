@@ -24,30 +24,30 @@ def rotate_facebook_owner_cookies(**context):
     """Log in to Facebook for the central owner account and update cookies."""
     from scrapers import FacebookScraper
     from user_credential_manager import UserCredentialManager
-    
+
     owner_email = Variable.get("facebook_owner_email", default_var=os.getenv("FACEBOOK_EMAIL"))
     owner_password = Variable.get("facebook_owner_password", default_var=os.getenv("FACEBOOK_PASSWORD"))
-    
+
     if not owner_email or not owner_password:
-        print("✗ Central Facebook owner credentials not found in Airflow Variables or Env.")
+        print(" Central Facebook owner credentials not found in Airflow Variables or Env.")
         return "Failed: No owner credentials"
 
     manager = UserCredentialManager()
-    
+
     printable_email = owner_email[:3] + "***" + owner_email[owner_email.find("@"):] if "@" in owner_email else owner_email[:4] + "***"
-    print(f"🚀 Starting Facebook cookie rotation for OWNER account: {printable_email}")
-    
+    print(f" Starting Facebook cookie rotation for OWNER account: {printable_email}")
+
     scraper = FacebookScraper(headless=True, use_proxy=True)
     try:
         scraper._init_driver(headless=True)
         success = scraper.login(owner_email, owner_password)
-        
+
         if success:
             cookies = scraper.driver.get_cookies()
             if cookies:
                 # Save owner cookies
                 manager.save_cookies(owner_email, 'facebook', cookies)
-                print(f"✅ Successfully rotated Facebook cookies for owner {printable_email}.")
+                print(f" Successfully rotated Facebook cookies for owner {printable_email}.")
                 # Also set a global variable for scrapers to find easily
                 Variable.set("facebook_last_rotation", datetime.utcnow().isoformat())
                 return "Success"

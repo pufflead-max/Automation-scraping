@@ -16,33 +16,33 @@ logger = get_logger("sync_sheets")
 def sync_leads_to_sheets():
     settings = get_settings()
     db = get_db_manager()
-    
+
     sheet_id = settings.google_sheet_id
     creds_path = settings.google_credentials_path
 
     if not sheet_id:
-        print("❌ Error: GOOGLE_SHEET_ID missing in .env")
+        print(" Error: GOOGLE_SHEET_ID missing in .env")
         return
 
     try:
         client = GoogleSheetsClient(creds_path, sheet_id)
         client.connect()
     except Exception as e:
-        print(f"❌ Google Sheets Connection Failed: {e}")
+        print(f" Google Sheets Connection Failed: {e}")
         return
 
     # Sources to sync
     sources = ["Facebook", "Craigslist", "Nextdoor"]
-    
+
     for source in sources:
         col_name = f"{source}_final_data"
-        print(f"🔄 Syncing {source} final leads...")
-        
+        print(f" Syncing {source} final leads...")
+
         # Fetch leads from the last 7 days (or all final leads)
         leads = db.find_many(col_name, {})
-        
+
         if not leads:
-            print(f"ℹ️ No final leads found for {source}.")
+            print(f"ℹ No final leads found for {source}.")
             continue
 
         # Process leads for JSON serialization
@@ -58,11 +58,11 @@ def sync_leads_to_sheets():
 
         try:
             count = client.push_leads(processed_leads, worksheet_name=source)
-            print(f"✅ Successfully pushed {count} leads to '{source}' tab.")
+            print(f" Successfully pushed {count} leads to '{source}' tab.")
         except Exception as e:
-            print(f"⚠️ Failed to push {source} leads: {e}")
+            print(f" Failed to push {source} leads: {e}")
 
-    print("\n✨ Sync Complete!")
+    print("\n Sync Complete!")
 
 if __name__ == "__main__":
     sync_leads_to_sheets()

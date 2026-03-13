@@ -35,7 +35,7 @@ def get_user_details(email: str):
 def load_facebook_urls(**context):
     dag_run = context.get('dag_run')
     user_email_override = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
-    
+
     from utils.mappings import get_mapping_manager
     mapper = get_mapping_manager()
 
@@ -44,7 +44,7 @@ def load_facebook_urls(**context):
         try:
             mappings = mapper.get_user_mappings(user_email_override)
         except Exception as e:
-            print(f"⚠️ Failed to load mappings for {user_email_override}: {e}")
+            print(f" Failed to load mappings for {user_email_override}: {e}")
             mappings = []
         for m in mappings:
             fb_config = m.get("facebook", {})
@@ -57,9 +57,9 @@ def load_facebook_urls(**context):
         try:
             all_users = manager.db.find_many(manager.collection, {})
         except Exception as e:
-            print(f"❌ Failed to fetch users from MongoDB: {e}")
+            print(f" Failed to fetch users from MongoDB: {e}")
             return []
-        
+
         for user_doc in all_users:
             u_email = user_doc.get("user", {}).get("email")
             if not u_email:
@@ -68,39 +68,39 @@ def load_facebook_urls(**context):
                 mappings = mapper.get_user_mappings(u_email)
             except Exception as e:
                 # One bad user should never abort the entire load task
-                print(f"⚠️ Skipping {u_email} — mapping lookup failed: {e}")
+                print(f" Skipping {u_email} — mapping lookup failed: {e}")
                 continue
             for m in mappings:
                 fb_config = m.get("facebook", {})
                 urls = fb_config.get("group_urls", []) + fb_config.get("page_urls", [])
                 for url in urls:
                     all_tasks.append({"target_data": {"url": url, "user_email": u_email, "vertical": m.get("vertical")}})
-            
-    print(f"✅ Loaded {len(all_tasks)} Facebook URL task(s)")
+
+    print(f" Loaded {len(all_tasks)} Facebook URL task(s)")
     return all_tasks
 
 def scrape_facebook_url(target_data, **kwargs):
     from scrapers import FacebookScraper
-    
+
     target_url = target_data.get('url')
     user_email = target_data.get('user_email')
     vertical_slug = target_data.get('vertical')
 
     user_details = get_user_details(user_email)
     if not user_details:
-        print(f"⚠️ User details not found for {user_email}. Skipping.")
+        print(f" User details not found for {user_email}. Skipping.")
         return 0
-    
+
     fb_onboarding = user_details.get("facebook", {})
     user_fb_config = user_details.get("scraping_config", {}).get("facebook", {}) if user_details else {}
     limit = int(user_fb_config.get("limit", Variable.get("facebook_post_limit", default_var=15)))
     # Forcing 15 if the variable returns 25 just as a precaution if it's not overriding
     if limit == 25: limit = 15
     headless = user_fb_config.get("headless", Variable.get("facebook_headless", default_var="true").lower() == "true")
-    
+
     from utils.mappings import get_mapping_manager
     vertical_config = get_mapping_manager().get_vertical_config(vertical_slug) if vertical_slug else None
-    
+
     if vertical_config:
         custom_keywords = vertical_config.get("keywords")
         exclude_keywords = vertical_config.get("exclude_keywords")
@@ -128,8 +128,8 @@ def scrape_facebook_url(target_data, **kwargs):
 
     scraper = FacebookScraper(cookies=cookies, headless=headless)
     results = scraper.run(
-        target=target_url, limit=limit, save_to_db=True, 
-        keywords=custom_keywords, exclude_keywords=exclude_keywords, 
+        target=target_url, limit=limit, save_to_db=True,
+        keywords=custom_keywords, exclude_keywords=exclude_keywords,
         custom_indicators=custom_indicators, user_data=user_data,
         email=owner_email, password=owner_password
     )
@@ -159,7 +159,7 @@ with DAG(
     ).expand(
         op_kwargs=load_urls_task.output
     )
-    
+
     def push_facebook_leads_to_ghl(**context):
         from push_leads import push_leads
         dag_run = context.get('dag_run')
@@ -171,7 +171,7 @@ with DAG(
         python_callable=push_facebook_leads_to_ghl,
         provide_context=True,
     )
-    
+
     def summarize_facebook_results(**context):
         from database import get_db_manager
         db = get_db_manager()

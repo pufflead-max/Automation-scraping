@@ -3,6 +3,7 @@
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import os
+import re
 from playwright.sync_api import sync_playwright
 
 from .base import BaseScraper
@@ -146,12 +147,28 @@ class NextdoorScraper(BaseScraper):
             # Replace em-dash (—) or en-dash (–) with double hyphen (--)
             target = target.replace('—', '--').replace('–', '--')
             
-            # Ensure city URLs have double hyphens before state code if they only have one
-            import re
+            # Handle city URLs normalization
             city_match = re.search(r'nextdoor\.com/city/([a-z-]+)-([a-z]{2})/?$', target)
             if city_match and '--' not in target:
                 target = target.replace(f"{city_match.group(1)}-{city_match.group(2)}", f"{city_match.group(1)}--{city_match.group(2)}")
             
+            # Handle neighborhood URLs normalization
+            # Pattern: nextdoor.com/neighborhood/name--city--state/
+            nb_match = re.search(r'nextdoor\.com/neighborhood/([a-z0-9-]+)/?$', target)
+            if nb_match:
+                name_part = nb_match.group(1)
+                # If it contains single hyphens but no double hyphens, and looks like name-city-state
+                if '-' in name_part and '--' not in name_part:
+                    # Very basic heuristic: if it has at least 2 hyphens, try to fix it
+                    parts = name_part.split('-')
+                    if len(parts) >= 3:
+                        # Re-join with double hyphens
+                        # Note: This is an estimate, usually it's {neighborhood}--{city}--{state}
+                        # If neighborhood or city have spaces/hyphens originally, this might be tricky,
+                        # but usually Nextdoor uses double hyphens as the primary delimiter.
+                        # We'll just replace all single with double for safety if they are missing.
+                        target = target.replace(name_part, name_part.replace('-', '--'))
+
             if target != original_target:
                 self.logger.info("normalized_nextdoor_url", original=original_target, normalized=target)
 
@@ -202,18 +219,22 @@ class NextdoorScraper(BaseScraper):
             page.on("response", handle_response)
             
             try:
-                self.logger.info("navigating_to_url", target=target or "news_feed")
-                url = target if target else "https://nextdoor.com/news_feed/"
-                page.goto(url, timeout=90000)
-                try:
-                    page.wait_for_load_state("domcontentloaded", timeout=60000)
-                except:
-                    pass
+                self.target_url = target if target else "https://nextdoor.com/news_feed/"
+                self.logger.info(f"Navigating to {self.target_url}", extra={"scraper": self.name, "target": self.target_url})
+                page.goto(self.target_url, wait_until="domcontentloaded", timeout=60000)
                 page.wait_for_timeout(5000)
 
-                # Check for login wall immediately
-                if "login" in page.url or "signup" in page.url or page.get_by_role("button", name="Log in").is_visible():
-                    self.logger.error("session_invalid_redirected_to_login")
+                # Check if we are actually logged in
+                # Use .first() to avoid strict mode violation if multiple Log in buttons exist
+                login_button = page.get_by_role("button", name=re.compile("Log in", re.IGNORECASE)).first
+                
+                # Check for specific session cookies
+                browser_cookies = context.cookies()
+                has_session = any(c['name'] == 'ndbr_at' for c in browser_cookies)
+                
+                if login_button.is_visible() or not has_session:
+                    self.logger.error("NOT LOGGED IN: Redirected to login page or missing session cookie", 
+                                     extra={"scraper": self.name, "has_session_cookie": has_session})
                     if self.user_email:
                         self.logger.warning("nextdoor_cookies_expired_removing_stale_record", user=self.user_email)
                         UserCredentialManager().delete_cookies(self.user_email, 'nextdoor')

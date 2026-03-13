@@ -2,7 +2,7 @@
 
 A production-ready lead extraction system that scrapes service listings from Craigslist and Nextdoor, with automated workflows powered by Apache Airflow.
 
-## 🎯 Project Overview
+##  Project Overview
 
 This system transforms experimental notebook-based scrapers into a robust, production-ready platform for extracting and managing service leads. It features:
 
@@ -13,7 +13,7 @@ This system transforms experimental notebook-based scrapers into a robust, produ
 - **Error handling**: Automatic retries and graceful degradation
 - **Database integration**: MongoDB for lead storage
 
-## 📋 Prerequisites
+##  Prerequisites
 
 - Docker and Docker Compose
 - Python 3.11+ (for local development)
@@ -21,7 +21,7 @@ This system transforms experimental notebook-based scrapers into a robust, produ
 - MongoDB (provided via Docker Compose)
 - PostgreSQL (provided via Docker Compose for Airflow)
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### 1. Clone and Configure
 
@@ -71,7 +71,7 @@ docker-compose exec airflow-webserver python /opt/airflow/scraper/src/main.py \
   --category automotive
 ```
 
-## 📁 Project Structure
+##  Project Structure
 
 ```
 Automation-scraping/
@@ -96,7 +96,7 @@ Automation-scraping/
 │   └── logs/                     # Scraper & Airflow logs
 ```
 
-## 🔗 URL Configuration & Dynamic Workers
+##  URL Configuration & Dynamic Workers
 
 The system uses a dynamic worker architecture where each URL defined in the configuration files is processed by a separate Airflow task in parallel.
 
@@ -117,7 +117,7 @@ The system uses a dynamic worker architecture where each URL defined in the conf
 3. **Scalability**: Add or remove URLs without modifying Python code.
 4. **Fault Isolation**: If one URL fails, other tasks continue.
 
-## ⚙️ Admin Configuration (No-Code)
+##  Admin Configuration (No-Code)
 
 Admins can manage URLs and scraper settings directly from the **Airflow UI** without touching any code.
 
@@ -155,7 +155,7 @@ The system checks for settings in this specific order:
 3. **Local Files** (Stored in `scraper/urls/*.txt`)
 4. **Static Defaults** (Built-in values in the code)
 
-## 🔧 Configuration
+##  Configuration
 
 ### Environment Variables
 
@@ -180,7 +180,7 @@ LOG_LEVEL=INFO
 LOG_FORMAT=json
 ```
 
-## 📊 Database Schema
+##  Database Schema
 
 ### Leads Collection
 
@@ -221,7 +221,7 @@ LOG_FORMAT=json
 }
 ```
 
-## 🧪 Testing
+##  Testing
 
 ### Run Smoke Tests
 
@@ -253,7 +253,7 @@ python scraper/src/processors/validator.py
 python scraper/src/processors/deduplicator.py
 ```
 
-## 📈 Monitoring
+##  Monitoring
 
 ### View Logs
 
@@ -285,7 +285,7 @@ db.leads.find().limit(5)
 db.scrape_jobs.find().sort({started_at: -1}).limit(10)
 ```
 
-## 🔒 Security
+##  Security
 
 ### Production Checklist
 
@@ -299,7 +299,7 @@ db.scrape_jobs.find().sort({started_at: -1}).limit(10)
 - [ ] Implement rate limiting
 - [ ] Monitor for suspicious activity
 
-## 🐛 Troubleshooting
+##  Troubleshooting
 
 ### Common Issues
 
@@ -331,7 +331,7 @@ docker-compose exec airflow-webserver env | grep PYTHONPATH
 docker-compose exec airflow-webserver pip install -r /tmp/scraper-requirements.txt
 ```
 
-## 📝 Development
+##  Development
 
 ### Adding a New Scraper
 
@@ -355,25 +355,25 @@ isort scraper/src/
 mypy scraper/src/
 ```
 
-## 📚 Documentation
+##  Documentation
 
 - [Implementation Plan](IMPLEMENTATION_PLAN.md) - Detailed roadmap
 - [Airflow Documentation](https://airflow.apache.org/docs/)
 - [Pydantic Documentation](https://docs.pydantic.dev/)
 - [Selenium Documentation](https://www.selenium.dev/documentation/)
 
-## 🤝 Contributing
+##  Contributing
 
 1. Create a feature branch
 2. Make your changes
 3. Test thoroughly
 4. Submit a pull request
 
-## 📄 License
+##  License
 
 Proprietary - All rights reserved
 
-## 🆘 Support
+##  Support
 
 For issues or questions:
 1. Check the troubleshooting section
@@ -383,6 +383,6 @@ For issues or questions:
 
 ---
 
-**Version**: 1.0.0  
-**Last Updated**: 2026-01-15  
-**Status**: Production Ready ✅
+**Version**: 1.0.0
+**Last Updated**: 2026-01-15
+**Status**: Production Ready

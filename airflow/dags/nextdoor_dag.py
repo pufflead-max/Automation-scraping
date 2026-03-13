@@ -35,7 +35,7 @@ def get_user_details(email: str):
 def load_nextdoor_urls(**context):
     dag_run = context.get('dag_run')
     user_email_override = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
-    
+
     from utils.mappings import get_mapping_manager
     mapper = get_mapping_manager()
 
@@ -55,14 +55,14 @@ def load_nextdoor_urls(**context):
         for user_doc in all_users:
             u_email = user_doc.get("user", {}).get("email")
             if not u_email: continue
-            
+
             mappings = mapper.get_user_mappings(u_email)
             for m in mappings:
                 nd_config = m.get("nextdoor", {})
                 urls = nd_config.get("group_urls", [])
                 for url in urls:
                     all_tasks.append({"target_data": {"url": url, "user_email": u_email, "vertical": m.get("vertical")}})
-            
+
     return all_tasks
 
 def load_nextdoor_cookies():
@@ -83,23 +83,23 @@ def load_nextdoor_cookies():
 
 def scrape_nextdoor_url(target_data, **kwargs):
     from main import run_nextdoor_scraper
-    
+
     target_url = target_data.get('url')
     user_email = target_data.get('user_email')
     vertical_slug = target_data.get('vertical')
 
     user_details = get_user_details(user_email)
     if not user_details:
-        print(f"⚠️ User details not found for {user_email}. Skipping.")
+        print(f" User details not found for {user_email}. Skipping.")
         return 0
-    
+
     nd_config_onboarding = user_details.get("nextdoor", {})
     user_nd_config = user_details.get("scraping_config", {}).get("nextdoor", {}) if user_details else {}
     max_pages = user_nd_config.get("max_pages", int(Variable.get("nextdoor_max_pages", default_var="5")))
-    
+
     from utils.mappings import get_mapping_manager
     vertical_config = get_mapping_manager().get_vertical_config(vertical_slug) if vertical_slug else None
-    
+
     if vertical_config:
         custom_keywords = vertical_config.get("keywords")
     else:
@@ -107,9 +107,9 @@ def scrape_nextdoor_url(target_data, **kwargs):
 
     user_data = user_details.get("user")
     cookies = load_nextdoor_cookies()
-    
+
     leads = run_nextdoor_scraper(
-        target=target_url, cookies=cookies, save_to_db=True, 
+        target=target_url, cookies=cookies, save_to_db=True,
         max_pages=max_pages, keywords=custom_keywords, user_data=user_data
     )
     return len(leads)

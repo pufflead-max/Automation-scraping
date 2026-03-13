@@ -69,11 +69,11 @@ def check_stale_jobs(**context):
     )
 
     if stale_jobs:
-        print(f"\n⚠️  WARNING: Found {len(stale_jobs)} stale jobs!")
+        print(f"\n  WARNING: Found {len(stale_jobs)} stale jobs!")
         for job in stale_jobs:
             print(f"  - Job {job['job_id']}: {job['scraper']} (started {job['started_at']})")
     else:
-        print("✓ No stale jobs found")
+        print(" No stale jobs found")
 
     return len(stale_jobs)
 

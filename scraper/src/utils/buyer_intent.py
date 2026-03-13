@@ -192,4 +192,4 @@ class BuyerIntentDetector:
         if not url:
             return "Buyer signal found but no URL"
 
-        return f"✅ Buyer intent: '{buyer_match.group()[:40]}'"
+        return f" Buyer intent: '{buyer_match.group()[:40]}'"

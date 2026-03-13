@@ -207,6 +207,9 @@ def init_master_data():
                 "https://www.facebook.com/groups/hinghamcommunity",
                 "https://www.facebook.com/groups/hinghamscooop"
             ],
+            "nextdoor_neighborhoods": [
+                "crow-point", "liberty-pole", "hingham-center", "glad-tidings"
+            ],
         },
         {
             "state": "MA",
@@ -296,9 +299,14 @@ def init_master_data():
                 "page_urls": []
             },
             "nextdoor": {
-                # City landing page for manual monitoring
+                # City landing page
                 "city_url": f"https://nextdoor.com/city/{city.lower().replace(' ', '-')}--{defn['state'].lower()}/",
-                # Intent-based search URLs (Nextdoor search is global, not city-scoped)
+                # Neighborhood-specific pages (hyper-local)
+                "neighborhood_urls": [
+                    f"https://nextdoor.com/neighborhood/{nb.lower().replace(' ', '-')}--{city.lower().replace(' ', '-')}--{defn['state'].lower()}/"
+                    for nb in defn.get("nextdoor_neighborhoods", [])
+                ],
+                # Intent-based search URLs
                 "search_urls": make_nextdoor_urls(keywords, intents),
             },
             "craigslist": {

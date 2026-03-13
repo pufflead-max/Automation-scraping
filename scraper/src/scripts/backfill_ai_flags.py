@@ -23,52 +23,52 @@ logger = get_logger("backfill_ai_flags")
 def backfill_facebook_leads():
     settings = get_settings()
     ai = get_ai_classifier()
-    
+
     # Connect to MongoDB
     client = MongoClient(settings.mongo_uri)
     db = client[settings.mongo_db]
     collection = db["Facebook_raw_data"]
-    
+
     # Process leads that haven't been AI-classified yet
     query = {"is_buyer_request": {"$exists": False}}
     leads = list(collection.find(query).limit(50)) # Limit for test
-    
+
     if not leads:
         print("No new Facebook leads to process.")
         return
 
-    print(f"🔄 Processing {len(leads)} leads from Facebook_raw_data...")
+    print(f" Processing {len(leads)} leads from Facebook_raw_data...")
 
     for lead in leads:
         lead_id = lead["_id"]
         text = f"{lead.get('title', '')} {lead.get('description', '')}".strip()
-        
+
         if not text:
             collection.update_one({"_id": lead_id}, {"$set": {"is_buyer_request": False, "is_spam": True}})
             continue
 
         try:
-            print(f"🤖 Classifying: {text[:50]}...")
-            
+            print(f" Classifying: {text[:50]}...")
+
             # Intent Check
             intent_res = ai.classify_intent(text)
-            
+
             # Update Document
             label = intent_res.get("label")
             conf = intent_res.get("confidence", 0)
-            
+
             update_data = {
                 "is_buyer_request": bool(label == "buyer" and conf > 0.8),
                 "is_spam": bool(label in ["noise", "seller"] and conf > 0.7)
             }
-            
-            collection.update_one({"_id": lead_id}, {"$set": update_data})
-            print(f"✅ Updated lead {lead_id} -> {intent_res.get('label')} (Conf: {intent_res.get('confidence')})")
-            
-        except Exception as e:
-            print(f"❌ Failed to process lead {lead_id}: {e}")
 
-    print("🏁 Backfill complete.")
+            collection.update_one({"_id": lead_id}, {"$set": update_data})
+            print(f" Updated lead {lead_id} -> {intent_res.get('label')} (Conf: {intent_res.get('confidence')})")
+
+        except Exception as e:
+            print(f" Failed to process lead {lead_id}: {e}")
+
+    print(" Backfill complete.")
 
 if __name__ == "__main__":
     backfill_facebook_leads()

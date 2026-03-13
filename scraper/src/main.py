@@ -11,10 +11,10 @@ logger = get_logger(__name__)
 def run_scraper(name: str, target: Optional[str], **kwargs):
     scraper_logger = ScraperLogger(name)
     scraper_logger.info(f"starting_{name}_scraper", target=target, **kwargs)
-    
+
     try:
         common = {
-            "save": kwargs.get('save', kwargs.get('save_to_db', True)), 
+            "save": kwargs.get('save', kwargs.get('save_to_db', True)),
             "category": kwargs.get('category'),
             "keywords": kwargs.get('keywords'),
             "exclude_keywords": kwargs.get('exclude_keywords'),
@@ -34,7 +34,7 @@ def run_scraper(name: str, target: Optional[str], **kwargs):
             leads = FacebookScraper(cookies=kwargs.get('cookies'), headless=kwargs.get('headless', True)).run(target=target, **kwargs)
         else:
             raise ValueError(f"Unknown scraper: {name}")
-            
+
         scraper_logger.info(f"{name}_completed", count=len(leads))
         return leads
     except Exception as e:
@@ -56,24 +56,24 @@ def main():
     parser.add_argument("--max-pages", type=int, default=30)
     parser.add_argument("--limit", type=int, default=15)
     args = parser.parse_args()
-    
+
     try:
         cookies = None
         if args.cookies and os.path.exists(args.cookies):
             with open(args.cookies, 'r') as f:
                 cookies = json.load(f)
-        
+
         if args.scraper == "nextdoor" and not cookies:
-            print("✗ Nextdoor requires --cookies"); sys.exit(1)
-            
+            print(" Nextdoor requires --cookies"); sys.exit(1)
+
         leads = run_scraper(
-            args.scraper, args.target, category=args.category, 
+            args.scraper, args.target, category=args.category,
             save=not args.no_save, headless=not args.no_headless,
             cookies=cookies, max_pages=args.max_pages, limit=args.limit
         )
-        print(f"\n✓ Scraped {len(leads)} leads")
+        print(f"\n Scraped {len(leads)} leads")
     except Exception as e:
-        print(f"\n✗ Failed: {e}"); sys.exit(1)
+        print(f"\n Failed: {e}"); sys.exit(1)
 
 if __name__ == "__main__":
     main()

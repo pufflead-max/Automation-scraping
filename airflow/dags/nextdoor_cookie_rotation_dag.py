@@ -124,7 +124,24 @@ def rotate_nextdoor_owner_cookies(**context):
                 
             page.wait_for_url(lambda url: "login" not in url.lower(), timeout=30000)
             cookies = browser_context.cookies()
+            print(f"🍪 Retrieved {len(cookies)} cookies.")
+            if cookies:
+                cookie_names = [c['name'] for c in cookies]
+                print(f"🍪 Cookie names: {cookie_names}")
+                print(f"🍪 Full Cookies JSON: {json.dumps(cookies, indent=2)}")
+            
             manager.save_cookies(owner_email, 'nextdoor', cookies)
+            
+            # Sync to local JSON file for the scraper
+            try:
+                cookie_file_path = "/opt/airflow/scraper/cookies/nextdoor_cookies.json"
+                os.makedirs(os.path.dirname(cookie_file_path), exist_ok=True)
+                with open(cookie_file_path, 'w') as f:
+                    json.dump(cookies, f, indent=2)
+                print(f"✅ Cookies synced to local file: {cookie_file_path}")
+            except Exception as fe:
+                print(f"⚠️ Error syncing to local file: {fe}")
+
             print(f"✅ Successfully rotated Nextdoor cookies for owner {owner_email}.")
             Variable.set("nextdoor_last_rotation", datetime.utcnow().isoformat())
             return "Success"

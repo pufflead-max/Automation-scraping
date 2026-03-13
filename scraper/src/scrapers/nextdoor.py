@@ -175,6 +175,8 @@ class NextdoorScraper(BaseScraper):
                     curr = {'name': c.get('name'), 'value': c.get('value'),
                            'domain': c.get('domain', '.nextdoor.com'), 'path': c.get('path', '/')}
                     if 'expirationDate' in c: curr['expires'] = c['expirationDate']
+                    elif 'expires' in c: curr['expires'] = c['expires']
+                    elif 'expiry' in c: curr['expires'] = c['expiry']
                     if 'secure' in c: curr['secure'] = c['secure']
                     if 'httpOnly' in c: curr['httpOnly'] = c['httpOnly']
                     if 'sameSite' in c:

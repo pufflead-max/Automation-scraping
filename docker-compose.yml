@@ -84,8 +84,11 @@ services:
       - "18081:8080"
     # Persist logs and browser profiles only
     volumes:
+      - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
       - ./scraper/cookies:/opt/airflow/scraper/cookies
+      - ./scraper/src:/opt/airflow/scraper/src
       - ./logs:/opt/airflow/logs/backups
     networks: [ appnet ]
     user: "${AIRFLOW_UID}:${AIRFLOW_GID}"
@@ -118,8 +121,11 @@ services:
       LOGS_DIR: /opt/airflow/logs/backups
     # Persist logs and browser profiles only
     volumes:
+      - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
       - ./scraper/cookies:/opt/airflow/scraper/cookies
+      - ./scraper/src:/opt/airflow/scraper/src
       - ./logs:/opt/airflow/logs/backups
     networks: [ appnet ]
     user: "${AIRFLOW_UID}:${AIRFLOW_GID}"

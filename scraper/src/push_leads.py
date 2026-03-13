@@ -44,7 +44,16 @@ def push_leads(source: str, limit: int = None, force: bool = False, user_email: 
         print(f"🔍 Filtering leads for user: {user_email}")
     
     logger.info("fetching_leads", col=col, query=query)
-    print('DEBUG: about to find leads'); leads = db.find_many(col, query, limit=limit or 0); print(f'DEBUG: found {len(leads)} leads')
+    print('DEBUG: about to find leads')
+    leads = db.find_many(col, query, limit=limit or 0)
+    print(f'DEBUG: found {len(leads)} leads')
+    for idx, l in enumerate(leads):
+        desc = l.get('description')
+        desc_len = len(desc) if desc else 0
+        desc_preview = (desc[:100].replace('\n', ' ') + '...') if desc else 'None'
+        print(f"DEBUG Lead {idx+1}: Title='{l.get('title')}' | DescLen={desc_len} | BuyerReq={l.get('is_buyer_request')} | Date={l.get('posted_date')}")
+        print(f"  --> URL: {l.get('source_url')}")
+        print(f"  --> Description Snippet: {desc_preview}")
     
     if not leads:
         print(f"ℹ️ No new leads for {source} in {col}.")

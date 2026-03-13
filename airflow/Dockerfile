@@ -36,6 +36,9 @@ RUN apt-get update && apt-get install -y \
     libcairo2 \
     chromium \
     chromium-driver \
+    xvfb \
+    tesseract-ocr \
+    tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
 USER airflow
@@ -51,9 +54,8 @@ RUN pip install --no-cache-dir \
     psycopg2-binary==2.9.9
 
 # Copy project files
-COPY --chown=airflow:root airflow/dags /opt/airflow/dags
-COPY --chown=airflow:root airflow/plugins /opt/airflow/plugins
-COPY --chown=airflow:root airflow/scripts /opt/airflow/scripts
+RUN mkdir -p /opt/airflow/dags /opt/airflow/plugins /opt/airflow/scripts /opt/airflow/scraper/src
+COPY --chown=airflow:root airflow/ /opt/airflow/
 COPY --chown=airflow:root scraper/src /opt/airflow/scraper/src
 
 # Runtime environment

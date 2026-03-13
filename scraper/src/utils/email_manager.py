@@ -26,7 +26,7 @@ class EmailManager:
                 
                 # 2. Search for emails from Facebook security
                 # We search for the specific sender Facebook uses for security codes
-                status, messages = mail.search(None, '(FROM "security@facebookmail.com")')
+                status, messages = mail.search(None, '(UNSEEN FROM "security@facebookmail.com")')
                 
                 if status == 'OK':
                     mail_ids = messages[0].split()
@@ -97,8 +97,10 @@ class EmailManager:
                 mail.login(email_user, app_password)
                 mail.select("inbox")
                 
-                # Nextdoor OTPs usually come from help@nextdoor.com
-                status, messages = mail.search(None, '(FROM "help@nextdoor.com")')
+                # Try with UNSEEN first, then fallback to any recent from Nextdoor
+                status, messages = mail.search(None, '(UNSEEN FROM "nextdoor.com")')
+                if status != 'OK' or not messages[0]:
+                    status, messages = mail.search(None, '(FROM "nextdoor.com")')
                 
                 if status == 'OK':
                     mail_ids = messages[0].split()
@@ -123,7 +125,12 @@ class EmailManager:
                             combined_text = f"{subject} {body}"
                             
                             # Nextdoor codes are typically 6 digits
-                            match = re.search(r'\b(\d{6})\b', combined_text)
+                            # Support "Your login code is ######" specifically as seen in recent emails
+                            match = re.search(r'(?:login code is|Verification code:)\s*(\d{6})', combined_text, re.IGNORECASE)
+                            if not match:
+                                # Fallback to any 6 digit number if specific phrase not found
+                                match = re.search(r'\b(\d{6})\b', combined_text)
+                            
                             if match:
                                 code = match.group(1)
                                 logging.info(f"found_nextdoor_otp code={code}")

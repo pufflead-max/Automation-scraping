@@ -15,6 +15,7 @@ try:
     from ..integrations.ghl import GHLClient
     from ..utils.lead_enrichment import LeadEnricher
     from ..utils.mappings import get_mapping_manager
+    from ..utils.image_ocr import scan_images_for_seller
 except ImportError:
     from logger import ScraperLogger
     from database import DatabaseManager, get_db_manager
@@ -23,6 +24,7 @@ except ImportError:
     from integrations.ghl import GHLClient
     from utils.lead_enrichment import LeadEnricher
     from utils.mappings import get_mapping_manager
+    from utils.image_ocr import scan_images_for_seller
 
 class BaseScraper(ABC):
     def __init__(self, scraper_name: str, db_manager: Optional[DatabaseManager] = None):
@@ -139,7 +141,7 @@ class BaseScraper(ABC):
                 self.logger.info("stale_leads_dropped", count=stale_count, kept=len(fresh_leads))
             leads = fresh_leads
 
-            # 3. ── Enriched Pipeline: AI Intent + Vertical Match Check ────────
+            # 3. ── Global Enrichment: OCR + AI ───────────────────────────────
             ai = None
             try:
                 from ..utils.ai_classifier import get_ai_classifier
@@ -166,34 +168,82 @@ class BaseScraper(ABC):
                 if not text:
                     continue
 
-                # A. AI Intent Check (Buyer / Seller / Spam)
+                # ── OCR Image Scan: Detect seller signals hidden in images ───
+                # Skip if already hard-rejected by regex to save processing time
+                ocr_blocked = False
+                if l.is_buyer_request: 
+                    images = getattr(l, 'images', [])
+                    if images:
+                        try:
+                            # Use list of images if available, else just thumbnail
+                            image_urls = images if isinstance(images, list) else [images]
+                            if scan_images_for_seller(image_urls):
+                                ocr_blocked = True
+                                l.is_buyer_request = False
+                                self.logger.info("ocr_blocked_seller_post", 
+                                               url=getattr(l, 'source_url', ''),
+                                               platform=self.name)
+                        except Exception as e:
+                            self.logger.debug("ocr_scan_failed", error=str(e))
+
+                # ── AI Classification ────────────────────────────────────────
                 if ai:
                     try:
-                        result = ai.classify_intent(text)
-                        label = result.get('label', 'noise')
-                        conf  = result.get('confidence', 0)
-                        l.is_buyer_request = (label == 'buyer' and conf > 0.7)
-                        l.is_spam          = (label in ['seller', 'noise'] and conf > 0.6)
+                        # Get user's verticals names (not slugs) for better AI understanding
+                        user_v_names = user_data.get('verticals', ["Home Services"]) if user_data else ["Home Services"]
+                        
+                        result = ai.classify_lead(
+                            post_text=text, 
+                            verticals=user_v_names,
+                            platform=self.name,
+                            location=getattr(l, 'location', 'unknown')
+                        )
+                        
+                        is_qualified = result.get('is_qualified_lead', False)
+                        detected_vertical = result.get('vertical')
+
+                        # ── CRITICAL: Hard-rejects (Regex/OCR) cannot be overridden by AI ──
+                        if not l.is_buyer_request and is_qualified:
+                            self.logger.debug(
+                                "ai_overridden_by_hard_reject",
+                                url=getattr(l, 'source_url', ''),
+                                ai_said=True,
+                                reason="Regex or OCR hard-rejected this post — AI override blocked"
+                            )
+                            is_qualified = False
+
+                        l.is_buyer_request = is_qualified
+                        l.vertical = detected_vertical
+                        
+                        # Verify the vertical match against user's allowed slugs
+                        if is_qualified and detected_vertical and user_allowed_slugs and mapper:
+                            detected_slug = mapper._resolve_vertical_slug(detected_vertical)
+                            l.is_vertical_match = (detected_slug in user_allowed_slugs)
+                        else:
+                            l.is_vertical_match = is_qualified
+
+                        l.is_spam = not is_qualified
+                        l.extra_data = l.extra_data or {}
+                        l.extra_data['ai_reason'] = result.get('reason')
+                        l.extra_data['ai_confidence'] = result.get('confidence')
                     except Exception as e:
+                        l.is_spam = not l.is_buyer_request
                         self.logger.warning("ai_classification_failed", url=getattr(l, 'source_url', ''), error=str(e))
-
-                # B. Vertical Detection & Match Check
-                detected_vertical = LeadEnricher.extract_vertical(text)
-                l.vertical = detected_vertical
-
-                if user_allowed_slugs and mapper and detected_vertical:
-                    detected_slug = mapper._resolve_vertical_slug(detected_vertical)
-                    l.is_vertical_match = (detected_slug in user_allowed_slugs)
                 else:
-                    # If no user vertical constraint, mark as matching
-                    l.is_vertical_match = True
+                    # Fallback if AI is unavailable (Legacy detection)
+                    detected_vertical = LeadEnricher.extract_vertical(text)
+                    l.vertical = detected_vertical
+                    if user_allowed_slugs and mapper and detected_vertical:
+                        detected_slug = mapper._resolve_vertical_slug(detected_vertical)
+                        l.is_vertical_match = (detected_slug in user_allowed_slugs)
+                    else:
+                        l.is_vertical_match = True
 
-                self.logger.debug("lead_flagged",
+                self.logger.debug("lead_flagged_final",
                                   url=getattr(l, 'source_url', ''),
                                   is_buyer=l.is_buyer_request,
                                   is_spam=l.is_spam,
-                                  is_vertical_match=l.is_vertical_match,
-                                  vertical=detected_vertical)
+                                  vertical=l.vertical)
 
             # 4. Save leads to MongoDB collections
             if save and leads:

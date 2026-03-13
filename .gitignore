@@ -60,7 +60,6 @@ logs/
 *.log.*
 
 # Docker
-.dockerignore
 
 # Testing
 .pytest_cache/

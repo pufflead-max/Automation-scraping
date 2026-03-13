@@ -21,21 +21,15 @@ default_args = {
 }
 
 def rotate_nextdoor_owner_cookies(**context):
-    """Log in to Nextdoor for the central owner account and update cookies using Selenium."""
-    import os
-    import time
-    import json
-    import zipfile
-    from datetime import datetime
-    from selenium import webdriver
-    from selenium.webdriver.chrome.service import Service
-    from selenium.webdriver.chrome.options import Options
-    from selenium.webdriver.common.by import By
-    from selenium.webdriver.common.keys import Keys
-    from selenium.webdriver.support.ui import WebDriverWait
-    from selenium.webdriver.support import expected_conditions as EC
+    """Log in to Nextdoor for the central owner account and update cookies using Playwright."""
+    from playwright.sync_api import sync_playwright
+    from playwright_stealth import Stealth
     from user_credential_manager import UserCredentialManager
-    
+    import os
+    import json
+    from datetime import datetime
+    from airflow.models import Variable
+
     owner_email = Variable.get("nextdoor_owner_email", default_var=os.getenv("NEXTDOOR_EMAIL"))
     owner_password = Variable.get("nextdoor_owner_password", default_var=os.getenv("NEXTDOOR_PASSWORD"))
     
@@ -44,246 +38,151 @@ def rotate_nextdoor_owner_cookies(**context):
         return "Failed: No owner credentials"
 
     manager = UserCredentialManager()
-    
-    print(f"🚀 Starting Nextdoor cookie rotation for OWNER account: {owner_email} (Using Selenium)")
-    
-    use_xvfb = Variable.get("nextdoor_use_xvfb", default_var="true").lower() == "true"
-    display = None
-    if use_xvfb:
-        from pyvirtualdisplay import Display
-        print("🖥️ Starting Virtual Display (Xvfb)...")
-        display = Display(visible=0, size=(1280, 800))
-        display.start()
+    printable_email = owner_email[:3] + "***" + owner_email[owner_email.find("@"):] if "@" in owner_email else owner_email[:4] + "***"
+    print(f"🚀 Starting Nextdoor cookie rotation for OWNER account: {printable_email} (Using Playwright)")
 
-    chrome_options = Options()
-    if not use_xvfb:
-        chrome_options.add_argument("--headless=new")
-    
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-    
-    user_data_dir = f"/opt/airflow/scraper/cookies/browser_profiles/nextdoor_owner_selenium"
-    os.makedirs(user_data_dir, exist_ok=True)
-    # Clear locks
-    for lock in ["SingletonLock", "SingletonCookie", "SingletonSocket"]:
-        lock_path = os.path.join(user_data_dir, lock)
-        if os.path.exists(lock_path):
-            try: os.remove(lock_path)
-            except: pass
-            
-    chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
+    with sync_playwright() as p:
+        user_data_dir = f"/opt/airflow/scraper/cookies/browser_profiles/nextdoor_owner_playwright"
+        os.makedirs(user_data_dir, exist_ok=True)
 
-    # Proxy Configuration with Authentication support via Extension
-    proxy_server = os.getenv("BRIGHTDATA_PROXY_SERVER")
-    proxy_user = os.getenv("BRIGHTDATA_PROXY_USER")
-    proxy_pass = os.getenv("BRIGHTDATA_PROXY_PASS")
-
-    if proxy_server and proxy_user and proxy_pass:
-        print(f"🌐 Configuring Residential Proxy: {proxy_server}")
-
-        manifest_json = """
-        {
-            "version": "1.0.0",
-            "manifest_version": 2,
-            "name": "Chrome Proxy Auth",
-            "permissions": ["proxy", "tabs", "unlimitedStorage", "storage", "<all_urls>", "webRequest", "webRequestBlocking"],
-            "background": {"scripts": ["background.js"], "persistent": true},
-            "minimum_chrome_version":"22.0.0"
-        }
-        """
-
-        background_js = f"""
-        chrome.webRequest.onAuthRequired.addListener(
-            function(details) {{
-                return {{
-                    authCredentials: {{
-                        username: "{proxy_user}",
-                        password: "{proxy_pass}"
-                    }}
-                }};
-            }},
-            {{urls: ["<all_urls>"]}},
-            ["blocking"]
-        );
-        """
-        
-        plugin_file = os.path.join(user_data_dir, 'proxy_auth_final.zip')
-        with zipfile.ZipFile(plugin_file, 'w') as zp:
-            zp.writestr("manifest.json", manifest_json)
-            zp.writestr("background.js", background_js)
-        
-        chrome_options.add_extension(plugin_file)
-        chrome_options.add_argument(f"--proxy-server=http://{proxy_server}")
-        print(f"📦 Proxy Auth Extension active at: {plugin_file}")
-
-    # Critical for Bright Data and Headless reliability
-    chrome_options.add_argument("--ignore-certificate-errors")
-    chrome_options.add_argument("--allow-running-insecure-content")
-    chrome_options.add_argument("--disable-web-security")
-    
-    chrome_bin = os.getenv("CHROME_BIN", "/usr/bin/chromium")
-    if chrome_bin:
-        chrome_options.binary_location = chrome_bin
-
-    service = Service(executable_path=os.getenv("CHROMEDRIVER_BIN", "/usr/bin/chromedriver"))
-    driver = webdriver.Chrome(service=service, options=chrome_options)
-    
-    try:
-        wait = WebDriverWait(driver, 60)
-        
-        # IP Diagnostic
-        print("🔍 Checking outbound IP address...")
-        try:
-            # checkip.amazonaws.com returns plain text
-            driver.get("http://checkip.amazonaws.com")
-            time.sleep(5)
-            ip_info = driver.find_element(By.TAG_NAME, 'body').text.strip()
-            print(f"📡 Current Outbound IP: {ip_info}")
-        except Exception as ip_err:
-            print(f"⚠️ Could not verify IP: {ip_err}")
-            print(f"📄 Page Source Sneak Peak (IP Check): {driver.page_source[:200]}")
-
-        print("🔗 Navigating to Nextdoor...")
-        driver.get("https://nextdoor.com/news_feed/")
-        time.sleep(12) # Increased wait for proxy/DNS
-        
-        page_source = driver.page_source.lower()
-        current_url = driver.current_url.lower()
-        page_title = driver.title
-        print(f"📍 Initial Page Title: '{page_title}' | URL: {current_url}")
-
-        # Check for Proxy/KYC issues early
-        if any(x in page_source for x in ["brightdata", "kyc", "bad_endpoint", "住宅受限"]):
-            print("❌ Proxy block detected (Bright Data KYC required).")
-            driver.save_screenshot(f"/opt/airflow/scraper/cookies/proxy_block_{datetime.now().strftime('%H%M%S')}.png")
-            return "Failed: Proxy KYC block"
-
-        if "login" in current_url or "signup" in current_url or "welcome back" in page_source:
-            print("🔑 Login page detected.")
-            driver.get("https://nextdoor.com/login/")
-            
-            # Re-check for rate limit on login page
-            time.sleep(5)
-            page_text = driver.find_element(By.TAG_NAME, 'body').text.lower()
-            if "too many requests" in page_text:
-                print("❌ Rate limited by Nextdoor. (Server IP likely detected)")
-                driver.save_screenshot(f"/opt/airflow/scraper/cookies/nd_ratelimit_{datetime.now().strftime('%H%M%S')}.png")
-                # Save first 500 chars of page source for debugging
-                print(f"📄 Page snippet: {page_text[:500]}")
-                return "Failed: Rate limited"
-
-            email_field = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'input[name="email"], input#id_email')))
-            email_field.send_keys(owner_email)
-            
-            password_field = driver.find_element(By.CSS_SELECTOR, 'input[name="password"], input#id_password')
-            password_field.send_keys(owner_password)
-            password_field.send_keys(Keys.ENTER)
-            
-            time.sleep(10)
-            
-            # 2FA Handling
-            page_text = driver.find_element(By.TAG_NAME, 'body').text.lower()
-            
-            if "too many requests" in page_text:
-                print("❌ Rate limited by Nextdoor.")
-                driver.save_screenshot(f"/opt/airflow/scraper/cookies/nd_ratelimit_{datetime.now().strftime('%H%M%S')}.png")
-                return "Failed: Rate limited"
-            
-            if any(x in page_text for x in ["brightdata", "kyc", "bad_endpoint", "住宅受限"]):
-                print("❌ Proxy block detected (Bright Data KYC likely required).")
-                driver.save_screenshot(f"/opt/airflow/scraper/cookies/proxy_block_{datetime.now().strftime('%H%M%S')}.png")
-                return "Failed: Proxy block (Check Bright Data dashboard and complete KYC)"
-
-            # Check for 2FA keywords or presence of a code input field
-            is_2fa = any(k in page_text for k in ["login code", "enter code", "verification code", "verify your identity", "authenticator", "security code", "check your email", "confirm your account"])
-            
-            code_input = None
-            code_selectors = ['input[name="code"]', 'input[id*="id_code"]', 'input[name*="verification"]']
-            for selector in code_selectors:
+        # Clear locks to avoid "singleton" error in Docker
+        for lock in ["SingletonLock", "SingletonCookie", "SingletonSocket"]:
+            lock_path = os.path.join(user_data_dir, lock)
+            if os.path.exists(lock_path) or os.path.islink(lock_path):
                 try:
-                    el = driver.find_element(By.CSS_SELECTOR, selector)
-                    if el.is_displayed():
-                        code_input = el
-                        is_2fa = True
-                        break
+                    if os.path.islink(lock_path): os.unlink(lock_path)
+                    else: os.remove(lock_path)
                 except: pass
 
-            if is_2fa:
-                print("🔐 2FA screen detected!")
-                two_fa_secret = Variable.get("nextdoor_2fa_secret", default_var=os.getenv("NEXTDOOR_2FA_SECRET"))
+        launch_args = {
+            "headless": True,
+            "args": ["--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"]
+        }
+        
+        # Proxy Configuration
+        proxy_server = os.getenv("BRIGHTDATA_PROXY_SERVER")
+        proxy_user = os.getenv("BRIGHTDATA_PROXY_USER")
+        proxy_pass = os.getenv("BRIGHTDATA_PROXY_PASS")
+        
+        if proxy_server and proxy_user and proxy_pass:
+            print(f"🌐 Configuring Residential Proxy: {proxy_server}")
+            launch_args["proxy"] = {
+                "server": f"http://{proxy_server}",
+                "username": proxy_user,
+                "password": proxy_pass
+            }
+
+        if chrome_bin := os.getenv("CHROME_BIN"): launch_args["executable_path"] = chrome_bin
+        
+        browser_context = p.chromium.launch_persistent_context(
+            user_data_dir=user_data_dir,
+            viewport={'width': 1280, 'height': 800},
+            user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            ignore_https_errors=True,
+            **launch_args
+        )
+        
+        page = browser_context.pages[0] if browser_context.pages else browser_context.new_page()
+        Stealth().apply_stealth_sync(page)
+        
+        try:
+            navigation_timeout = 60000 
+            
+            # 1. MANDATORY Proxy Health Check
+            print("🌐 Verifying proxy connectivity...")
+            try:
+                # Use a slightly longer timeout for the proxy check
+                page.goto("https://api64.ipify.org?format=json", timeout=30000)
+                ip_data = page.inner_text('body')
+                print(f"📡 Proxy IP Test SUCCESS: {ip_data}")
+            except Exception as ip_err:
+                print(f"❌ PROXY FAILURE: Could not connect to the internet via Bright Data. Error: {ip_err}")
+                screenshot_path = f"/opt/airflow/scraper/cookies/proxy_fail_{datetime.now().strftime('%H%M%S')}.png"
+                try: page.screenshot(path=screenshot_path)
+                except: pass
+                return f"Failed: Proxy Connectivity Error - {str(ip_err)}"
+
+            print("🔗 Navigating to Nextdoor...")
+            # Try a different URL or the root domain first to warm up the proxy connection
+            try:
+                print("🚀 Attempting root domain navigation...")
+                page.goto("https://nextdoor.com/", wait_until="commit", timeout=navigation_timeout)
+            except Exception as root_err:
+                print(f"⚠️ Root domain navigation failed: {root_err}. Continuing to news_feed...")
+
+            response = page.goto("https://nextdoor.com/news_feed/", wait_until="domcontentloaded", timeout=navigation_timeout)
+            page.wait_for_timeout(5000)
+            
+            current_url = page.url.lower()
+            if "login" in current_url or "signup" in current_url or "identify" in page.content().lower():
+                print("🔑 Login required.")
+                if "login" not in current_url:
+                    page.goto("https://nextdoor.com/login/", wait_until="domcontentloaded", timeout=navigation_timeout)
                 
-                if two_fa_secret:
-                    print("🔐 Generating TOTP...")
-                    import pyotp
-                    code = pyotp.TOTP(two_fa_secret.replace(" ", "")).now()
-                    if not code_input:
-                        code_input = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'input[name="code"], input[id*="id_code"]')))
-                    code_input.send_keys(code)
-                    code_input.send_keys(Keys.ENTER)
-                else:
-                    print("🔐 Attempting to fetch OTP from Gmail via IMAP...")
-                    from utils.email_manager import EmailManager
-                    code = EmailManager.get_nextdoor_otp(owner_email, os.getenv("NEXTDOOR_APP_PASSWORD"))
+                page.locator('input[name="email"], input#id_email').first.fill(owner_email)
+                password_field = page.locator('input[name="password"], input#id_password').first
+                password_field.fill(owner_password)
+                password_field.press('Enter')
+                page.wait_for_timeout(8000)
+                
+                # Handle 2FA
+                page_text = page.inner_text('body').lower()
+                if any(x in page_text for x in ["login code", "enter code", "verification code", "verify your identity"]):
+                    print("🔐 2FA detected!")
+                    two_fa_secret = Variable.get("nextdoor_2fa_secret", default_var=os.getenv("NEXTDOOR_2FA_SECRET"))
                     
-                    if code:
-                        print(f"📥 OTP fetched: {code}")
-                        if not code_input:
-                            code_input = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'input[name="code"], input[id*="id_code"]')))
-                        code_input.send_keys(code)
-                        code_input.send_keys(Keys.ENTER)
+                    code = None
+                    if two_fa_secret:
+                        import pyotp
+                        code = pyotp.TOTP(two_fa_secret.replace(" ", "")).now()
                     else:
-                        print("🔐 2FA detected. Attempting to fetch OTP from Gmail...")
                         from utils.email_manager import EmailManager
-                        email_user = Variable.get("nextdoor_owner_email", default_var=os.getenv("NEXTDOOR_EMAIL"))
-                        app_pass = os.getenv("NEXTDOOR_APP_PASSWORD") # Gmail App Password
+                        app_pass = os.getenv("NEXTDOOR_APP_PASSWORD")
+                        code = EmailManager.get_nextdoor_otp(owner_email, app_pass) if app_pass else None
                         
-                        code = None
-                        if email_user and app_pass:
-                            code = EmailManager.get_nextdoor_otp(email_user, app_pass)
-                        
-                        if code:
-                            print(f"📥 Successfully fetched OTP from Gmail: {code}")
-                            page.locator('input[name="code"], input[id*="id_code"]').first.fill(code)
-                            page.keyboard.press("Enter")
-                            page.wait_for_timeout(5000)
-                        else:
-                            print("🔐 Email OTP fetch failed. Waiting for manual entry in 'nextdoor_owner_2fa' Airflow variable...")
+                        if not code:
+                            print("🔐 Waiting for manual code in 'nextdoor_owner_2fa' Airflow variable...")
                             Variable.set("nextdoor_owner_2fa", "WAITING")
-                            # Simple poll logic
-                            for _ in range(30): # Wait 5 minutes max
+                            for _ in range(30):
                                 page.wait_for_timeout(10000)
                                 manual_code = Variable.get("nextdoor_owner_2fa", default_var="")
                                 if manual_code and manual_code != "WAITING":
-                                    print(f"📥 Received manual code: {manual_code}")
-                                    page.locator('input[name="code"], input[id*="id_code"]').first.fill(manual_code)
-                                    page.keyboard.press("Enter")
+                                    code = manual_code
                                     break
-                
+                    
+                    if code:
+                        page.locator('input[name="code"], input[id*="id_code"]').first.fill(code)
+                        page.keyboard.press("Enter")
+                        page.wait_for_timeout(8000)
+
+            # Verification and Cookie Capture
             page.wait_for_url(lambda url: "login" not in url.lower(), timeout=30000)
             cookies = browser_context.cookies()
             print(f"🍪 Retrieved {len(cookies)} cookies.")
-            if cookies:
-                cookie_names = [c['name'] for c in cookies]
-                print(f"🍪 Cookie names: {cookie_names}")
-                print(f"🍪 Full Cookies JSON: {json.dumps(cookies, indent=2)}")
             
             manager.save_cookies(owner_email, 'nextdoor', cookies)
             
-            # Sync to local JSON file for the scraper
+            # Sync to local JSON file
             try:
                 cookie_file_path = "/opt/airflow/scraper/cookies/nextdoor_cookies.json"
                 os.makedirs(os.path.dirname(cookie_file_path), exist_ok=True)
                 with open(cookie_file_path, 'w') as f:
                     json.dump(cookies, f, indent=2)
                 print(f"✅ Cookies synced to local file: {cookie_file_path}")
+                print(f"📄 Saved File Content: {json.dumps(cookies, indent=2)}")
             except Exception as fe:
                 print(f"⚠️ Error syncing to local file: {fe}")
 
-            print(f"✅ Successfully rotated Nextdoor cookies for owner {owner_email}.")
+            print(f"✅ Successfully rotated Nextdoor cookies for {owner_email}.")
             Variable.set("nextdoor_last_rotation", datetime.utcnow().isoformat())
             return "Success"
+        except Exception as e:
+            print(f"❌ Error during rotation: {e}")
+            screenshot_path = f"/opt/airflow/scraper/cookies/nd_error_{datetime.now().strftime('%H%M%S')}.png"
+            os.makedirs(os.path.dirname(screenshot_path), exist_ok=True)
+            try: page.screenshot(path=screenshot_path)
+            except: pass
+            return f"Failed: {str(e)}"
         finally:
             browser_context.close()
 

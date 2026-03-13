@@ -89,12 +89,16 @@ def rotate_nextdoor_owner_cookies(**context):
             navigation_timeout = 60000 
             
             # 1. MANDATORY Proxy Health Check
-            print("🌐 Verifying proxy connectivity...")
+            print(f"🌐 Verifying proxy connectivity using: {proxy_server}")
             try:
                 # Use a slightly longer timeout for the proxy check
-                page.goto("https://api64.ipify.org?format=json", timeout=30000)
-                ip_data = page.inner_text('body')
-                print(f"📡 Proxy IP Test SUCCESS: {ip_data}")
+                response = page.goto("https://api64.ipify.org?format=json", timeout=30000)
+                if response:
+                    print(f"📡 Proxy IP Test Result: Status {response.status}")
+                    ip_data = page.inner_text('body')
+                    print(f"📡 Proxy IP Test SUCCESS: {ip_data}")
+                else:
+                    print("❌ PROXY FAILURE: Response was null.")
             except Exception as ip_err:
                 print(f"❌ PROXY FAILURE: Could not connect to the internet via Bright Data. Error: {ip_err}")
                 screenshot_path = f"/opt/airflow/scraper/cookies/proxy_fail_{datetime.now().strftime('%H%M%S')}.png"
@@ -105,71 +109,100 @@ def rotate_nextdoor_owner_cookies(**context):
             print("🔗 Navigating to Nextdoor...")
             # Try a different URL or the root domain first to warm up the proxy connection
             try:
-                print("🚀 Attempting root domain navigation...")
+                print("🚀 Attempting root domain navigation to warm up connection...")
                 page.goto("https://nextdoor.com/", wait_until="commit", timeout=navigation_timeout)
+                print(f"📍 Root domain reached. Current URL: {page.url}")
             except Exception as root_err:
-                print(f"⚠️ Root domain navigation failed: {root_err}. Continuing to news_feed...")
+                print(f"⚠️ Root domain navigation warning: {root_err}. Continuing to news_feed...")
 
+            print("📂 Navigating to news_feed...")
             response = page.goto("https://nextdoor.com/news_feed/", wait_until="domcontentloaded", timeout=navigation_timeout)
             page.wait_for_timeout(5000)
             
             current_url = page.url.lower()
+            print(f"📍 Current URL after loading news_feed: {current_url}")
+
             if "login" in current_url or "signup" in current_url or "identify" in page.content().lower():
-                print("🔑 Login required.")
+                print("🔑 Login required. Detecting login fields...")
                 if "login" not in current_url:
+                    print("🔄 Explicitly navigating to login page...")
                     page.goto("https://nextdoor.com/login/", wait_until="domcontentloaded", timeout=navigation_timeout)
                 
+                print(f"⌨️ Filling email: {printable_email}")
                 page.locator('input[name="email"], input#id_email').first.fill(owner_email)
+                
+                print("⌨️ Filling password...")
                 password_field = page.locator('input[name="password"], input#id_password').first
                 password_field.fill(owner_password)
                 password_field.press('Enter')
+                
+                print("⏳ Waiting for login response...")
                 page.wait_for_timeout(8000)
                 
                 # Handle 2FA
                 page_text = page.inner_text('body').lower()
                 if any(x in page_text for x in ["login code", "enter code", "verification code", "verify your identity"]):
-                    print("🔐 2FA detected!")
+                    print("🔐 2FA screen detected! Analyzing 2FA method...")
                     two_fa_secret = Variable.get("nextdoor_2fa_secret", default_var=os.getenv("NEXTDOOR_2FA_SECRET"))
                     
                     code = None
                     if two_fa_secret:
+                        print("🔐 Method selected: TOTP (Authenticator App)")
                         import pyotp
                         code = pyotp.TOTP(two_fa_secret.replace(" ", "")).now()
+                        print(f"📥 TOTP code generated.")
                     else:
+                        print("🔐 Method selected: Gmail OTP Fetch")
                         from utils.email_manager import EmailManager
                         app_pass = os.getenv("NEXTDOOR_APP_PASSWORD")
                         code = EmailManager.get_nextdoor_otp(owner_email, app_pass) if app_pass else None
                         
                         if not code:
-                            print("🔐 Waiting for manual code in 'nextdoor_owner_2fa' Airflow variable...")
+                            print("🔐 Gmail OTP fetch failed. Falling back to Manual Entry.")
+                            print("⏳ Waiting for manual code in 'nextdoor_owner_2fa' Airflow variable (Max 5 mins)...")
                             Variable.set("nextdoor_owner_2fa", "WAITING")
-                            for _ in range(30):
+                            for i in range(30):
                                 page.wait_for_timeout(10000)
                                 manual_code = Variable.get("nextdoor_owner_2fa", default_var="")
                                 if manual_code and manual_code != "WAITING":
+                                    print(f"📥 Received manual code from Airflow: {manual_code}")
                                     code = manual_code
                                     break
+                                if i % 6 == 0: print(f"⏳ Still waiting for manual code... ({i*10}s)")
                     
                     if code:
+                        print("⌨️ Entering 2FA code...")
                         page.locator('input[name="code"], input[id*="id_code"]').first.fill(code)
                         page.keyboard.press("Enter")
                         page.wait_for_timeout(8000)
+                    else:
+                        print("❌ Failed to obtain 2FA code via any method.")
 
             # Verification and Cookie Capture
-            page.wait_for_url(lambda url: "login" not in url.lower(), timeout=30000)
+            print("🏁 Final verification. Waiting for news_feed redirection...")
+            try:
+                page.wait_for_url(lambda url: "login" not in url.lower(), timeout=30000)
+                print(f"✅ Redirection complete. Target URL: {page.url}")
+            except Exception as wait_err:
+                print(f"⚠️ Redirection wait exceeded or failed: {wait_err}")
+
             cookies = browser_context.cookies()
-            print(f"🍪 Retrieved {len(cookies)} cookies.")
+            print(f"🍪 Retrieved {len(cookies)} cookies from browser context.")
+            if cookies:
+                cookie_names = [c['name'] for c in cookies]
+                print(f"🍪 Cookie names: {cookie_names}")
             
+            print("💾 Saving cookies to database...")
             manager.save_cookies(owner_email, 'nextdoor', cookies)
             
             # Sync to local JSON file
             try:
                 cookie_file_path = "/opt/airflow/scraper/cookies/nextdoor_cookies.json"
+                print(f"📁 Syncing cookies to local file: {cookie_file_path}")
                 os.makedirs(os.path.dirname(cookie_file_path), exist_ok=True)
                 with open(cookie_file_path, 'w') as f:
                     json.dump(cookies, f, indent=2)
-                print(f"✅ Cookies synced to local file: {cookie_file_path}")
-                print(f"📄 Saved File Content: {json.dumps(cookies, indent=2)}")
+                print(f"✅ Local sync successful.")
             except Exception as fe:
                 print(f"⚠️ Error syncing to local file: {fe}")
 

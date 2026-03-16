@@ -10,9 +10,22 @@ from .base import BaseScraper
 try:
     from ..models import CraigslistLead, ScrapedLead
     from ..utils.buyer_intent import BuyerIntentDetector
-except ImportError:
-    from models import CraigslistLead, ScrapedLead
-    from utils.buyer_intent import BuyerIntentDetector
+except (ImportError, ValueError):
+    try:
+        from models import CraigslistLead, ScrapedLead
+        from utils.buyer_intent import BuyerIntentDetector
+    except ImportError:
+        # Fallback for Airflow dynamic task mapping environment
+        try:
+            import sys
+            import os
+            sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+            from models import CraigslistLead, ScrapedLead
+            from utils.buyer_intent import BuyerIntentDetector
+        except ImportError:
+            # Last resort: just try to import from current level if they were moved
+            from models import CraigslistLead, ScrapedLead
+            from utils.buyer_intent import BuyerIntentDetector
 
 
 class CraigslistScraper(BaseScraper):
@@ -144,16 +157,20 @@ class CraigslistScraper(BaseScraper):
                     self.logger.info(f"scraping_search_results_page_{p_idx + 1}")
                     
                     # Wait for results to load
-                    page.wait_for_selector(".cl-search-result, .result-row", timeout=10000)
+                    # Some environments/IPs may be served a "static" version of Craigslist
+                    # which uses .cl-static-search-result
+                    page.wait_for_selector(".cl-search-result, .result-row, .cl-static-search-result", timeout=10000)
                     
                     # Extract list items
                     # New layout uses .cl-search-result
                     # Old layout uses .result-row
-                    items = page.query_selector_all(".cl-search-result, .result-row")
+                    # Static/Blocked layout uses .cl-static-search-result
+                    items = page.query_selector_all(".cl-search-result, .result-row, .cl-static-search-result")
                     
                     for item in items:
                         try:
                             # Basic extraction from search page
+                            # .cl-static-search-result usually has the link directly inside it
                             link_elem = item.query_selector("a.posting-title, a.cl-search-anchor, a")
                             if not link_elem:
                                 continue

@@ -16,15 +16,29 @@ try:
     from ..utils.lead_enrichment import LeadEnricher
     from ..utils.mappings import get_mapping_manager
     from ..utils.image_ocr import scan_images_for_seller
-except ImportError:
-    from logger import ScraperLogger
-    from database import DatabaseManager, get_db_manager
-    from config import get_scraper_config, get_ghl_config
-    from models import ScrapedLead, ScrapeJob
-    from integrations.ghl import GHLClient
-    from utils.lead_enrichment import LeadEnricher
-    from utils.mappings import get_mapping_manager
-    from utils.image_ocr import scan_images_for_seller
+except (ImportError, ValueError):
+    try:
+        from logger import ScraperLogger
+        from database import DatabaseManager, get_db_manager
+        from config import get_scraper_config, get_ghl_config
+        from models import ScrapedLead, ScrapeJob
+        from integrations.ghl import GHLClient
+        from utils.lead_enrichment import LeadEnricher
+        from utils.mappings import get_mapping_manager
+        from utils.image_ocr import scan_images_for_seller
+    except ImportError:
+        # Final fallback for unusual Airflow pathing
+        import sys
+        import os
+        sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+        from logger import ScraperLogger
+        from database import DatabaseManager, get_db_manager
+        from config import get_scraper_config, get_ghl_config
+        from models import ScrapedLead, ScrapeJob
+        from integrations.ghl import GHLClient
+        from utils.lead_enrichment import LeadEnricher
+        from utils.mappings import get_mapping_manager
+        from utils.image_ocr import scan_images_for_seller
 
 class BaseScraper(ABC):
     def __init__(self, scraper_name: str, db_manager: Optional[DatabaseManager] = None):

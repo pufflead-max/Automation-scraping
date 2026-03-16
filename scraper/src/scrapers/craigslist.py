@@ -1,8 +1,10 @@
-"""Craigslist scraper implementation."""
+"""Craigslist scraper implementation using Playwright for robust description extraction."""
 
 from typing import List, Dict, Any, Optional
+import os
 import time
-from bs4 import BeautifulSoup as bs
+import re
+from playwright.sync_api import sync_playwright
 
 from .base import BaseScraper
 try:
@@ -14,119 +16,16 @@ except ImportError:
 
 
 class CraigslistScraper(BaseScraper):
-    """Scraper for Craigslist service listings."""
+    """Scraper for Craigslist service listings using Playwright."""
     
     def __init__(self, **kwargs):
         super().__init__("craigslist", db_manager=kwargs.pop('db_manager', None))
-        self.headers = {
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        }
-
-    def parse_search_item(self, soup_element) -> Dict[str, Any]:
-        """Parse a single Craigslist result-node HTML block."""
-        link = soup_element.select_one("a")
-        
-        # 1. New Craigslist HTML structure often uses time[datetime]
-        # 2. Static layout often uses .result-date
-        # 3. Fallback layout often uses .meta > span
-        date_elem = soup_element.select_one("time") or soup_element.select_one(".result-date") or soup_element.select_one(".meta > span")
-        
-        date_val = None
-        date_text = None
-        if date_elem:
-            date_val = date_elem.get("datetime") or date_elem.get("title")
-            date_text = date_elem.get_text(strip=True)
-        
-        # 4. Aggressive fallback: search ALL spans for something that LOOKS like a date (e.g. "28/02" or "Feb 28")
-        if not date_text:
-            import re
-            for tag in soup_element.select("span, div"):
-                txt = tag.get_text(strip=True)
-                if re.match(r'^\d{1,2}/\d{1,2}$', txt) or re.match(r'^[A-Z][a-z]{2}\s\d{1,2}$', txt):
-                    date_text = txt
-                    break
-
-        if link:
-            title_elem = link.select_one(".title") or link.select_one("div.title")
-            location_elem = link.select_one(".location") or link.select_one("div.location")
-            price_elem = link.select_one(".price") or link.select_one("div.price")
-            res = {
-                "title": title_elem.get_text(strip=True) if title_elem else soup_element.get("title"),
-                "url": link.get("href"),
-                "location": location_elem.get_text(strip=True) if location_elem else None,
-                "price": price_elem.get_text(strip=True) if price_elem else None,
-                "date_short": date_text,
-                "date_full": date_val or date_text,
-                "image_url": (img := soup_element.select_one("img")) and img.get("src"),
-                "image_alt": (img := soup_element.select_one("img")) and img.get("alt"),
-            }
-            return res
-        
-        title_link = soup_element.select_one("a.posting-title") or soup_element.select_one("a.cl-search-anchor") or soup_element.select_one("a")
-        location_elem = soup_element.select_one(".result-info > div") or soup_element.select_one(".result-hood") or soup_element.select_one(".location")
-        img = soup_element.select_one("img")
-        
-        # Try to find a description snippet if available
-        description = None
-        if desc_elem := soup_element.select_one(".cl-static-search-result-body"):
-            description = desc_elem.get_text(strip=True)
-
-        res = {
-            "title": title_link.get_text(strip=True) if title_link else None,
-            "url": title_link.get("href") if title_link else None,
-            "location": location_elem.get_text(strip=True) if location_elem else None,
-            "price": None,
-            "date_short": date_text,
-            "date_full": date_val or date_text,
-            "description": description,
-            "image_url": img.get("src") if img else None,
-            "image_alt": img.get("alt") if img else None,
-        }
-        return res
-    
-    def get_total_count(self, soup: bs) -> int:
-        """Extract total number of results from the page."""
-        try:
-            if count_elem := soup.select_one(".totalcount"):
-                return int(count_elem.get_text(strip=True))
-            return 0
-        except Exception:
-            return 0
-
-    def scrape_search_page(self, search_url: str, offset: int = 0, category: Optional[str] = None, query: Optional[str] = None) -> tuple:
-        """Scrape a single search results page at a specific offset."""
-        connector = '&' if '?' in search_url else '?'
-        page_url = f"{search_url}{connector}s={offset}"
-        if query:
-            page_url += f"&query={query}"
-        self.logger.info("scraping_page", url=page_url, offset=offset)
-        
-        try:
-            # Disable proxy for Craigslist - they now use JavaScript rendering
-            # and ScraperAPI proxy returns raw HTML without executing JS
-            response = self.make_request(page_url, headers=self.headers, use_proxy=False)
-            soup = bs(response.text, "html.parser")
-            items = soup.select("li.cl-static-search-result, [class*='cl-search-result'] > div.result-node, .result-row") or soup.select(".cl-search-result")
-            
-            parsed_items = []
-            for item in items:
-                if (parsed := self.parse_search_item(item)) and parsed.get('title') and parsed.get('url'):
-                    if category:
-                        parsed['category'] = category
-                    parsed_items.append(parsed)
-            
-            self.logger.debug("page_scraped", url=page_url, items_found=len(parsed_items))
-            return parsed_items, soup
-        except Exception as e:
-            self.logger.error("scraping_page_failed", url=page_url, error=str(e))
-            raise
+        self.headless = kwargs.get('headless', True)
 
     def parse_item(self, raw_data: Dict[str, Any], custom_keywords: Optional[list] = None, 
                    exclude_keywords: Optional[list] = None, 
                    custom_indicators: Optional[list] = None) -> Optional[CraigslistLead]:
-        """Parse raw scraped data into a CraigslistLead model with date enrichment."""
+        """Parse raw scraped data into a CraigslistLead model."""
         try:
             posting_id = None
             url = raw_data.get('url')
@@ -137,40 +36,8 @@ class CraigslistScraper(BaseScraper):
                         posting_id = clean_part
             
             description = raw_data.get('description')
-            date_full = raw_data.get('date_full')
-            date_short = raw_data.get('date_short')
             
-            # ── Enrichment ──────────────────────────────────────────────────
-            # If the search results (requests-based) are missing the date or description, fetch from the detail page
-            print(f"DEBUG_ENRICHMENT: url={url}, date_full={date_full}, date_short={date_short}, description={bool(description)}")
-            if (not date_full and not date_short or not description) and url:
-                try:
-                    print(f"DEBUG_ENRICHMENT: Fetching url={url}")
-                    self.logger.debug("fetching_detail_for_enrichment", url=url)
-                    resp = self.make_request(url, headers=self.headers, use_proxy=False)
-                    detail_soup = bs(resp.text, "html.parser")
-                    
-                    if not date_full and not date_short:
-                        if time_tag := detail_soup.select_one('time.date, time.timeago, .postinginfo time'):
-                            date_full = time_tag.get('datetime')
-                            date_short = time_tag.get_text(strip=True)
-                            
-                    if not description:
-                        if desc_tag := detail_soup.select_one('#postingbody'):
-                            # remove the "QR Code Link to This Post" print info
-                            if qr_text := desc_tag.select_one('.print-information'):
-                                qr_text.decompose()
-                            description = desc_tag.get_text(separator="\n", strip=True)
-                            description = description.replace('QR Code Link to This Post', '').strip()
-                            print(f"DEBUG_ENRICHMENT: Found description, mapped {len(description)} chars")
-
-                except Exception as e:
-                    import traceback
-                    print(f"DEBUG_ENRICHMENT: EXCEPTION! {e}")
-                    traceback.print_exc()
-                    self.logger.warning("enrichment_failed", url=url, error=str(e))
-
-            # Combine title and description for buyer intent analysis AFTER enrichment
+            # Combine title and description for buyer intent analysis
             text = f"{raw_data.get('title', '')} {description or ''}"
 
             # Use centralized buyer intent detector
@@ -196,70 +63,155 @@ class CraigslistScraper(BaseScraper):
                 description=description,
                 location=raw_data.get('location'),
                 category=raw_data.get('category'),
-                date_short=date_short,
-                date_full=date_full,
-                posted_date=date_full or date_short, # Pass raw string to model validator
-                image_thumbnail=raw_data.get('image_url'),
-                images=[raw_data.get('image_url')] if raw_data.get('image_url') else [],
+                posted_date=raw_data.get('posted_date'),
+                images=raw_data.get('images', []),
                 is_buyer_request=is_buyer_request,
             )
         except Exception as e:
             self.logger.warning("failed_to_parse_item", error=str(e))
             return None
 
-    def get_subcategories(self, location_url: str) -> List[Dict[str, str]]:
-        """Get subcategories using requests."""
+    def scrape_detail_page(self, page, url: str) -> Dict[str, Any]:
+        """Navigate to a detail page and extract full description and images."""
         try:
-            response = self.make_request(location_url, headers=self.headers, use_proxy=False)
-            soup = bs(response.text, "html.parser")
-            if not (services_section := soup.select_one("#bbb")):
-                return []
-            return [{"name": link.get_text(strip=True), "url": location_url.rstrip("/") + link.get("href")}
-                   for link in services_section.select("li > a")]
+            self.logger.info("scraping_detail_page", url=url)
+            page.goto(url, timeout=60000)
+            page.wait_for_load_state("domcontentloaded")
+            
+            # Extract description
+            description = ""
+            if posting_body := page.query_selector("#postingbody"):
+                # Get the text content, removing the "QR Code Link to This Post" part
+                description = page.evaluate("(node) => node.innerText", posting_body)
+                description = description.replace("QR Code Link to This Post", "").strip()
+            
+            # Extract date
+            posted_date = None
+            if time_tag := page.query_selector("time.date, time.timeago, .postinginfo time"):
+                posted_date = time_tag.get_attribute("datetime")
+            
+            # Extract images
+            images = []
+            if image_elements := page.query_selector_all(".gallery img, .userbody img"):
+                for img in image_elements:
+                    if src := img.get_attribute("src"):
+                        images.append(src)
+            
+            return {
+                "description": description,
+                "posted_date": posted_date,
+                "images": images
+            }
         except Exception as e:
-            self.logger.error("failed_to_fetch_subcategories", error=str(e))
-            return []
+            self.logger.warning("detail_page_scraping_failed", url=url, error=str(e))
+            return {}
 
     def scrape(self, target: str, **kwargs) -> List[ScrapedLead]:
-        """Main scraping method."""
+        """Main scraping method using Playwright."""
+        max_pages = kwargs.get('max_pages', 3)
+        query = kwargs.get('query')
         category = kwargs.get('category')
-        subcategories = kwargs.get('subcategories', [])
-        max_pages = kwargs.get('max_pages', 5)
         all_leads = []
         
-        try:
-            if not subcategories and target.endswith('.craigslist.org/'):
-                subcategories = [s['url'] for s in self.get_subcategories(target)]
-            if not subcategories:
-                subcategories = [target]
+        with sync_playwright() as p:
+            launch_args = {"headless": self.headless}
+            if chrome_bin := os.getenv("CHROME_BIN"):
+                launch_args.update({"executable_path": chrome_bin, "args": ["--no-sandbox", "--disable-dev-shm-usage"]})
             
-            for sub_url in subcategories:
-                self.logger.info("scraping_subcategory", url=sub_url)
-                offset = 0
+            browser = p.chromium.launch(**launch_args)
+            context = browser.new_context(
+                viewport={'width': 1280, 'height': 800},
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+            )
+            page = context.new_page()
+            
+            # Normalize target URL
+            search_url = target
+            if query:
+                connector = '&' if '?' in search_url else '?'
+                search_url = f"{search_url}{connector}query={query}"
+            
+            self.logger.info("starting_playwright_scrape", url=search_url)
+            
+            try:
+                page.goto(search_url, timeout=90000)
+                page.wait_for_load_state("networkidle")
                 
-                for page in range(max_pages):
-                    try:
-                        raw_items, soup = self.scrape_search_page(sub_url, offset, category, query=kwargs.get('query'))
-                        if not raw_items:
+                # Craigslist might still show the old layout or new one
+                collected_items = []
+                
+                for p_idx in range(max_pages):
+                    self.logger.info(f"scraping_search_results_page_{p_idx + 1}")
+                    
+                    # Wait for results to load
+                    page.wait_for_selector(".cl-search-result, .result-row", timeout=10000)
+                    
+                    # Extract list items
+                    # New layout uses .cl-search-result
+                    # Old layout uses .result-row
+                    items = page.query_selector_all(".cl-search-result, .result-row")
+                    
+                    for item in items:
+                        try:
+                            # Basic extraction from search page
+                            link_elem = item.query_selector("a.posting-title, a.cl-search-anchor, a")
+                            if not link_elem:
+                                continue
+                                
+                            url = link_elem.get_attribute("href")
+                            if not url:
+                                continue
+                            
+                            if not url.startswith("http"):
+                                # Handle relative URLs
+                                from urllib.parse import urljoin
+                                url = urljoin(search_url, url)
+                                
+                            title = link_elem.inner_text().strip()
+                            
+                            location = ""
+                            if loc_elem := item.query_selector(".location, .result-hood"):
+                                location = loc_elem.inner_text().strip()
+                                
+                            collected_items.append({
+                                "url": url,
+                                "title": title,
+                                "location": location,
+                                "category": category
+                            })
+                        except Exception as e:
+                            self.logger.debug("item_extraction_failed", error=str(e))
+                            continue
+                    
+                    # Check for "next" page
+                    if p_idx < max_pages - 1:
+                        next_button = page.query_selector("button.cl-next-page, a.next")
+                        if next_button and next_button.is_visible() and next_button.is_enabled():
+                            next_button.click()
+                            page.wait_for_load_state("networkidle")
+                            time.sleep(2)
+                        else:
+                            self.logger.info("no_more_pages")
                             break
+                
+                self.logger.info(f"collected_{len(collected_items)}_items_now_fetching_details")
+                
+                # Now fetch details for each item
+                for item_data in collected_items:
+                    detail_data = self.scrape_detail_page(page, item_data["url"])
+                    item_data.update(detail_data)
+                    
+                    if lead := self.parse_item(item_data, 
+                                               custom_keywords=kwargs.get('keywords'),
+                                               exclude_keywords=kwargs.get('exclude_keywords'),
+                                               custom_indicators=kwargs.get('custom_indicators')):
+                        all_leads.append(lead)
+                        # Optional: limit items or handle rate limiting
+                        time.sleep(1)
                         
-                        for raw in raw_items:
-                            if (lead := self.parse_item(raw, 
-                                                       custom_keywords=kwargs.get('keywords'),
-                                                       exclude_keywords=kwargs.get('exclude_keywords'),
-                                                       custom_indicators=kwargs.get('custom_indicators'))):
-                                all_leads.append(lead)
-                        
-                        if offset + len(raw_items) >= self.get_total_count(soup) or len(raw_items) == 0:
-                            break
-                        
-                        offset += len(raw_items)
-                        time.sleep(2)
-                    except Exception as e:
-                        self.logger.error("page_loop_failed", error=str(e))
-                        break
-            
-            return all_leads
-        except Exception as e:
-            self.logger.error("scrape_failed", error=str(e))
-            raise
+            except Exception as e:
+                self.logger.error("playwright_scrape_failed", error=str(e))
+            finally:
+                browser.close()
+                
+        return all_leads

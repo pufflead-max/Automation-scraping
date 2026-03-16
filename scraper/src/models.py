@@ -15,6 +15,7 @@ class ScrapedLead(BaseModel):
     source: str = Field(..., description="Source platform")
     source_url: str = Field(..., description="URL of the listing")
     source_id: Optional[str] = None
+    target_url: Optional[str] = Field(None, description="The specific URL/group/page being watched")
     title: Optional[str] = None
     description: Optional[str] = None
     location: Optional[str] = None

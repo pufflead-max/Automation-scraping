@@ -33,12 +33,13 @@ def sync_leads_to_sheets():
 
     # Sources to sync
     sources = ["Facebook", "Craigslist", "Nextdoor"]
+    all_combined_leads = []
     
     for source in sources:
         col_name = f"{source}_final_data"
         print(f"🔄 Syncing {source} final leads...")
         
-        # Fetch leads from the last 7 days (or all final leads)
+        # Fetch leads
         leads = db.find_many(col_name, {})
         
         if not leads:
@@ -55,12 +56,22 @@ def sync_leads_to_sheets():
                 if isinstance(v, datetime):
                     l_copy[k] = v.strftime("%Y-%m-%d %H:%M")
             processed_leads.append(l_copy)
+            all_combined_leads.append(l_copy)
 
         try:
             count = client.push_leads(processed_leads, worksheet_name=source)
             print(f"✅ Successfully pushed {count} leads to '{source}' tab.")
         except Exception as e:
             print(f"⚠️ Failed to push {source} leads: {e}")
+
+    # Push all combined leads to "All Leads" tab
+    if all_combined_leads:
+        print(f"\n🔄 Syncing combined 'All Leads' tab...")
+        try:
+            count = client.push_leads(all_combined_leads, worksheet_name="All Leads")
+            print(f"✅ Successfully pushed {count} total leads to 'All Leads' tab.")
+        except Exception as e:
+            print(f"⚠️ Failed to push combined leads: {e}")
 
     print("\n✨ Sync Complete!")
 

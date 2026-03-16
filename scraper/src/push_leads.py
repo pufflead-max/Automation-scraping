@@ -65,8 +65,9 @@ def push_leads(source: str, limit: int = None, force: bool = False, user_email: 
     for l in leads:
         key = l.get('source_url') or str(l.get('_id', id(l)))
         dedup_map[key] = l
-    unique_leads = dedup_map.values()
+    unique_leads = list(dedup_map.values())
     
+    print(f"\nDEBUG: Processing {len(unique_leads)} unique leads for {source} (BEFORE 48h age filter)")
     # ── Age Filter: 48 Hour Limit ───────────────────────────────────────────
     now = datetime.utcnow()
     age_limit = now - timedelta(hours=48)

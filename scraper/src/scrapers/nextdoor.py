@@ -212,7 +212,7 @@ class NextdoorScraper(BaseScraper):
                 page.wait_for_timeout(5000)
 
                 # Check for login wall immediately
-                if "login" in page.url or "signup" in page.url or page.get_by_role("button", name="Log in").is_visible():
+                if "login" in page.url or "signup" in page.url or page.get_by_role("button", name="Log in").first.is_visible():
                     self.logger.error("session_invalid_redirected_to_login")
                     if self.user_email:
                         self.logger.warning("nextdoor_cookies_expired_removing_stale_record", user=self.user_email)

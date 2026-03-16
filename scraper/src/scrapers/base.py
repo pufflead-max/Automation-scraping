@@ -100,15 +100,19 @@ class BaseScraper(ABC):
             leads = self.scrape(target, **kw)
             self.scraped_items = leads
             
+            print(f"\nDEBUG [{self.name}]: Scraped {len(leads)} leads from target: {target} (BEFORE 48h filter)")
             # 1. Decorate ALL leads with user metadata and fresh scraped_date
-            for l in leads:
+            for i, l in enumerate(leads):
                 l.scraped_date = datetime.utcnow()
+                l.target_url = target
                 if user_data:
-                    l.user_email = user_data.get('email')
-                    l.user_name = user_data.get('name')
-                    l.user_phone = user_data.get('phone')
+                    l.user_email = user_data.get('user', {}).get('email')
+                    l.user_name = user_data.get('user', {}).get('name')
+                    l.user_phone = user_data.get('user', {}).get('phone')
                     l.extra_data = l.extra_data or {}
                     l.extra_data['user_detail'] = user_data
+                
+                print(f"  [{i+1}/{len(leads)}] RAW_LEAD_JSON: {l.model_dump_json()}")
             
             # 2. ── Age Filter: Drop leads older than 48 hours ─────────────────
             age_limit = datetime.utcnow() - timedelta(hours=48)

@@ -42,7 +42,7 @@ class GoogleSheetsClient:
 
         # Priority columns to show at the front
         priority_cols = [
-            'scraped_date', 'posted_date', 'source', 'title', 'description', 
+            'scraped_date', 'posted_date', 'source', 'target_url', 'title', 'description', 
             'location', 'city', 'price', 'vertical', 'is_buyer_request', 
             'is_spam', 'is_vertical_match', 'source_url', 'user_email'
         ]

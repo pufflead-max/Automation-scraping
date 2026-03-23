@@ -67,11 +67,12 @@ except ImportError:
 class FacebookScraper(BaseScraper):
     """Scraper for Facebook page posts using Selenium."""
     
-    def __init__(self, cookies: Optional[Dict[str, str]] = None, **kwargs):
+    def __init__(self, cookies: Optional[Dict[str, str]] = None, proxy_override: Optional[Dict[str, str]] = None, **kwargs):
         super().__init__("facebook", db_manager=kwargs.get('db_manager'))
         self.cookies = cookies or {}
         self.headless_default = kwargs.get('headless', True)
         self.use_proxy = kwargs.get('use_proxy', True)
+        self.proxy_override = proxy_override
         
         # Load cookie file if path provided
         if isinstance(self.cookies, str) and os.path.exists(self.cookies):
@@ -91,8 +92,8 @@ class FacebookScraper(BaseScraper):
         # ── Persistent Profile Setup ──────────────────────────────────────────
         # Profiles make the browser look like a "known device" to Facebook.
         # It stores local storage, indexDB, and session data across runs.
-        email = kwargs.get('email') or os.getenv('FACEBOOK_EMAIL', 'default')
-        safe_email = re.sub(r'[^a-zA-Z0-9]', '_', email)
+        self.email = kwargs.get('email') or os.getenv('FACEBOOK_EMAIL', 'default')
+        safe_email = re.sub(r'[^a-zA-Z0-9]', '_', self.email)
         
         # We store profiles in the cookies dir which is already persisted via volume
         if os.path.exists("/opt/airflow"):
@@ -106,6 +107,17 @@ class FacebookScraper(BaseScraper):
             self.profiles_base_dir = os.path.join(project_root, "scraper", "cookies", "facebook_profiles")
         
         self.user_profile_dir = os.path.join(self.profiles_base_dir, safe_email)
+        
+        # ── Clear Profile if requested ───────────────────────────────────────
+        if kwargs.get('clear_profile'):
+            import shutil
+            try:
+                if os.path.exists(self.user_profile_dir):
+                    self.logger.info("clearing_existing_profile", path=self.user_profile_dir)
+                    shutil.rmtree(self.user_profile_dir)
+            except Exception as e:
+                self.logger.warning("failed_to_clear_profile", error=str(e))
+
         os.makedirs(self.user_profile_dir, exist_ok=True)
         self.logger.info("persistent_profile_path", path=self.user_profile_dir)
 
@@ -115,10 +127,25 @@ class FacebookScraper(BaseScraper):
         
         options = Options()
         
-        # 1. Setup Proxies (Bright Data Residential)
-        proxy_server = self.cfg.get('brightdata_proxy_server')
-        proxy_user = self.cfg.get('brightdata_proxy_user')
-        proxy_pass = self.cfg.get('brightdata_proxy_pass')
+        # Proxy configuration: Prefer pool rotation if available
+        if not self.proxy_override:
+            from config import get_proxy_list
+            proxy_list = get_proxy_list()
+            if proxy_list:
+                selected = random.choice(proxy_list)
+                proxy_server = selected['server']
+                proxy_user = selected['username']
+                proxy_pass = selected['password']
+                self.logger.info("using_proxy_from_pool", server=proxy_server)
+            else:
+                proxy_server = os.getenv("PROXY_SERVER") or self.cfg.get('brightdata_proxy_server')
+                proxy_user = os.getenv("PROXY_USER") or self.cfg.get('brightdata_proxy_user')
+                proxy_pass = os.getenv("PROXY_PASS") or self.cfg.get('brightdata_proxy_pass')
+        else:
+            proxy_server = self.proxy_override.get('server')
+            proxy_user = self.proxy_override.get('username')
+            proxy_pass = self.proxy_override.get('password')
+            self.logger.info("using_proxy_override", server=proxy_server)
         
         if self.use_proxy and proxy_server:
             try:
@@ -127,6 +154,18 @@ class FacebookScraper(BaseScraper):
                 if ":" in host_port:
                     host, port = host_port.split(":")
                     if proxy_user and proxy_pass:
+                        import hashlib
+                        # Consistent session ID based on account (using self.email)
+                        sess_id = hashlib.md5(self.email.encode()).hexdigest()[:8]
+                        
+                        # Session pinning: Only for BrightData (which supports -session- suffix)
+                        # Static IPs (like Webshare/Decodo) don't support this via username
+                        is_brightdata = proxy_user and "brd-customer" in proxy_user 
+                        
+                        if is_brightdata and "-session-" not in proxy_user:
+                            proxy_user = f"{proxy_user}-session-fb_{sess_id}"
+                            self.logger.info("using_persistent_brightdata_session", session_id=f"fb_{sess_id}")
+                            
                         self.logger.info("loading_proxy_with_auth", host=host, port=port)
                         self.proxy_tmp_dir = tempfile.mkdtemp()
                         extension_path = self._create_proxy_extension(host, port, proxy_user, proxy_pass, self.proxy_tmp_dir)
@@ -700,8 +739,9 @@ class FacebookScraper(BaseScraper):
                 pass
 
             return "Date not found"
-        except:
+        except Exception:
             return "Date not found"
+
 
     def parse_item(self, raw_data: Dict[str, Any], custom_keywords: Optional[str] = None, 
                    exclude_keywords: Optional[list] = None,
@@ -1265,6 +1305,16 @@ class FacebookScraper(BaseScraper):
                 
             if not email_field:
                 url = self.driver.current_url
+                
+                # Check for "Login with Profile" screen (LN Test)
+                try:
+                    profile_name = self.driver.find_element(By.XPATH, "//div[contains(text(), 'LN Test')]")
+                    if profile_name.is_displayed():
+                        self.logger.info("profile_login_screen_detected", profile="LN Test")
+                        profile_name.click()
+                        time.sleep(2)
+                except: pass
+
                 self.logger.warning("email_field_not_found", url=url, title=self.driver.title)
                 if self._is_captcha_present():
                     self.logger.warning("captcha_detected_during_fill_credentials")

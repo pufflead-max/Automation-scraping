@@ -4,7 +4,7 @@
     "facebook_headless": "true",
     "facebook_cookies": "[]",
     "nextdoor_target_url": "https://nextdoor.com/city/hingham–ma,https://nextdoor.com/city/cohasset–ma,https://nextdoor.com/city/cambridge–ma,https://nextdoor.com/city/hanover–ma,https://nextdoor.com/city/scituate–ma",
-    "nextdoor_max_pages": "5",
+    "nextdoor_max_pages": "10",
     "nextdoor_cookies": "[]",
     "craigslist_target_url": "https://boston.craigslist.org/search/sob/fgs,https://boston.craigslist.org/search/sob/lbg,https://boston.craigslist.org/search/sob/hss,https://boston.craigslist.org/search/gbs/fgs,https://boston.craigslist.org/search/gbs/lbg,https://boston.craigslist.org/search/gbs/hss",
     "craigslist_max_pages": "10",

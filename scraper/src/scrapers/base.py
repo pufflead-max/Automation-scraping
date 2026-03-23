@@ -162,7 +162,7 @@ class BaseScraper(ABC):
             # 3. ── Global Enrichment: OCR + AI ───────────────────────────────
             ai = None
             try:
-                from ..utils.ai_classifier import get_ai_classifier
+                from utils.ai_classifier import get_ai_classifier
                 ai = get_ai_classifier()
             except Exception as e:
                 self.logger.warning("ai_classifier_unavailable", error=str(e))

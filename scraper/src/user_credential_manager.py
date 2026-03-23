@@ -30,7 +30,8 @@ class UserCredentialManager:
         self.cookies_collection = "user_cookies"
         # In Docker, we want /opt/airflow/scraper/cookies/users
         # __file__ is /opt/airflow/scraper/src/user_credential_manager.py
-        self.cookies_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "cookies", "users")
+        abs_path = os.path.abspath(__file__)
+        self.cookies_dir = os.path.join(os.path.dirname(os.path.dirname(abs_path)), "cookies", "users")
         os.makedirs(self.cookies_dir, exist_ok=True)
     
     def add_user_credentials(self, user_email: str, user_name: str, user_phone: str,

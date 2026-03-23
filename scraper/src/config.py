@@ -1,6 +1,5 @@
-"""Centralized configuration management for the scraping system  ."""
-
-from typing import Optional
+import os
+from typing import Optional, List, Dict
 from pydantic_settings import BaseSettings
 from pydantic import Field, field_validator
 
@@ -36,10 +35,15 @@ class Settings(BaseSettings):
     ollama_cloud_url: str = Field(default="http://localhost:11434/api/chat")
     ollama_cloud_model: str = Field(default="qwen2.5:7b")
 
-    # Bright Data Proxy
+    # Bright Data Proxy (Legacy)
     brightdata_proxy_server: Optional[str] = None
     brightdata_proxy_user: Optional[str] = None
     brightdata_proxy_pass: Optional[str] = None
+
+    # Generic Proxy (Decodo/Webshare)
+    proxy_server: Optional[str] = None
+    proxy_user: Optional[str] = None
+    proxy_pass: Optional[str] = None
 
     # Facebook 2FA
     facebook_2fa_secret: Optional[str] = None
@@ -101,4 +105,29 @@ def get_scraper_config() -> dict:
             "scraperapi_proxy": s.scraperapi_proxy,
             "brightdata_proxy_server": s.brightdata_proxy_server,
             "brightdata_proxy_user": s.brightdata_proxy_user,
-            "brightdata_proxy_pass": s.brightdata_proxy_pass}
+            "brightdata_proxy_pass": s.brightdata_proxy_pass,
+            "proxy_server": s.proxy_server,
+            "proxy_user": s.proxy_user,
+            "proxy_pass": s.proxy_pass}
+def get_proxy_list() -> List[Dict[str, str]]:
+    """Read proxies from proxies.txt and return as a list of dictionaries."""
+    # Current dir is scraper/src/
+    proxy_file = os.path.join(os.path.dirname(__file__), "proxies.txt")
+    if not os.path.exists(proxy_file):
+        return []
+    
+    proxies = []
+    with open(proxy_file, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split(":")
+            if len(parts) == 4:
+                proxies.append({
+                    "server": f"{parts[0]}:{parts[1]}",
+                    "username": parts[2],
+                    "password": parts[3]
+                })
+    return proxies
+

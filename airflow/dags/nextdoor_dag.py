@@ -32,6 +32,11 @@ def get_user_details(email: str):
         return {"user": user_doc.get("user"), "credentials": creds, "scraping_config": user_doc.get("scraping_config", {})}
     return None
 
+def _build_search_urls_for_mapping(mapper, m: dict) -> list:
+    """Returns dynamic Nextdoor URLs (city, marketplace, search) from the mapping."""
+    return m.get("nextdoor", {}).get("group_urls", [])
+
+
 def load_nextdoor_urls(**context):
     dag_run = context.get('dag_run')
     user_email_override = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
@@ -43,9 +48,7 @@ def load_nextdoor_urls(**context):
     if user_email_override:
         mappings = mapper.get_user_mappings(user_email_override)
         for m in mappings:
-            nd_config = m.get("nextdoor", {})
-            urls = nd_config.get("group_urls", [])
-            for url in urls:
+            for url in _build_search_urls_for_mapping(mapper, m):
                 all_tasks.append({"target_data": {"url": url, "user_email": user_email_override, "vertical": m.get("vertical")}})
     else:
         from user_credential_manager import UserCredentialManager
@@ -58,9 +61,7 @@ def load_nextdoor_urls(**context):
             
             mappings = mapper.get_user_mappings(u_email)
             for m in mappings:
-                nd_config = m.get("nextdoor", {})
-                urls = nd_config.get("group_urls", [])
-                for url in urls:
+                for url in _build_search_urls_for_mapping(mapper, m):
                     all_tasks.append({"target_data": {"url": url, "user_email": u_email, "vertical": m.get("vertical")}})
             
     return all_tasks

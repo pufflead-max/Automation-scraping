@@ -8,6 +8,8 @@ import os
 # Add scraper modules to path
 sys.path.insert(0, "/opt/airflow/scraper/src")
 
+import random
+from config import get_proxy_list
 from user_credential_manager import UserCredentialManager
 
 default_args = {
@@ -33,11 +35,13 @@ def rotate_facebook_owner_cookies(**context):
         return "Failed: No owner credentials"
 
     manager = UserCredentialManager()
-    
     printable_email = owner_email[:3] + "***" + owner_email[owner_email.find("@"):] if "@" in owner_email else owner_email[:4] + "***"
-    print(f"🚀 Starting Facebook cookie rotation for OWNER account: {printable_email}")
     
-    scraper = FacebookScraper(headless=True, use_proxy=True)
+    proxy_list = get_proxy_list()
+    proxy_override = random.choice(proxy_list) if proxy_list else None
+    
+    # Scraper initialization: Using proxy pool rotation
+    scraper = FacebookScraper(email=owner_email, password=owner_password, headless=True, use_proxy=True, clear_profile=True, proxy_override=proxy_override)
     try:
         scraper._init_driver(headless=True)
         success = scraper.login(owner_email, owner_password)

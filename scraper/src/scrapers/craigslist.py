@@ -226,6 +226,8 @@ class CraigslistScraper(BaseScraper):
                         # Optional: limit items or handle rate limiting
                         time.sleep(1)
                         
+                return all_leads
+                
             except Exception as e:
                 self.logger.error("playwright_scrape_failed", error=str(e))
             finally:

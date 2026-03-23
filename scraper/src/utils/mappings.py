@@ -96,6 +96,31 @@ class MappingManager:
         
         return slug
 
+    def _get_nextdoor_marketplace_subcategory(self, vertical: str) -> Optional[str]:
+        """Map vertical slug to Nextdoor for_sale_and_free subcategory (sc=) parameter."""
+        subcategories = {
+            "landscaping":    "landscaping",
+            "painting":       "painting",
+            "cleaning":       "cleaning",
+            "carpentry":      "carpentry",
+            "flooring":       "flooring",
+            "fencing":        "fencing",
+            "asphalt_paving": "paving",
+            "kitchen_and_bath": "carpentry",  # closest match
+            "plumbing":       None,  # no direct sc match
+            "electrical":     None,  # no direct sc match
+        }
+        return subcategories.get(vertical)
+
+    def _get_nextdoor_marketplace_url(self, city: str, state_code: str, vertical: str) -> Optional[str]:
+        """Build a Nextdoor for_sale_and_free marketplace URL for a given city, state, and vertical."""
+        sc = self._get_nextdoor_marketplace_subcategory(vertical)
+        if not sc:
+            return None
+        city_slug = re.sub(r'-+', '-', city.lower().replace(" ", "-")).strip("-")
+        location = f"{city_slug}--{state_code.lower()}"
+        return f"https://nextdoor.com/for_sale_and_free/{location}/?c=services&sc={sc}"
+
     def _get_craigslist_categories(self, vertical: str) -> List[str]:
         """Map vertical to Craigslist category codes."""
         cats = {
@@ -183,9 +208,14 @@ class MappingManager:
             state_code = user_data.get("state_code") or (user_state[:2].upper() if user_state else "MA")
             region = user_data.get("region")
             for v_slug in v_slugs:
-                # 1. Nextdoor Dynamic URL
-                city_slug = re.sub(r'-+', '-', user_city.lower().replace(" ", "-")).strip("-")
-                nd_url = f"https://nextdoor.com/city/{city_slug}--{state_code.lower()}/"
+                # 1. Nextdoor Dynamic Search URLs based on keywords
+                nd_urls = []
+                v_config = self.get_vertical_config(v_slug)
+                if v_config and v_config.get("keywords"):
+                    keywords = v_config.get("keywords")[:5] # Increase to 5 for more coverage
+                    for kw in keywords:
+                        query_str = kw.replace(" ", "+")
+                        nd_urls.append(f"https://nextdoor.com/search/?query={query_str}")
                 
                 # 2. Craigslist Dynamic URLs - map state/city to correct area subdomain
                 cl_area = self._get_craigslist_area(state_code, user_city)
@@ -212,11 +242,12 @@ class MappingManager:
                         query_str = f"{kw} {user_city}".replace(" ", "%20")
                         fb_urls.append(f"https://www.facebook.com/search/posts?q={query_str}")
 
+
                 results.append({
                     "state": user_state,
                     "city": user_city,
                     "vertical": v_slug,
-                    "nextdoor": {"group_urls": [nd_url]},
+                    "nextdoor": {"group_urls": nd_urls},
                     "craigslist": {"urls": cl_urls},
                     "facebook": {"group_urls": fb_urls, "page_urls": []},
                     "source": "dynamic_generator"
@@ -239,11 +270,20 @@ class MappingManager:
                         city_query = city.replace(" ", "+")
                         cl_urls.append(f"{base_url}?query={city_query}")
                     
+                    # Only search URLs for service area cities too
+                    nd_urls = []
+                    v_config = self.get_vertical_config(v_slug)
+                    if v_config and v_config.get("keywords"):
+                        keywords = v_config.get("keywords")[:5]
+                        for kw in keywords:
+                            query_str = kw.replace(" ", "+")
+                            nd_urls.append(f"https://nextdoor.com/search/?query={query_str}")
+
                     results.append({
                         "state": user_state,
                         "city": city,
                         "vertical": v_slug,
-                        "nextdoor": {"group_urls": [nd_url]},
+                        "nextdoor": {"group_urls": nd_urls},
                         "craigslist": {"urls": cl_urls},
                         "facebook": {"group_urls": [], "page_urls": []}, # Skip FB for sub-cities to avoid bloat
                         "source": "dynamic_generator_service_area"

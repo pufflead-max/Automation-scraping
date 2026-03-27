@@ -162,6 +162,11 @@ def sync_ghl_onboarding():
     synced_count = 0
     
     for contact in contacts:
+        contact_email = contact.get('email')
+        if not contact_email:
+            continue
+
+
         cf_values = {field_id_to_name.get(f['id'], f['id']): f['value'] for f in contact.get('customFields', [])}
 
         def get_cf(pattern):

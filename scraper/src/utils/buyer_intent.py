@@ -76,44 +76,64 @@ NON_US_PATTERNS = [
 # ══════════════════════════════════════════════════════════════════════════════
 
 EXCLUSION_PATTERNS = [
-    r"\bwe\s+(?:provide|offer|specialize|are\s+available|handle|serve|install|cover)\b",
-    r"\bour\s+services?\b",
-    r"\bour\s+team\b",
-    r"\bi\s+(?:provide|offer|specialize|am\s+a\s+professional|run)\b",
-    r"\bmy\s+(?:company|business|name\s+is)\b",
-    r"\bcontact\s+us\b",
-    r"\bcall\s+(?:us|me|now|today)\b",
+    r"\b(?:we|i)\s+(?:provide|offer|specialize|are\s+available|handle|serve|install|cover|just\s+completed|rewire|finished|understand|have\s+been\s+out|visited|busy|completed|worked)\b",
+    r"\b(?:we've|we’ve|weve|i've|i’ve|ive)\s+(?:been|completed|just|finished)\b",
+    r"\bour\s+(?:services?|team|company|business|work|clients?|licensed|technicians|experts|electricians|plumbers|painters|installations?)\b",
+    r"\bi\s+(?:provide|offer|specialize|am\s+a\s+professional|run|do|handle|work\s+on|just\s+completed|rewired|installed)\b",
+    r"\bmy\s+(?:company|business|name\s+is|services?|work)\b",
+    r"\bcontact\s+(?:us|me)\s+(?:for|at|today|now)\b",
+    r"\bcall\s+(?:us|me|now|today|for\s+a\s+quote|for\s+estimate)\b",
     r"\btext\s+(?:us|me)\b",
-    r"\b(?:dm|message)\s+(?:us|me)\s+(?:for|to\s+book|to\s+schedule|today)\b",
-    r"\bfree\s+(?:estimate|quote|consultation)\b",
-    r"\b(?:fully|properly)\s+(?:insured|licensed)\b",
+    r"\b(?:dm|message)\s+(?:us|me)\s+(?:for|to\s+book|to\s+schedule|today|more\s+info)\b",
+    r"\b(?:free\s+)?(?:estimate|quote|consultation|assessment)\b",
+    r"\b(?:fully|properly|highly|all|verified)\s+(?:insured|licensed|recommended|work\s+guaranteed|trained)\b",
     r"\blicensed\s+(?:and|&)?\s*insured\b",
-    r"\b(?:licensed\s+)?master\s+plumber\b",
+    r"\b(?:licensed\s+)?master\s+(?:plumber|electrician)\b",
     r"\byears\s+of\s+experience\b",
-    r"\bserving\s+(?:all|the|greater|your)\b",
-    r"\bavailable\s+(?:for\s+work|in\s+your\s+area|24\s*/\s*7|around.the.clock)\b",
-    r"\b24\s*(?:hour|hr|\/7)\s+(?:service|emergency|plumb|electric)\b",
-    r"\bfast\s+(?:response|arrival|service)\b",
-    r"\bprofessional\s+(?:electrician|plumber|painter|contractor|service)\b",
-    r"\b(?:apply|hiring|we.re\s+hiring|looking\s+to\s+hire)\b",
+    r"\bserving\s+(?:all|the|greater|your|area)\b",
+    r"\bavailable\s+(?:for\s+work|in\s+your\s+area|24\s*/\s*7|around.the.clock|now)\b",
+    r"\b24\s*(?:hour|hr|\/7)\s+(?:service|emergency|plumb|electric|call)\b",
+    r"\bfast\s+(?:response|arrival|service|turnaround)\b",
+    r"\bprofessional\s+(?:electrician|plumber|painter|contractor|service|work|installations?)\b",
+    r"\b(?:apply|hiring|we.re\s+hiring|looking\s+to\s+hire|job\s+available)\b",
     r"\bjob\s+(?:opening|opportunity|available|listing)\b",
     r"\bintroduc(?:e|ing)\s+myself\b",
     r"\bi\s+just\s+joined\s+the\s+group\b",
-    r"\b(?:#plumber|#electrician|#plumbing|#electrical|#painter|#cleaning)\b",
-    r"\b(?:call|text)\s+\d{3}",
+    r"\b(?:#plumber|#electrician|#plumbing|#electrical|#painter|#cleaning|#contractor)\b",
+    r"\b(?:call|text)\s*[:\-]?\s*\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b", # Phone number pattern
     r"\b(?:emergency\s+service\s+available)\b",
     r"\bhonest\s+(?:pricing|work|service)\b",
     r"\btrusted\s+(?:service|professional|contractor)\b",
-    r"\breliable\s+(?:plumber|electrician|painter|contractor)\b",
+    r"\breliable\s+(?:plumber|electrician|painter|contractor|service)\b",
     r"\b(?:same.day|next.day)\s+(?:service|repair|response)\b",
     r"\blooking\s+for\s+(?:side\s+)?work\b",
     r"\blooking\s+for\s+a\s+(?:side\s+)?gig\b",
     r"\bavailable\s+for\s+(?:side\s+)?work\b",
-    r"\b(?:experienced|licensed)\s+(?:electrician|plumber|painter)\s+available\b",
-    r"\bi\s+am\s+a\s+(?:residential|commercial)?\s*(electrician|plumber|painter|contractor)\b",
-    r"\bi\s+handle\s+(?:small|all)\s+(service|job|work)\b",
+    r"\b(?:experienced|licensed)\s+(?:electrician|plumber|painter|handyman)\s+available\b",
+    r"\bi\s+am\s+a\s+(?:residential|commercial)?\s*(electrician|plumber|painter|contractor|handyman)\b",
+    r"\bi\s+handle\s+(?:small|all)\s+(?:service|job|work|repairs)\b",
     r"\bconnects\s+homeowners\b",
     r"\bwe'll\s+connect\s+you\b",
+    r"\bcheck\s+out\s+(?:our|my)\s+(?:website|page|work)\b",
+    r"\b(?:don't|do\s+not)\s+ignore\s+(?:these|signs)\b", # Informational/Clickbait
+    r"\bis\s+your\s+home's?\b", # Informational/Ad
+    r"\bsigns\s+you\s+may\s+need\b", # Informational/Ad
+    r"\bdid\s+you\s+know\b", # Informational
+    r"\bno\s+obligation\s+quote\b",
+    r"\bget\s+in\s+touch\b",
+    r"\ba\s+client\s+contacted\s+us\b",
+    r"\bupon\s+inspection\b",
+    r"\bare\s+standing\s+by\b",
+    r"\bfire\s+risk\b",
+    r"\bsafety\s+(?:hazard|risk)\b",
+    r"\bhidden\s+signs\b",
+    r"\bcommon\s+issue\b",
+    r"\b(?:track|tracking)\s+down\b",
+    r"\btricky\s+(?:faults|leaks|issues)\b",
+    r"\btesting\s+electrical\s+installations\b",
+    r"\bmaking\s+sure\s+properties\s+are\s+safe\b",
+    r"\b(?:ltd|llc|inc|corp)\b",
+    r"\bprevent\s+(?:bigger|expensive|safety)\b",
 ]
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -314,6 +334,102 @@ def classify_category(content: str) -> str:
     return max(scores, key=lambda c: scores[c])
 
 
+def _is_ollama_buyer_request(text: str, platform: str = "Facebook", location: str = "Unknown", verticals: str = "Home Services") -> bool:
+    """Secondary gate: Classified using Ollama (default qwen2.5:7b)."""
+    try:
+        from config import get_settings
+        settings = get_settings()
+        ollama_url = f"{settings.ollama_cloud_url.rstrip('/')}/api/chat"
+        ollama_model = getattr(settings, 'ollama_cloud_model', "qwen2.5:7b")
+        
+        # New strict prompt using JSON output
+        prompt = f"""
+You are an extremely strict lead qualification system for a home services marketplace.
+Your job is to classify whether a social media post represents a REAL BUYER INTENT — meaning the person is likely to HIRE and PAY a contractor.
+
+--------------------------------------------------
+SUPPORTED SERVICE CATEGORIES:
+{verticals}
+--------------------------------------------------
+
+RETURN JSON ONLY (no extra text):
+{{
+  "is_qualified_lead": true/false,
+  "vertical": "one of the supported categories or null",
+  "intent_type": "urgent|explicit|recommendation|none",
+  "confidence": "high|medium|low",
+  "reason": "max 15 words explaining decision"
+}}
+
+--------------------------------------------------
+STRICT CLASSIFICATION RULES:
+
+✅ TRUE (Qualified Lead) ONLY IF:
+- The user clearly needs a service OR
+- Is actively looking to hire OR
+- Is asking for recommendations for a service provider
+
+Examples:
+- "Need a plumber ASAP"
+- "Looking for electrician"
+- "Anyone recommend a good cleaner?"
+
+--------------------------------------------------
+❌ ALWAYS FALSE (Reject):
+1. SERVICE PROVIDERS / SELLERS
+- Offering services ("we provide", "DM me", "call now")
+- Promotions, ads, discounts, business posts
+2. JOB POSTS / HIRING WORKERS
+3. COMPLETED WORK / SHOWCASE POSTS
+- "Just finished a project"
+4. PRODUCT BUY/SELL POSTS
+- Furniture, tools, materials
+5. GENERAL DISCUSSIONS / ADVICE
+- Tips, opinions, questions without hiring intent
+6. SPAM / UNCLEAR INTENT
+--------------------------------------------------
+
+INTENT TYPE RULES:
+urgent: emergency, ASAP, immediately, serious issue
+explicit: clearly hiring ("need plumber", "looking for electrician")
+recommendation: asking suggestions ("any good plumber?")
+none: everything else
+
+--------------------------------------------------
+IMPORTANT BEHAVIOR:
+- Be VERY STRICT → if unclear, return false
+- Do NOT assume intent
+- Ignore emojis, hashtags, fluff
+- Focus only on hiring intent
+- AVOID false positives at all cost
+
+--------------------------------------------------
+POST INPUT:
+Platform: {platform}
+Location: {location}
+Post: {text}
+"""
+        import requests
+        import json
+        resp = requests.post(ollama_url, json={
+            "model": ollama_model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+            "format": "json" # Force JSON output
+        }, timeout=15)
+        
+        if resp.status_code == 200:
+            data = resp.json().get('message', {}).get('content', '')
+            result = json.loads(data)
+            is_qualified = result.get('is_qualified_lead', False)
+            logger.info("ollama_intent_result", text=text[:50], is_qualified=is_qualified, reason=result.get('reason'))
+            return is_qualified
+        return True # Fallback if API error to avoid missing leads
+    except Exception as e:
+        logger.error("ollama_intent_failed", error=str(e))
+        return True
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  PUBLIC API (unchanged interface)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -372,6 +488,10 @@ class BuyerIntentDetector:
             if not topic_match:
                 return False
 
+        # Gate 5: Ollama AI secondary check (commented out for now)
+        # if not _is_ollama_buyer_request(text):
+        #     return False
+
         return True
 
     @classmethod
@@ -388,13 +508,19 @@ class BuyerIntentDetector:
 
         s = score_lead(text)
         if s >= 5:
-            return "✅ Buyer (Score 5 — Urgent)"
-        if s >= 4:
-            return "✅ Buyer (Score 4 — Explicit need)"
-        if s >= 3:
-            return "✅ Buyer (Score 3 — Recommendation intent)"
+            reason = "✅ Buyer (Score 5 — Urgent)"
+        elif s >= 4:
+            reason = "✅ Buyer (Score 4 — Explicit need)"
+        elif s >= 3:
+            reason = "✅ Buyer (Score 3 — Recommendation intent)"
+        else:
+            return f"❌ No buyer intent (score={s}, min={MIN_SCORE})"
 
-        return f"❌ No buyer intent (score={s}, min={MIN_SCORE})"
+        # If regex passed, check Ollama (commented out for now)
+        # if not _is_ollama_buyer_request(text):
+        #     return f"❌ AI Rejected: Classified as SELLER/PROVIDER by Ollama"
+        
+        return reason
 
 
 def get_buyer_intent_detector():

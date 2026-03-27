@@ -158,6 +158,7 @@ class GHLClient:
 
     def upsert_contact(self, contact_data: Dict[str, Any]) -> Optional[str]:
         data = self._prepare_contact_data(contact_data)
+        logger.info("ghl_upsert_payload", email=data.get('ownerEmail'), name=data.get('ownerName'))
         result = self._make_request("POST", "/contacts/upsert", data=data)
         return result.get('contact', {}).get('id') if result else None
 
@@ -280,10 +281,6 @@ class GHLClient:
                 pass
 
         return contact_id
-
-    def _save_as_contact(self, lead: Dict[str, Any]) -> Optional[str]:
-        """Deprecated in favor of the new save_scraped_lead logic."""
-        return self.save_scraped_lead(lead)
     
     def add_contact_note(self, contact_id: str, lead: Dict[str, Any]) -> Optional[str]:
         note_body = (

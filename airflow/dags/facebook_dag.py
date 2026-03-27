@@ -59,6 +59,7 @@ def load_facebook_urls(**context):
         manager = UserCredentialManager()
         try:
             all_users = manager.db.find_many(manager.collection, {})
+            
             for user_doc in all_users:
                 u_email = user_doc.get("user", {}).get("email")
                 if not u_email: continue

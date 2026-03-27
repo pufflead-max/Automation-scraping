@@ -39,6 +39,7 @@ def load_craigslist_urls(**context):
     else:
         from user_credential_manager import UserCredentialManager
         manager = UserCredentialManager()
+        
         all_users = manager.db.find_many(manager.collection, {})
 
         for user_doc in all_users:

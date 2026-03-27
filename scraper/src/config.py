@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     # Facebook 2FA
     facebook_2fa_secret: Optional[str] = None
 
+    # Ollama AI Configuration
+    ollama_cloud_url: str = Field(default="http://ollama:11434/api/chat")
+    ollama_cloud_model: str = Field(default="qwen2.5:7b")
+
     @field_validator('log_level')
     @classmethod
     def validate_log_level(cls, v: str) -> str:

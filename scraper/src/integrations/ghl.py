@@ -65,6 +65,9 @@ class GHLClient:
         }
         self._custom_fields_cache: Dict[str, str] = {}
         self._custom_object_schemas: Dict[str, str] = {}
+        # Set to True after the first 401/404 on /objects/schemas so we never
+        # retry it on every contact push (the GHL plan may not support custom objects).
+        self._schema_unavailable: bool = False
 
     def _make_request(self, method: str, endpoint: str, data: Optional[Dict] = None, 
                        params: Optional[Dict] = None) -> Optional[Dict[str, Any]]:
@@ -85,8 +88,14 @@ class GHLClient:
             return None
 
     def get_custom_object_schemas(self) -> List[Dict[str, Any]]:
+        if self._schema_unavailable:
+            return []
         result = self._make_request("GET", "/objects/schemas", params={"locationId": self.location_id})
-        schemas = result.get('schemas', []) if result else []
+        if result is None:
+            # 401 or other failure — mark unavailable so we stop retrying
+            self._schema_unavailable = True
+            return []
+        schemas = result.get('schemas', [])
         self._custom_object_schemas = {s['name']: s['id'] for s in schemas if 'name' in s and 'id' in s}
         return schemas
     
@@ -95,9 +104,14 @@ class GHLClient:
                (self.get_custom_object_schemas() and self._custom_object_schemas.get(schema_name))
     
     def create_custom_object_schema(self, name: str, fields: List[Dict[str, Any]]) -> Optional[str]:
+        if self._schema_unavailable:
+            return None
         payload = {"locationId": self.location_id, "name": name, "fields": fields}
         result = self._make_request("POST", "/objects/schemas", data=payload)
-        schema_id = result.get('id') if result else None
+        if result is None:
+            self._schema_unavailable = True
+            return None
+        schema_id = result.get('id')
         if schema_id:
             logger.info("ghl_custom_object_schema_created", name=name, schema_id=schema_id)
         return schema_id
@@ -254,14 +268,16 @@ class GHLClient:
             # Add note for full lead context
             self.add_contact_note(contact_id, scraped_lead)
 
-        # Optional: Try Custom Object if enabled
-        try:
-            schema_id = self.ensure_scraped_leads_schema()
-            if schema_id:
-                record_data = self._map_to_custom_object(scraped_lead)
-                if contact_id: record_data['contactId'] = contact_id
-                self.create_custom_object_record(schema_id, record_data)
-        except Exception: pass
+        # Optional: Try Custom Object if enabled and the GHL plan supports it
+        if not self._schema_unavailable:
+            try:
+                schema_id = self.ensure_scraped_leads_schema()
+                if schema_id:
+                    record_data = self._map_to_custom_object(scraped_lead)
+                    if contact_id: record_data['contactId'] = contact_id
+                    self.create_custom_object_record(schema_id, record_data)
+            except Exception:
+                pass
 
         return contact_id
 

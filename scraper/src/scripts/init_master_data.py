@@ -31,15 +31,78 @@ def make_nextdoor_urls(keywords: list, intent_indicators: list) -> list:
     return urls
 
 
-def make_facebook_search_urls(keywords: list, intent_indicators: list, city: str = "") -> list:
+def make_facebook_search_urls(slug: str, city: str = "") -> list:
     """
     Generate Facebook post search URLs by combining intent + keyword,
     optionally appending a city name to narrow results geographically.
     """
+    _RECENT_FILTER = (
+        "eyJyZWNlbnRfcG9zdHM6MCI6IntcIm5hbWVcIjpcInJlY2VudF9wb3N0c1wiLFwiYXJncyI6"
+        "XCJcIn0ifQ%3D%3D"
+    )
+    
+    search_query_templates = {
+        "plumbing": [
+            "need a plumber in {city}",
+            "looking for plumber {city}",
+            "need plumber in {city}",
+            "pipe leak repair needed",
+            "water leak repair help",
+        ],
+        "electrical": [
+            "need an electrician in {city}",
+            "looking for electrician {city}",
+            "need electrician in {city}",
+            "electrical issue help needed",
+            "wiring problem need help",
+        ],
+        "painting": [
+            "need a painter {city}",
+            "looking for house painter",
+            "recommend a good painter",
+            "need painting done {city}",
+        ],
+        "carpentry": [
+            "need a carpenter {city}",
+            "furniture repair help needed",
+            "woodwork repair needed",
+        ],
+        "landscaping": [
+            "need landscaping help {city}",
+            "lawn care service needed",
+            "garden cleanup help needed",
+        ],
+        "cleaning": [
+            "need house cleaning service",
+            "looking for cleaning service {city}",
+            "deep cleaning help needed",
+        ],
+        "flooring": [
+            "need flooring installation {city}",
+            "floor repair help needed",
+            "tile installation help needed",
+        ],
+        "fencing": [
+            "need fence installation {city}",
+            "fence repair help needed",
+        ],
+        "asphalt_paving": [
+            "need driveway paving {city}",
+            "asphalt repair help needed",
+        ],
+        "kitchen_and_bath": [
+            "need kitchen renovation {city}",
+            "bathroom renovation help needed",
+            "home renovation contractor needed",
+        ],
+    }
+
     urls = []
-    for intent, kw in iter_product(intent_indicators, keywords):
-        query = f"{intent} {kw} {city}".strip()
-        urls.append(f"https://www.facebook.com/search/posts/?q={quote_plus(query)}")
+    templates = search_query_templates.get(slug, [])
+    for template in templates:
+        query = template.format(city=city)
+        q = quote_plus(query)
+        urls.append(f"https://www.facebook.com/search/top?q={q}&filters={_RECENT_FILTER}")
     return urls
 
 
@@ -292,7 +355,7 @@ def init_master_data():
                 # Curated community group URLs stay first
                 "group_urls": defn["facebook_group_urls"],
                 # Intent-based post search URLs (city-scoped)
-                "search_urls": make_facebook_search_urls(keywords, intents, city=city),
+                "search_urls": make_facebook_search_urls(slug=slug, city=city),
                 "page_urls": []
             },
             "nextdoor": {

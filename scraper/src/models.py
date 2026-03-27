@@ -31,8 +31,8 @@ class ScrapedLead(BaseModel):
     phone: Optional[str] = None
     vertical: Optional[str] = None
     is_buyer_request: bool = False
-    is_spam: bool = False
     is_vertical_match: bool = False
+    intent_score: Optional[int] = None
     
     @field_validator('posted_date', mode='before')
     @classmethod
@@ -145,6 +145,9 @@ class NextdoorLead(ScrapedLead):
 class FacebookLead(ScrapedLead):
     """Facebook specific lead model."""
     source: Literal["facebook"] = "facebook"
+    author_name: Optional[str] = None
+    author_url: Optional[str] = None
+    author_location: Optional[str] = None
     videos: List[str] = Field(default_factory=list)
     image_count: int = Field(default=0, ge=0)
     video_count: int = Field(default=0, ge=0)

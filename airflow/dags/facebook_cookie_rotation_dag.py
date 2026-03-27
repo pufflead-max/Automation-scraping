@@ -8,8 +8,6 @@ import os
 # Add scraper modules to path
 sys.path.insert(0, "/opt/airflow/scraper/src")
 
-import random
-from config import get_proxy_list
 from user_credential_manager import UserCredentialManager
 
 default_args = {
@@ -18,7 +16,7 @@ default_args = {
     'start_date': datetime(2024, 1, 1),
     'email_on_failure': False,
     'email_on_retry': False,
-    'retries': 1,
+    'retries': 0,            # No auto-retry — manual trigger = immediate result
     'retry_delay': timedelta(minutes=5),
 }
 
@@ -26,33 +24,36 @@ def rotate_facebook_owner_cookies(**context):
     """Log in to Facebook for the central owner account and update cookies."""
     from scrapers import FacebookScraper
     from user_credential_manager import UserCredentialManager
-    
+
     owner_email = Variable.get("facebook_owner_email", default_var=os.getenv("FACEBOOK_EMAIL"))
     owner_password = Variable.get("facebook_owner_password", default_var=os.getenv("FACEBOOK_PASSWORD"))
-    
+
     if not owner_email or not owner_password:
         print("✗ Central Facebook owner credentials not found in Airflow Variables or Env.")
         return "Failed: No owner credentials"
 
     manager = UserCredentialManager()
-    printable_email = owner_email[:3] + "***" + owner_email[owner_email.find("@"):] if "@" in owner_email else owner_email[:4] + "***"
-    
-    proxy_list = get_proxy_list()
-    proxy_override = random.choice(proxy_list) if proxy_list else None
-    
-    # Scraper initialization: Using proxy pool rotation
-    scraper = FacebookScraper(email=owner_email, password=owner_password, headless=True, use_proxy=True, clear_profile=True, proxy_override=proxy_override)
+    printable_email = (
+        owner_email[:3] + "***" + owner_email[owner_email.find("@"):]
+        if "@" in owner_email
+        else owner_email[:4] + "***"
+    )
+
+    # Initialise scraper without cookies — login() will use credentials
+    scraper = FacebookScraper(
+        email=owner_email,
+        headless=True,
+        clear_profile=True,
+    )
     try:
         scraper._init_driver(headless=True)
         success = scraper.login(owner_email, owner_password)
-        
+
         if success:
             cookies = scraper.driver.get_cookies()
             if cookies:
-                # Save owner cookies
-                manager.save_cookies(owner_email, 'facebook', cookies)
+                manager.save_cookies(owner_email, "facebook", cookies)
                 print(f"✅ Successfully rotated Facebook cookies for owner {printable_email}.")
-                # Also set a global variable for scrapers to find easily
                 Variable.set("facebook_last_rotation", datetime.utcnow().isoformat())
                 return "Success"
             else:
@@ -65,8 +66,8 @@ def rotate_facebook_owner_cookies(**context):
 with DAG(
     'facebook_owner_cookie_rotation',
     default_args=default_args,
-    description='Rotation of Facebook cookies for the central owner account',
-    schedule_interval=None, # Only triggered by on_failure_callback
+    description='Manual/on-demand rotation of Facebook session cookies for the owner account',
+    schedule_interval=None,       # Only triggered manually or by on_failure_callback
     catchup=False,
     tags=['maintenance', 'cookies', 'facebook', 'owner'],
     max_active_runs=1,
@@ -75,5 +76,8 @@ with DAG(
     rotate_task = PythonOperator(
         task_id='rotate_facebook_owner_cookies',
         python_callable=rotate_facebook_owner_cookies,
-        pool='scraper_pool',
+        # Use default_pool (not scraper_pool) so this task is never queued
+        # behind active scrape jobs when triggered manually.
+        pool='default_pool',
+        execution_timeout=timedelta(minutes=10),  # Hard cap — login should finish well within this
     )

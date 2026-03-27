@@ -1,7 +1,20 @@
-"""Facebook scraper implementation using Selenium - FIXED VERSION."""
+"""Facebook scraper — Selenium + CDP GraphQL capture + full lead pipeline.
+
+Key changes vs previous version
+─────────────────────────────────
+* scrape() iterates over a list of search_urls supplied by the caller
+  (loaded from MongoDB before calling scrape()).
+* All buyer-intent / exclusion / US-location / scoring / category logic
+  from facebook_lead_engine_v2.py is embedded here — no extra imports.
+* parse_item() is still available for legacy use; new path uses
+  _is_valid_lead() → _is_us_location() → _score_lead() → _classify_category()
+  which mirrors the pipeline in file 1 exactly.
+* Cookies and save-to-db wiring is unchanged — callers pass cookies in and
+  the existing db_manager / UserCredentialManager handles persistence.
+"""
 
 from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 import os
 import re
 import json
@@ -9,10 +22,9 @@ import time
 import traceback
 import random
 import logging
-import zipfile
-import tempfile
+from collections import defaultdict
+
 from selenium import webdriver
-import pyotp
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.options import Options
@@ -21,20 +33,20 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.service import Service
-from selenium.common.exceptions import TimeoutException, ElementNotInteractableException, NoSuchElementException, ElementClickInterceptedException
+from selenium.common.exceptions import (
+    TimeoutException,
+    ElementNotInteractableException,
+    NoSuchElementException,
+    ElementClickInterceptedException,
+)
 
-
-# Handle imports for both local and Airflow environments
 import sys
-import os
 
-# Ensure the 'src' directory is in PYTHONPATH
 src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if src_dir not in sys.path:
     sys.path.append(src_dir)
 
 try:
-    # Try absolute imports (works in Airflow when src is in path)
     from scrapers.base import BaseScraper
     from models import FacebookLead, ScrapedLead
     from utils.buyer_intent import BuyerIntentDetector
@@ -42,14 +54,12 @@ try:
     from utils.email_manager import EmailManager
 except ImportError:
     try:
-        # Try relative imports (works when running as a package)
         from .base import BaseScraper
         from ..models import FacebookLead, ScrapedLead
         from ..utils.buyer_intent import BuyerIntentDetector
         from ..user_credential_manager import UserCredentialManager
         from ..utils.email_manager import EmailManager
     except (ImportError, ValueError):
-        # Fallback for direct script execution
         from base import BaseScraper
         from models import FacebookLead, ScrapedLead
         from utils.buyer_intent import BuyerIntentDetector
@@ -57,59 +67,339 @@ except ImportError:
         try:
             from utils.email_manager import EmailManager
         except ImportError:
-            # Maybe in the same dir
             try:
                 from email_manager import EmailManager
             except ImportError:
                 EmailManager = None
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  LEAD PIPELINE — ported from facebook_lead_engine_v2.py
+#  All constants and helpers are module-level so they are computed once.
+# ══════════════════════════════════════════════════════════════════════════════
+
+MIN_SCORE = 3  # discard leads scored below this
+
+# ── US geography ──────────────────────────────────────────────────────────────
+_US_CITIES = {
+    "new york", "nyc", "brooklyn", "bronx", "queens", "manhattan", "staten island",
+    "los angeles", "la", "san francisco", "san jose", "san diego", "fresno",
+    "chicago", "houston", "phoenix", "philadelphia", "san antonio", "dallas",
+    "austin", "jacksonville", "fort worth", "columbus", "charlotte", "indianapolis",
+    "seattle", "denver", "washington dc", "nashville", "oklahoma city", "el paso",
+    "boston", "las vegas", "memphis", "louisville", "portland", "baltimore",
+    "milwaukee", "albuquerque", "tucson", "mesa", "sacramento", "atlanta",
+    "kansas city", "omaha", "raleigh", "miami", "long beach", "virginia beach",
+    "colorado springs", "tampa", "minneapolis", "new orleans", "cleveland",
+    "honolulu", "anaheim", "lexington", "stockton", "pittsburgh", "st louis",
+    "riverside", "jersey city", "newark", "hoboken", "buffalo", "rochester",
+    "albany", "syracuse", "yonkers", "westbury", "levittown", "forest hills",
+    "parkchester",
+}
+
+_US_STATES = {
+    "alabama", "al", "alaska", "ak", "arizona", "az", "arkansas", "ar",
+    "california", "ca", "colorado", "co", "connecticut", "ct", "delaware", "de",
+    "florida", "fl", "georgia", "ga", "hawaii", "hi", "idaho", "id",
+    "illinois", "il", "indiana", "in", "iowa", "ia", "kansas", "ks",
+    "kentucky", "ky", "louisiana", "la", "maine", "me", "maryland", "md",
+    "massachusetts", "ma", "michigan", "mi", "minnesota", "mn",
+    "mississippi", "ms", "missouri", "mo", "montana", "mt", "nebraska", "ne",
+    "nevada", "nv", "new hampshire", "nh", "new jersey", "nj", "new mexico", "nm",
+    "new york", "ny", "north carolina", "nc", "north dakota", "nd", "ohio", "oh",
+    "oklahoma", "ok", "oregon", "or", "pennsylvania", "pa", "rhode island", "ri",
+    "south carolina", "sc", "south dakota", "sd", "tennessee", "tn", "texas", "tx",
+    "utah", "ut", "vermont", "vt", "virginia", "va", "washington", "wa",
+    "west virginia", "wv", "wisconsin", "wi", "wyoming", "wy",
+    "washington dc", "d.c.", "dc",
+}
+
+_NON_US_PATTERNS = [
+    r"\bnorth york\b", r"\bgta\b", r"\btoronto\b", r"\bontario\b",
+    r"\bvancouver\b", r"\bmontreal\b", r"\buk\b", r"\bunited kingdom\b",
+    r"\blondon\b", r"\baustralia\b", r"\bsydney\b", r"\bmelbourne\b",
+    r"\bindia\b", r"\bmumbai\b", r"\bdelhi\b", r"\bpakistan\b",
+    r"\bkarachi\b", r"\blahore\b", r"\bphilippines\b", r"\bmanila\b",
+    r"\bcanada\b", r"\bniagara\b",
+]
+
+# ── Exclusion patterns (service providers / ads / hiring) ────────────────────
+_EXCLUSION_PATTERNS = [
+    r"\bwe\s+(?:provide|offer|specialize|are\s+available|handle|serve|install|cover)\b",
+    r"\bour\s+services?\b",
+    r"\bour\s+team\b",
+    r"\bi\s+(?:provide|offer|specialize|am\s+a\s+professional|run)\b",
+    r"\bmy\s+(?:company|business|name\s+is)\b",
+    r"\bcontact\s+us\b",
+    r"\bcall\s+(?:us|me|now|today)\b",
+    r"\btext\s+(?:us|me)\b",
+    r"\b(?:dm|message)\s+(?:us|me)\s+(?:for|to\s+book|to\s+schedule|today)\b",
+    r"\bfree\s+(?:estimate|quote|consultation)\b",
+    r"\b(?:fully|properly)\s+(?:insured|licensed)\b",
+    r"\blicensed\s+(?:and|&)?\s*insured\b",
+    r"\b(?:licensed\s+)?master\s+plumber\b",
+    r"\byears\s+of\s+experience\b",
+    r"\bserving\s+(?:all|the|greater|your)\b",
+    r"\bavailable\s+(?:for\s+work|in\s+your\s+area|24\s*/\s*7|around.the.clock)\b",
+    r"\b24\s*(?:hour|hr|\/7)\s+(?:service|emergency|plumb|electric)\b",
+    r"\bfast\s+(?:response|arrival|service)\b",
+    r"\bprofessional\s+(?:electrician|plumber|painter|contractor|service)\b",
+    r"\b(?:apply|hiring|we.re\s+hiring|looking\s+to\s+hire)\b",
+    r"\bjob\s+(?:opening|opportunity|available|listing)\b",
+    r"\bintroduc(?:e|ing)\s+myself\b",
+    r"\bi\s+just\s+joined\s+the\s+group\b",
+    r"\b(?:#plumber|#electrician|#plumbing|#electrical|#painter|#cleaning)\b",
+    r"\b(?:call|text)\s+\d{3}",
+    r"\b(?:emergency\s+service\s+available)\b",
+    r"\bhonest\s+(?:pricing|work|service)\b",
+    r"\btrusted\s+(?:service|professional|contractor)\b",
+    r"\breliable\s+(?:plumber|electrician|painter|contractor)\b",
+    r"\b(?:same.day|next.day)\s+(?:service|repair|response)\b",
+    r"\blooking\s+for\s+(?:side\s+)?work\b",
+    r"\blooking\s+for\s+a\s+(?:side\s+)?gig\b",
+    r"\bavailable\s+for\s+(?:side\s+)?work\b",
+    r"\b(?:experienced|licensed)\s+(?:electrician|plumber|painter)\s+available\b",
+    r"\bi\s+am\s+a\s+(?:residential|commercial)?\s*(electrician|plumber|painter|contractor)\b",
+    r"\bi\s+handle\s+(?:small|all)\s+(service|job|work)\b",
+    r"\bconnects\s+homeowners\b",
+    r"\bwe'll\s+connect\s+you\b",
+]
+
+# ── Buyer intent scoring patterns ─────────────────────────────────────────────
+_URGENCY_PATTERNS = [
+    r"\burgent(?:ly)?\b", r"\basap\b", r"\bright\s+(?:now|away)\b",
+    r"\bimmediately\b", r"\bemergency\b", r"\btoday\b", r"\btonight\b",
+    r"\bflooding\b", r"\bburst\s+pipe\b", r"\bno\s+(?:hot\s+)?water\b",
+    r"\bno\s+(?:power|electricity)\b", r"\bshort\s+circuit\b",
+    r"\bwater\s+damage\b", r"\boverflowing\b", r"\bgas\s+leak\b",
+]
+
+_EXPLICIT_NEED_PATTERNS = [
+    r"\bneed\s+(?:a\s+|an\s+)?plumber\b",
+    r"\blooking\s+for\s+(?:a\s+|an\s+)?plumber\b",
+    r"\bplumber\s+(?:needed|required|wanted)\b",
+    r"\brequire\s+(?:a\s+|an\s+)?plumber\b",
+    r"\bpipe\s+(?:is\s+)?(?:leaking|broken|burst|blocked)\b",
+    r"\bwater\s+(?:leaking|leakage|damage)\b",
+    r"\bdrain\s+(?:clogged|blocked|not\s+draining)\b",
+    r"\btoilet\s+(?:overflowing|broken|not\s+flushing|clogged)\b",
+    r"\bfaucet\s+(?:leaking|broken|dripping)\b",
+    r"\bneed\s+(?:a\s+|an\s+)?electrician\b",
+    r"\blooking\s+for\s+(?:a\s+|an\s+)?electrician\b",
+    r"\belectrician\s+(?:needed|required|wanted)\b",
+    r"\brequire\s+(?:a\s+|an\s+)?electrician\b",
+    r"\b(?:wiring|electrical)\s+(?:problem|issue|fault)\b",
+    r"\boutlet\s+(?:not\s+working|dead|broken)\b",
+    r"\bbreaker\s+(?:tripped|keeps\s+tripping|broken)\b",
+    r"\blight\s+(?:not\s+working|flickering|broken)\b",
+    r"\bneed\s+(?:a\s+|an\s+)?painter\b",
+    r"\blooking\s+for\s+(?:a\s+|an\s+)?painter\b",
+    r"\bneed\s+(?:my\s+)?(?:house|apartment|room|wall|ceiling)\s+painted\b",
+    r"\bpainting\s+(?:job|work|done|needed)\b",
+    r"\bneed\s+(?:a\s+|an\s+)?carpenter\b",
+    r"\blooking\s+for\s+(?:a\s+|an\s+)?carpenter\b",
+    r"\bfurniture\s+(?:repair|fix|broken)\b",
+    r"\bwood\s+(?:floor|work|repair)\s+(?:needed|help|broken)\b",
+    r"\bneed\s+(?:a\s+)?lawn\s+(?:care|service|mow)\b",
+    r"\blooking\s+for\s+(?:a\s+)?landscaper\b",
+    r"\bgarden\s+(?:cleanup|help|maintenance)\s+needed\b",
+    r"\bneed\s+(?:a\s+)?(?:house|deep|home)\s+cleaning\b",
+    r"\blooking\s+for\s+(?:a\s+)?cleaning\s+service\b",
+    r"\bcleaner\s+needed\b",
+    r"\bneed\s+(?:flooring|floor|tile)\s+(?:installation|repair|help)\b",
+    r"\blooking\s+for\s+(?:a\s+)?flooring\s+(?:contractor|company)\b",
+    r"\bfloor\s+(?:broken|damaged|needs\s+repair)\b",
+    r"\bneed\s+(?:a\s+)?fence\s+(?:installed|repaired|built)\b",
+    r"\blooking\s+for\s+(?:a\s+)?fence\s+(?:contractor|company|installer)\b",
+    r"\bneed\s+(?:driveway|asphalt|paving)\s+(?:repair|paving|help)\b",
+    r"\blooking\s+for\s+(?:a\s+)?paving\s+contractor\b",
+    r"\bneed\s+(?:kitchen|bathroom|home)\s+renovation\b",
+    r"\blooking\s+for\s+(?:a\s+)?(?:contractor|renovator)\b",
+    r"\brenovation\s+(?:help|contractor|work)\s+needed\b",
+    r"\b(?:fix|repair|replace)\s+(?:my\s+)?(?:pipe|faucet|outlet|wiring|switch|breaker|floor|fence|driveway)\b",
+]
+
+_MODERATE_INTENT_PATTERNS = [
+    r"\brecommend\w*\s+(?:a\s+|an\s+)?(?:good\s+)?(?:plumber|electrician|painter|carpenter|landscaper|cleaner|contractor)\b",
+    r"\bcan\s+(?:anyone|someone)\s+(?:recommend|suggest|help)\w*\b",
+    r"\bknow\s+(?:any|a\s+good)\s+(?:plumber|electrician|painter|carpenter)\b",
+    r"\b(?:any|good|reliable|affordable)\s+(?:plumber|electrician|painter|carpenter|cleaner)\s+(?:nearby|around|in)\b",
+    r"\biso\s+(?:a\s+|an\s+)?(?:plumber|electrician|painter|carpenter|cleaner|contractor)\b",
+    r"\b(?:plumbing|electrical|painting|carpentry|flooring|cleaning|landscaping)\s+(?:help|issue|work|repair)\b",
+    r"\b(?:toilet|sink|shower|bathtub)\s+(?:not\s+working|broken|clogged|leaking)\b",
+    r"\bwater\s+(?:pressure|heater|tank)\s+(?:issue|problem|broken|not\s+working)\b",
+    r"\b(?:switch|socket)\s+(?:not\s+working|broken|dead)\b",
+    r"\bany(?:one|body)\s+(?:know|have)\s+(?:a\s+|an\s+)?(?:good|reliable)?\s*(?:plumber|electrician|painter|contractor)\b",
+    r"\bhelp\s+(?:with|finding)\s+(?:a\s+|an\s+)?(?:plumber|electrician|painter|contractor)\b",
+    r"\bneed\s+(?:help|advice)\s+(?:with|for|about)\s+(?:plumbing|electrical|painting|renovation)\b",
+]
+
+_ALL_BUYER_INTENT = _URGENCY_PATTERNS + _EXPLICIT_NEED_PATTERNS + _MODERATE_INTENT_PATTERNS
+
+# ── Category keyword sets ─────────────────────────────────────────────────────
+_CATEGORY_KEYWORDS: Dict[str, set] = {
+    "plumbing": {
+        "plumber", "plumbing", "pipe", "piping", "leak", "leakage", "leaking",
+        "drainage", "drain", "sewer", "faucet", "tap", "toilet", "sink",
+        "bathtub", "shower", "water heater", "water tank", "water pressure",
+        "clog", "clogged", "burst pipe", "flood", "flooding", "water line",
+        "water damage", "no hot water",
+    },
+    "electrical": {
+        "electrician", "electrical", "electric", "wiring", "wire", "switch",
+        "outlet", "socket", "breaker", "fuse", "voltage", "power", "circuit",
+        "short circuit", "tripped", "no power", "no electricity", "generator",
+        "panel", "rewiring", "light fixture", "ceiling fan", "flickering",
+        "electric panel", "knob and tube",
+    },
+    "painting": {
+        "paint", "painter", "painting", "wall paint", "house painting",
+        "interior paint", "exterior paint", "ceiling paint", "trim paint",
+        "primer", "stucco", "repaint", "color",
+    },
+    "carpentry": {
+        "carpenter", "carpentry", "woodwork", "wood work", "furniture repair",
+        "cabinet", "door frame", "deck", "wood floor repair", "trim",
+        "molding", "shelving", "built-in", "woodworking",
+    },
+    "landscaping": {
+        "lawn", "lawn care", "garden", "gardening", "landscaping", "landscaper",
+        "mowing", "mow", "hedge", "tree trimming", "mulch", "sod", "grass",
+        "yard", "yard work", "sprinkler",
+    },
+    "cleaning": {
+        "cleaning", "cleaner", "house cleaning", "deep cleaning", "home cleaning",
+        "maid", "maid service", "housekeeping", "janitorial", "move-out clean",
+        "spring cleaning", "carpet cleaning",
+    },
+    "flooring": {
+        "flooring", "floor", "tile", "tiles", "hardwood", "laminate", "vinyl",
+        "wood floor", "carpet", "subfloor", "grout", "floor installation",
+        "floor repair", "tile installation",
+    },
+    "fence": {
+        "fence", "fencing", "gate", "gate repair", "picket fence", "privacy fence",
+        "chain link", "wood fence", "vinyl fence", "fence installation",
+        "fence repair",
+    },
+    "asphalt": {
+        "asphalt", "driveway", "paving", "pavement", "pothole", "blacktop",
+        "driveway repair", "driveway paving", "asphalt paving", "crack seal",
+        "parking lot",
+    },
+    "renovation": {
+        "renovation", "remodel", "remodeling", "kitchen renovation",
+        "bathroom renovation", "home improvement", "contractor", "gut renovation",
+        "kitchen remodel", "bathroom remodel", "addition", "buildout",
+    },
+}
+
+
+def _normalize(text: str) -> str:
+    return re.sub(r"\s+", " ", text.lower().strip())
+
+
+def _is_valid_lead(content: str) -> bool:
+    """Gate 1 + 2: reject promos/ads/hiring; require buyer intent."""
+    norm = _normalize(content)
+    for pat in _EXCLUSION_PATTERNS:
+        if re.search(pat, norm):
+            return False
+    for pat in _ALL_BUYER_INTENT:
+        if re.search(pat, norm):
+            return True
+    return False
+
+
+def _is_us_location(content: str):
+    """Return (is_us: bool, location: str)."""
+    norm = _normalize(content)
+    for pat in _NON_US_PATTERNS:
+        if re.search(pat, norm):
+            return False, ""
+    for city in _US_CITIES:
+        if re.search(r"\b" + re.escape(city) + r"\b", norm):
+            return True, city.title()
+    for state in _US_STATES:
+        if re.search(r"\b" + re.escape(state) + r"\b", norm):
+            return True, state.title()
+    return False, ""
+
+
+def _score_lead(content: str) -> int:
+    """Return intent score 5/4/3/1."""
+    norm = _normalize(content)
+    for pat in _URGENCY_PATTERNS:
+        if re.search(pat, norm):
+            return 5
+    for pat in _EXPLICIT_NEED_PATTERNS:
+        if re.search(pat, norm):
+            return 4
+    for pat in _MODERATE_INTENT_PATTERNS:
+        if re.search(pat, norm):
+            return 3
+    return 1
+
+
+def _classify_category(content: str) -> str:
+    """Return the best-matching service category."""
+    norm = _normalize(content)
+    scores: Dict[str, int] = defaultdict(int)
+    for cat, keywords in _CATEGORY_KEYWORDS.items():
+        for kw in keywords:
+            if re.search(r"\b" + re.escape(kw) + r"\b", norm):
+                scores[cat] += 1
+    if not scores:
+        return "other"
+    return max(scores, key=lambda c: scores[c])
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SCRAPER CLASS
+# ══════════════════════════════════════════════════════════════════════════════
+
+
 class FacebookScraper(BaseScraper):
-    """Scraper for Facebook page posts using Selenium."""
-    
-    def __init__(self, cookies: Optional[Dict[str, str]] = None, proxy_override: Optional[Dict[str, str]] = None, **kwargs):
-        super().__init__("facebook", db_manager=kwargs.get('db_manager'))
+    """Scraper for Facebook posts using Selenium + CDP GraphQL capture."""
+
+    def __init__(self, cookies: Optional[Dict[str, str]] = None, **kwargs):
+        super().__init__("facebook", db_manager=kwargs.get("db_manager"))
         self.cookies = cookies or {}
-        self.headless_default = kwargs.get('headless', True)
-        self.use_proxy = kwargs.get('use_proxy', True)
-        self.proxy_override = proxy_override
-        
-        # Load cookie file if path provided
+        self.headless_default = kwargs.get("headless", True)
+
         if isinstance(self.cookies, str) and os.path.exists(self.cookies):
-            with open(self.cookies, 'r') as f:
+            with open(self.cookies, "r") as f:
                 self.cookies = json.load(f)
-        
+
         if self.cookies:
-            self.logger.info("using_provided_cookies", source="argument_or_variable", count=len(self.cookies) if isinstance(self.cookies, list) else "dict")
+            self.logger.info(
+                "using_provided_cookies",
+                source="argument_or_variable",
+                count=len(self.cookies) if isinstance(self.cookies, list) else "dict",
+            )
         else:
             self.logger.warning("no_cookies_provided_scraper_will_likely_fail")
-        
+
         self.seen_urls = set()
         self.seen_texts = set()
         self.driver = None
-        self.proxy_tmp_dir = None
-        
-        # ── Persistent Profile Setup ──────────────────────────────────────────
-        # Profiles make the browser look like a "known device" to Facebook.
-        # It stores local storage, indexDB, and session data across runs.
-        self.email = kwargs.get('email') or os.getenv('FACEBOOK_EMAIL', 'default')
-        safe_email = re.sub(r'[^a-zA-Z0-9]', '_', self.email)
-        
-        # We store profiles in the cookies dir which is already persisted via volume
+
+        self.email = kwargs.get("email") or os.getenv("FACEBOOK_EMAIL", "default")
+        safe_email = re.sub(r"[^a-zA-Z0-9]", "_", self.email)
+
         if os.path.exists("/opt/airflow"):
-            # Inside Docker
             self.profiles_base_dir = "/opt/airflow/scraper/cookies/facebook_profiles"
         else:
-            # Local development
-            # Get the path to scraper/src/scrapers/facebook.py, then go up 4 levels to project root
-            # facebook.py -> scrapers -> src -> scraper -> ROOT
-            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-            self.profiles_base_dir = os.path.join(project_root, "scraper", "cookies", "facebook_profiles")
-        
+            project_root = os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            )
+            self.profiles_base_dir = os.path.join(
+                project_root, "scraper", "cookies", "facebook_profiles"
+            )
+
         self.user_profile_dir = os.path.join(self.profiles_base_dir, safe_email)
-        
-        # ── Clear Profile if requested ───────────────────────────────────────
-        if kwargs.get('clear_profile'):
+
+        if kwargs.get("clear_profile"):
             import shutil
             try:
                 if os.path.exists(self.user_profile_dir):
@@ -121,107 +411,48 @@ class FacebookScraper(BaseScraper):
         os.makedirs(self.user_profile_dir, exist_ok=True)
         self.logger.info("persistent_profile_path", path=self.user_profile_dir)
 
+    # ── Driver initialisation ─────────────────────────────────────────────────
+
     def _init_driver(self, headless: bool = True):
-        """Initialize the Selenium driver with stealth settings and proxies."""
-        self.logger.info("initializing_selenium_driver", headless=headless, use_proxy=self.use_proxy)
-        
+        self.logger.info("initializing_selenium_driver", headless=headless)
         options = Options()
-        
-        # Proxy configuration: Prefer pool rotation if available
-        if not self.proxy_override:
-            from config import get_proxy_list
-            proxy_list = get_proxy_list()
-            if proxy_list:
-                selected = random.choice(proxy_list)
-                proxy_server = selected['server']
-                proxy_user = selected['username']
-                proxy_pass = selected['password']
-                self.logger.info("using_proxy_from_pool", server=proxy_server)
-            else:
-                proxy_server = os.getenv("PROXY_SERVER") or self.cfg.get('brightdata_proxy_server')
-                proxy_user = os.getenv("PROXY_USER") or self.cfg.get('brightdata_proxy_user')
-                proxy_pass = os.getenv("PROXY_PASS") or self.cfg.get('brightdata_proxy_pass')
-        else:
-            proxy_server = self.proxy_override.get('server')
-            proxy_user = self.proxy_override.get('username')
-            proxy_pass = self.proxy_override.get('password')
-            self.logger.info("using_proxy_override", server=proxy_server)
-        
-        if self.use_proxy and proxy_server:
-            try:
-                # Format: brd.superproxy.io:33335
-                host_port = proxy_server.replace("http://", "").replace("https://", "")
-                if ":" in host_port:
-                    host, port = host_port.split(":")
-                    if proxy_user and proxy_pass:
-                        import hashlib
-                        # Consistent session ID based on account (using self.email)
-                        sess_id = hashlib.md5(self.email.encode()).hexdigest()[:8]
-                        
-                        # Session pinning: Only for BrightData (which supports -session- suffix)
-                        # Static IPs (like Webshare/Decodo) don't support this via username
-                        is_brightdata = proxy_user and "brd-customer" in proxy_user 
-                        
-                        if is_brightdata and "-session-" not in proxy_user:
-                            proxy_user = f"{proxy_user}-session-fb_{sess_id}"
-                            self.logger.info("using_persistent_brightdata_session", session_id=f"fb_{sess_id}")
-                            
-                        self.logger.info("loading_proxy_with_auth", host=host, port=port)
-                        self.proxy_tmp_dir = tempfile.mkdtemp()
-                        extension_path = self._create_proxy_extension(host, port, proxy_user, proxy_pass, self.proxy_tmp_dir)
-                        options.add_extension(extension_path)
-                    else:
-                        self.logger.info("loading_proxy_no_auth", host=host, port=port)
-                        options.add_argument(f'--proxy-server={proxy_server}')
-            except Exception as e:
-                self.logger.error("proxy_setup_failed", error=str(e))
 
         if headless:
-            options.add_argument('--headless=new')
-        
-        # ── Stealth / anti-detection ──────────────────────────────────────────
-        options.add_argument('--disable-blink-features=AutomationControlled')
-        options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36')
-        
-        # ── Sandbox / security (required in Docker) ───────────────────────────
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-setuid-sandbox')
-        options.add_argument('--disable-web-security')
-        options.add_argument('--disable-features=IsolateOrigins,site-per-process')
-        
-        # ── Memory-saving flags (critical for Docker/multi-instance) ──────────
-        # These prevent Chrome tab OOM crashes when multiple scrapers run in parallel.
-        options.add_argument('--disable-dev-shm-usage')      # Use /tmp instead of /dev/shm
-        options.add_argument('--no-zygote')                  # Skip zygote process (saves ~50MB)
-        options.add_argument('--disable-gpu')                # No GPU in Docker
-        options.add_argument('--disable-software-rasterizer')
-        options.add_argument('--disable-extensions')
-        options.add_argument('--disable-background-networking')
-        options.add_argument('--disable-default-apps')
-        options.add_argument('--disable-translate')
-        options.add_argument('--disable-sync')
-        options.add_argument('--disable-background-timer-throttling')
-        options.add_argument('--disable-backgrounding-occluded-windows')
-        options.add_argument('--disable-renderer-backgrounding')
-        options.add_argument('--disable-hang-monitor')
-        options.add_argument('--metrics-recording-only')
-        options.add_argument('--mute-audio')
-        options.add_argument('--window-size=1280,720')       # Smaller than before saves GPU mem
-        # ── Persistent Profile Logic ──────────────────────────────────────────
-        # This tells Chrome where to store the profile data.
-        options.add_argument(f'--user-data-dir={self.user_profile_dir}')
-        options.add_argument('--profile-directory=Default') # Use the 'Default' profile within that dir
+            options.add_argument("--headless=new")
 
-        # Cap JS heap so a heavy SPA like Facebook search can't OOM the renderer
-        options.add_argument('--js-flags=--max-old-space-size=512')
-        
-        # ── UX / noise suppression ────────────────────────────────────────────
-        options.add_argument('--disable-popup-blocking')
-        options.add_argument('--disable-notifications')
-        
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_argument(
+            "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+        )
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-setuid-sandbox")
+        options.add_argument("--disable-web-security")
+        options.add_argument("--disable-features=IsolateOrigins,site-per-process")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--no-zygote")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-software-rasterizer")
+        options.add_argument("--disable-extensions")
+        options.add_argument("--disable-background-networking")
+        options.add_argument("--disable-default-apps")
+        options.add_argument("--disable-translate")
+        options.add_argument("--disable-sync")
+        options.add_argument("--disable-background-timer-throttling")
+        options.add_argument("--disable-backgrounding-occluded-windows")
+        options.add_argument("--disable-renderer-backgrounding")
+        options.add_argument("--disable-hang-monitor")
+        options.add_argument("--metrics-recording-only")
+        options.add_argument("--mute-audio")
+        options.add_argument("--window-size=1280,720")
+        options.add_argument(f"--user-data-dir={self.user_profile_dir}")
+        options.add_argument("--profile-directory=Default")
+        options.add_argument("--js-flags=--max-old-space-size=512")
+        options.add_argument("--disable-popup-blocking")
+        options.add_argument("--disable-notifications")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option('useAutomationExtension', False)
-        
+        options.add_experimental_option("useAutomationExtension", False)
+
         prefs = {
             "profile.default_content_setting_values.notifications": 2,
             "credentials_enable_service": False,
@@ -231,27 +462,26 @@ class FacebookScraper(BaseScraper):
             "autofill.profile_enabled": False,
             "profile.default_content_setting_values.popups": 2,
             "intl.accept_languages": "en-US,en",
-            # Block images on search pages to further reduce memory pressure
             "profile.managed_default_content_settings.images": 1,
         }
         options.add_experimental_option("prefs", prefs)
+        options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
 
-        # Use system binaries if they exist
         chromium_path = "/usr/bin/chromium"
         chromedriver_path = "/usr/bin/chromedriver"
-        
+
         if os.path.exists(chromium_path) and os.path.exists(chromedriver_path):
-            self.logger.info("using_system_chromium_binaries", chromium=chromium_path, driver=chromedriver_path)
+            self.logger.info(
+                "using_system_chromium_binaries",
+                chromium=chromium_path,
+                driver=chromedriver_path,
+            )
             options.binary_location = chromium_path
-            service = Service(chromedriver_path, service_args=['--verbose'])
+            service = Service(chromedriver_path, service_args=["--verbose"])
         else:
             self.logger.info("system_binaries_not_found_falling_back_to_webdriver_manager")
-            service = Service(ChromeDriverManager().install(), service_args=['--verbose'])
-        
-        # ── Persistent Profile Lock Cleanup ──────────────────────────────────
-        # Chrome creates a 'SingletonLock' file to prevent multiple instances.
-        # In Docker, if the previous run crashed, this file is left behind
-        # and prevents Chrome from starting. We must clear it.
+            service = Service(ChromeDriverManager().install(), service_args=["--verbose"])
+
         try:
             lock_file = os.path.join(self.user_profile_dir, "SingletonLock")
             if os.path.islink(lock_file) or os.path.exists(lock_file):
@@ -260,13 +490,10 @@ class FacebookScraper(BaseScraper):
         except Exception as e:
             self.logger.warning("failed_to_remove_lock_file", error=str(e))
 
-        # ── Initialize Driver ────────────────────────────────────────────────
         try:
-            # Increase timeout for Chrome startup (especially when running multiple instances)
             self.driver = webdriver.Chrome(service=service, options=options)
         except Exception as e:
             self.logger.error("primary_driver_init_failed_trying_fallback", error=str(e))
-            # Fallback: Try without persistent profile if it's a profile issue
             if "--user-data-dir" in str(options.arguments):
                 self.logger.warning("retrying_without_persistent_profile")
                 new_options = Options()
@@ -275,159 +502,49 @@ class FacebookScraper(BaseScraper):
                         new_options.add_argument(arg)
                 self.driver = webdriver.Chrome(service=service, options=new_options)
             else:
-                raise e
+                raise
 
-        self.driver.set_page_load_timeout(300)  # 5 minutes for page loads
-        
-        # Inject anti-detection scripts
+        self.driver.set_page_load_timeout(300)
         self._inject_stealth_scripts()
-        
+
         try:
             self.driver.maximize_window()
-        except:
+        except Exception:
             pass
-            
+
         self.logger.info("driver_initialized")
 
-    def _create_proxy_extension(self, proxy_host, proxy_port, proxy_user, proxy_pass, folder):
-        """Create a Chrome extension on the fly to handle proxy authentication."""
-        manifest_json = """
-        {
-            "version": "1.0.0",
-            "manifest_version": 2,
-            "name": "Chrome Proxy",
-            "permissions": [
-                "proxy",
-                "tabs",
-                "unlimitedStorage",
-                "storage",
-                "<all_urls>",
-                "webRequest",
-                "webRequestBlocking"
-            ],
-            "background": {
-                "scripts": ["background.js"]
-            },
-            "minimum_chrome_version":"22.0.0"
-        }
-        """
-
-        background_js = """
-        var config = {
-                mode: "fixed_servers",
-                rules: {
-                singleProxy: {
-                    scheme: "http",
-                    host: "%s",
-                    port: parseInt(%s)
-                },
-                bypassList: ["localhost"]
-                }
-            };
-
-        chrome.proxy.settings.set({value: config, scope: "regular"}, function() {});
-
-        chrome.webRequest.onAuthRequired.addListener(
-                    function(details) {
-                        return {
-                            authCredentials: {
-                                username: "%s",
-                                password: "%s"
-                            }
-                        };
-                    },
-                    {urls: ["<all_urls>"]},
-                    ["blocking"]
-        );
-        """ % (proxy_host, proxy_port, proxy_user, proxy_pass)
-
-        extension_path = os.path.join(folder, 'proxy_auth_plugin.zip')
-        with zipfile.ZipFile(extension_path, 'w') as zp:
-            zp.writestr("manifest.json", manifest_json)
-            zp.writestr("background.js", background_js)
-
-        return extension_path
-
     def quit(self):
-        """Quit the driver and clean up resources."""
         if self.driver:
             try:
                 self.driver.quit()
                 self.logger.info("driver_quit_successful")
             except Exception as e:
                 self.logger.warning("driver_quit_failed", error=str(e))
-        
-        # Clean up temporary proxy directory
-        if self.proxy_tmp_dir and os.path.exists(self.proxy_tmp_dir):
-            import shutil
-            try:
-                shutil.rmtree(self.proxy_tmp_dir)
-                self.logger.info("proxy_temp_dir_cleaned", path=self.proxy_tmp_dir)
-            except Exception as e:
-                self.logger.warning("proxy_temp_dir_cleanup_failed", error=str(e))
-        
         self.driver = None
-        self.proxy_tmp_dir = None
 
     def _inject_stealth_scripts(self):
-        """Inject JavaScript to mask automation (enhanced version)"""
         try:
             stealth_js = """
-            // 1. Overwrite the `navigator.webdriver` property
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => false,
-            });
-            
-            // 2. Overwrite the `plugins` property to look like a real browser
+            Object.defineProperty(navigator, 'webdriver', { get: () => false });
             Object.defineProperty(navigator, 'plugins', {
                 get: () => [
                     { name: 'Chrome PDF Viewer', filename: 'internal-pdf-viewer' },
                     { name: 'Chromium PDF Viewer', filename: 'internal-pdf-viewer' },
-                    { name: 'Microsoft Edge PDF Viewer', filename: 'internal-pdf-viewer' },
-                    { name: 'PDF Viewer', filename: 'internal-pdf-viewer' },
-                    { name: 'WebKit built-in PDF', filename: 'internal-pdf-viewer' }
+                    { name: 'PDF Viewer', filename: 'internal-pdf-viewer' }
                 ],
             });
-            
-            // 3. Overwrite hardware and environment attributes
             Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
             Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 4 });
             Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
             Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
-            
-            // 4. Enhanced WebGL masking (Fixing "SwiftShader" bot indicator)
             const getParameter = WebGLRenderingContext.prototype.getParameter;
             WebGLRenderingContext.prototype.getParameter = function(parameter) {
-                // UNMASKED_VENDOR_WEBGL
                 if (parameter === 37445) return 'Google Inc. (NVIDIA)';
-                // UNMASKED_RENDERER_WEBGL
                 if (parameter === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)';
                 return getParameter.apply(this, arguments);
             };
-
-            // 5. Canvas Fingerprint Protection (Add slight noise to prevent deterministic hash)
-            const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
-            HTMLCanvasElement.prototype.toDataURL = function(type) {
-                if (type === 'image/png' && this.width > 0 && this.height > 0) {
-                    const ctx = this.getContext('2d');
-                    if (ctx) {
-                        const imageData = ctx.getImageData(0, 0, 1, 1);
-                        imageData.data[0] = imageData.data[0] ^ 1; // Subtle noise
-                        ctx.putImageData(imageData, 0, 0);
-                    }
-                }
-                return originalToDataURL.apply(this, arguments);
-            };
-            
-            // 6. Pass the Chrome Test
-            window.chrome = {
-                runtime: {},
-                loadTimes: function() {},
-                csi: function() {},
-                app: {}
-            };
-            
-            // 7. Pass the Permissions Test
+            window.chrome = { runtime: {}, loadTimes: function() {}, csi: function() {}, app: {} };
             const originalQuery = window.navigator.permissions.query;
             window.navigator.permissions.query = (parameters) => (
                 parameters.name === 'notifications' ?
@@ -435,73 +552,97 @@ class FacebookScraper(BaseScraper):
                     originalQuery(parameters)
             );
             """
-            # Execute on the first page load
-            self.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
-                'source': stealth_js
-            })
+            self.driver.execute_cdp_cmd(
+                "Page.addScriptToEvaluateOnNewDocument", {"source": stealth_js}
+            )
         except Exception as e:
             self.logger.warning("stealth_injection_failed", error=str(e))
 
+    # ── Auth helpers ──────────────────────────────────────────────────────────
+
     def _load_cookies(self):
-        """Load cookies into the driver."""
         if not self.cookies:
             return False
-            
         try:
-            self.driver.get('https://www.facebook.com')
-            time.sleep(random.uniform(3, 6)) # Human-like wait for initial load
-            
-            cookie_list = []
-            if isinstance(self.cookies, list):
-                cookie_list = self.cookies
-            else:
-                cookie_list = [{'name': k, 'value': v, 'domain': '.facebook.com'} for k, v in self.cookies.items()]
+            self.driver.get("https://www.facebook.com")
+            time.sleep(random.uniform(3, 6))
+
+            cookie_list = (
+                self.cookies
+                if isinstance(self.cookies, list)
+                else [
+                    {"name": k, "value": v, "domain": ".facebook.com"}
+                    for k, v in self.cookies.items()
+                ]
+            )
 
             added_count = 0
-            # Inject cookies with slight jitter to mimic natural session resumption
             for cookie in cookie_list:
                 try:
                     c = {
-                        'name': cookie.get('name'),
-                        'value': cookie.get('value'),
-                        'domain': cookie.get('domain', '.facebook.com'),
-                        'path': cookie.get('path', '/')
+                        "name": cookie.get("name"),
+                        "value": cookie.get("value"),
+                        "domain": cookie.get("domain", ".facebook.com"),
+                        "path": cookie.get("path", "/"),
                     }
-                    if 'expiry' in cookie: c['expiry'] = int(cookie['expiry'])
-                    elif 'expirationDate' in cookie: c['expiry'] = int(cookie['expirationDate'])
-                    
-                    if 'secure' in cookie: c['secure'] = cookie['secure']
-                    
+                    if "expiry" in cookie:
+                        c["expiry"] = int(cookie["expiry"])
+                    elif "expirationDate" in cookie:
+                        c["expiry"] = int(cookie["expirationDate"])
+                    if "secure" in cookie:
+                        c["secure"] = cookie["secure"]
                     self.driver.add_cookie(c)
                     added_count += 1
                     if added_count % 5 == 0:
-                        time.sleep(random.uniform(0.1, 0.3)) # Micro-delay every few cookies
-                except:
+                        time.sleep(random.uniform(0.1, 0.3))
+                except Exception:
                     continue
-            
+
             self.logger.info("cookies_injected_to_browser", count=added_count)
             time.sleep(random.uniform(1.5, 3))
             self.driver.refresh()
             time.sleep(random.uniform(5, 8))
-            
-            # Log final count of cookies in browser
-            browser_cookies = self.driver.get_cookies()
-            self.logger.info("browser_cookie_count_after_refresh", count=len(browser_cookies))
-            
+
             if self._is_logged_in():
                 self.logger.info("facebook_session_verified_logged_in")
                 return True
             else:
-                self.logger.warning("facebook_session_invalid_after_cookie_injection", 
-                                  url=self.driver.current_url, 
-                                  title=self.driver.title)
+                self.logger.warning(
+                    "facebook_session_invalid_after_cookie_injection",
+                    url=self.driver.current_url,
+                    title=self.driver.title,
+                )
                 return False
         except Exception as e:
             self.logger.error("failed_to_load_cookies", error=str(e))
             return False
 
+    def _is_logged_in(self):
+        try:
+            current_url = self.driver.current_url.lower()
+            if any(x in current_url for x in ["login", "checkpoint", "confirmemail"]):
+                return False
+            if "home.php" in current_url:
+                return True
+            indicators = [
+                'div[aria-label*="Account"]',
+                'div[aria-label*="Your profile"]',
+                'a[href*="/me/"]',
+                'svg[aria-label="Your profile"]',
+                'a[aria-label="Home"]',
+                '[role="feed"]',
+            ]
+            for inc in indicators:
+                if self.driver.find_elements(By.CSS_SELECTOR, inc):
+                    return True
+            for btn_sel in ['button[name="login"]', 'a[href*="/login"]']:
+                if self.driver.find_elements(By.CSS_SELECTOR, btn_sel):
+                    return False
+            return False
+        except Exception:
+            return False
+
     def _close_popups(self):
-        """Close common Facebook popups."""
         try:
             close_selectors = [
                 'div[aria-label="Close"]',
@@ -510,308 +651,66 @@ class FacebookScraper(BaseScraper):
                 '[aria-label="Dismiss"]',
                 'div[aria-label="Not Now"]',
                 'button[aria-label="Not Now"]',
-                'div[role="dialog"] [aria-label="Close"]',
-                '#login_popup_cta_form i.x1n2onr6' # Login popup close button
             ]
-            
             for selector in close_selectors:
                 try:
-                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                    for el in elements:
+                    for el in self.driver.find_elements(By.CSS_SELECTOR, selector):
                         if el.is_displayed():
                             el.click()
-                            self.logger.info("popup_closed", selector=selector)
                             time.sleep(0.5)
-                except:
+                except Exception:
                     pass
-            
-            # Special check for the "login/signup" banner at the bottom
-            try:
-                self.driver.execute_script("""
-                    const banner = document.querySelector('div[role="banner"]');
-                    if (banner && (banner.textContent.includes('Log In') || banner.textContent.includes('Sign Up'))) {
-                        banner.style.display = 'none';
-                    }
-                """)
-            except: pass
-
             try:
                 ActionChains(self.driver).send_keys(Keys.ESCAPE).perform()
-            except:
+            except Exception:
                 pass
-        except:
+        except Exception:
             pass
 
-    def _expand_see_more_buttons(self):
-        """Click 'See more' to reveal full post text (enhanced version)."""
+    def _save_cookies(self):
         try:
-            # Use JavaScript to click all see more buttons (more reliable)
-            self.driver.execute_script("""
-                const buttons = [
-                    ...document.querySelectorAll('div[role="button"]'),
-                    ...document.querySelectorAll('span'),
-                    ...document.querySelectorAll('a')
-                ].filter(el => 
-                    (el.textContent.includes('See more') || el.textContent.includes('see more')) && 
-                    el.offsetParent !== null
-                );
-                buttons.slice(0, 30).forEach(btn => {
-                    try {
-                        btn.click();
-                    } catch(e) {}
-                });
-            """)
-            time.sleep(0.5)
+            cookies = self.driver.get_cookies()
+            if not cookies:
+                return None
+            if self.user_email:
+                manager = UserCredentialManager()
+                manager.delete_cookies(self.user_email, "facebook")
+                manager.save_cookies(self.user_email, "facebook", cookies)
+                self.logger.info("cookies_saved_to_mongodb", user=self.user_email)
+            else:
+                cookie_file = os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                    "cookies",
+                    "facebook_cookies.json",
+                )
+                os.makedirs(os.path.dirname(cookie_file), exist_ok=True)
+                with open(cookie_file, "w") as f:
+                    json.dump(cookies, f, indent=2)
+            return cookies
         except Exception as e:
-            self.logger.debug("expand_see_more_failed", error=str(e))
-
-    def _extract_post_content_only(self, article):
-        """Extract post text using multiple strategies with fallbacks."""
-        try:
-            # Strategy 1: Look for data-ad-rendering-role="story_message"
-            try:
-                story_message_container = article.find_element(By.CSS_SELECTOR, 'div[data-ad-rendering-role="story_message"]')
-                message_divs = story_message_container.find_elements(By.CSS_SELECTOR, 'div[dir="auto"]')
-                parts = [d.text.strip() for d in message_divs if d.text.strip()]
-                if parts:
-                    return "\n".join(parts)
-            except:
-                pass
-
-            # Strategy 2: Look for data-ad-preview="message"
-            try:
-                message_container = article.find_element(By.CSS_SELECTOR, 'div[data-ad-preview="message"]')
-                text = message_container.text.strip()
-                if text and len(text) > 10:
-                    return text
-            except:
-                pass
-
-            # Strategy 3: Look for divs with specific classes that contain post content
-            try:
-                selectors = [
-                    'div[data-ad-comet-preview="message"]',
-                    'div.xdj266r.x11i5rnm.xat24cr.x1mh8g0r',  # Common post text class
-                    'div[dir="auto"][style*="text-align"]',
-                    'div[data-testid="post_message"]',
-                    'div.x1iorvi4.x1pi30zi.x1l90r2v.x1swvt1m', # New FB container class
-                ]
-                
-                for selector in selectors:
-                    try:
-                        elements = article.find_elements(By.CSS_SELECTOR, selector)
-                        for elem in elements:
-                            text = elem.text.strip()
-                            if text and len(text) > 20:
-                                # Filter out UI elements
-                                if not any(ui in text for ui in ['Like', 'Comment', 'Share', 'Send', '·', 'Follow']):
-                                    return text
-                    except:
-                        continue
-            except:
-                pass
-
-            # Strategy 4: Broader search - look for any div[dir="auto"] with substantial text
-            try:
-                content_divs = article.find_elements(By.CSS_SELECTOR, 'div[dir="auto"]')
-                candidates = []
-                
-                for div in content_divs[:10]:  # Check first 10 to avoid comments
-                    text = div.text.strip()
-                    if text and len(text) > 30:
-                        # Filter out UI noise
-                        if not any(ui in text[:50] for ui in ['Like', 'Comment', 'Share', 'Send', 'Sponsored']):
-                            candidates.append((len(text), text))
-                
-                if candidates:
-                    candidates.sort(reverse=True)
-                    return candidates[0][1]
-            except:
-                pass
-
-            # Strategy 5: Last resort - get article text and try to extract meaningful content
-            try:
-                full_text = article.text
-                if full_text:
-                    lines = [l.strip() for l in full_text.split('\n') if l.strip()]
-                    content_lines = []
-                    for line in lines:
-                        if len(line) > 20 and not any(ui in line for ui in ['Like', 'Comment', 'Share', 'Send', 'Sponsored', '·', 'Follow']):
-                            content_lines.append(line)
-                    
-                    if content_lines:
-                        return '\n'.join(content_lines[:5])
-            except:
-                pass
-
-            return ""
-        except:
-            return ""
-
-    def _extract_exact_post_date(self, article):
-        """Extract exact post date using heuristics and handle relative time."""
-        try:
-            candidate_dates = []
-            
-            # 1. Broadly search links and spans for dates
-            date_elements = article.find_elements(By.CSS_SELECTOR, 'a[role="link"], a, span[aria-label], span[aria-labelledby], span')
-            
-            relative_regex = re.compile(r'^(\d+[mhdw])(\s*ago)?$', re.IGNORECASE)
-            
-            for el in date_elements:
-                try:
-                    aria = el.get_attribute('aria-label') or ""
-                    
-                    # If aria-label contains a months name, it's very likely the date
-                    months_regex = r'(January|February|March|April|May|June|July|August|September|October|November|December)'
-                    if aria and re.search(months_regex, aria):
-                        # print(f"DEBUG: Found date in aria-label: {aria}")
-                        return aria.strip()
-
-                    text = self.driver.execute_script("return arguments[0].innerText;", el).strip()
-                    
-                    # Exact matches for relative patterns (2h, 1d etc)
-                    if relative_regex.match(text) or text.lower() in ["just now", "yesterday"]:
-                        candidate_dates.append(text)
-                        
-                    href = el.get_attribute('href') or ""
-                    if any(x in href for x in ['/posts/', '/videos/', '/reel/', '/photo', 'fbid=']):
-                        if text and len(text) < 30: candidate_dates.append(text)
-                    
-                    if "Sponsored" in text: candidate_dates.append("Sponsored")
-                except: 
-                    continue
-            
-            # print(f"DEBUG: Facebook candidate dates: {candidate_dates}")
-
-            # Sponsored check
-            if any("Sponsored" in d for d in candidate_dates):
-                return "Sponsored"
-
-            months = ['January', 'February', 'March', 'April', 'May', 'June', 
-                      'July', 'August', 'September', 'October', 'November', 'December']
-
-            for d in candidate_dates:
-                clean_d = d.strip()
-                if not clean_d or len(clean_d) > 50: 
-                    continue
-                
-                # Relative time patterns (1h, 10m, Just now)
-                if relative_regex.match(clean_d) or "Just now" in clean_d: 
-                    return clean_d
-                
-                if "Yesterday" in clean_d:
-                    past = datetime.now() - timedelta(days=1)
-                    return past.strftime("%d %B %Y")
-
-                # Absolute dates (e.g. "February 10", "10 Feb")
-                if any(m in clean_d for m in months) or any(m[:3] in clean_d for m in months):
-                    if not re.search(r'\d{4}', clean_d):
-                        clean_d = f"{clean_d} {datetime.now().year}"
-                    return clean_d
-
-            # Regex search in article header text as a strong fallback
-            try:
-                # Common patterns including MM/DD or "Mar 6"
-                header_text = article.text[:400]
-                
-                # Try simple relative pattern in header
-                if h_rel := re.search(r'\b\d+[mhdw]\b', header_text):
-                    return h_rel.group(0)
-
-                date_pattern = re.compile(r'\b(\d{1,2})?\s*(January|February|March|April|May|June|July|August|September|October|November|December|[A-Z][a-z]{2})\s*(\d{1,2})?\b', re.IGNORECASE)
-                match = date_pattern.search(header_text)
-                if match:
-                    found_date = match.group(0).strip()
-                    if not re.search(r'\d{4}', found_date):
-                        following_text = header_text[match.end():match.end()+10]
-                        year_match = re.search(r'\d{4}', following_text)
-                        if year_match:
-                            found_date = f"{found_date} {year_match.group(0)}"
-                        else:
-                            found_date = f"{found_date} {datetime.now().year}"
-                    return found_date
-            except:
-                pass
-            
-            # Final debug if nothing worked
-            if article.text:
-                pass
-
-            return "Date not found"
-        except Exception:
-            return "Date not found"
-
-
-    def parse_item(self, raw_data: Dict[str, Any], custom_keywords: Optional[str] = None, 
-                   exclude_keywords: Optional[list] = None,
-                   custom_indicators: Optional[list] = None) -> Optional[FacebookLead]:
-        """Parse raw data into a FacebookLead model."""
-        try:
-            post_date_raw = raw_data.get('post_date')
-            
-            # Combine title and description for buyer intent analysis
-            text = f"{raw_data.get('title', '')} {raw_data.get('text', '')}"
-            
-            # Use centralized buyer intent detector
-            is_buyer_request = BuyerIntentDetector.is_buyer_request(
-                text=text,
-                require_url=False,  # Facebook posts may not always have stable URLs
-                url=raw_data.get('link'),
-                custom_keywords=custom_keywords,
-                exclude_keywords=exclude_keywords,
-                custom_indicators=custom_indicators
-            )
-            
-            # Log detection reason for debugging
-            if not is_buyer_request:
-                reason = BuyerIntentDetector.get_detection_reason(text, raw_data.get('link'))
-                self.logger.debug("filtered_non_buyer_post", reason=reason, title=raw_data.get('title'))
-
-            return FacebookLead(
-                source_url=raw_data.get('link'),
-                source_id=raw_data.get('id'),
-                title=raw_data.get('title'),
-                description=raw_data.get('text'),
-                posted_date=post_date_raw if post_date_raw != "Date not found" else None,
-                images=raw_data.get('images', []),
-                videos=raw_data.get('videos', []),
-                image_count=raw_data.get('image_count', 0),
-                video_count=raw_data.get('video_count', 0),
-                has_media=raw_data.get('has_media', False),
-                word_count=raw_data.get('word_count', 0),
-                is_buyer_request=is_buyer_request,
-                extra_data={'raw_date': post_date_raw, 'scraped_at': raw_data.get('scraped_at')}
-            )
-        except Exception as e:
-            self.logger.warning("failed_to_create_facebook_lead", error=str(e))
+            self.logger.error("failed_to_save_cookies", error=str(e))
             return None
 
-    def _scroll_smoothly(self, scroll_count=0):
-        """Perform aggressive, human-like scrolling with multiple fallbacks."""
+    # ── Scrolling ─────────────────────────────────────────────────────────────
+
+    def _scroll_smoothly(self, scroll_count: int = 0):
         try:
-            # 0. Focus and wiggle to wake up event listeners
             self.driver.execute_script("document.body.focus();")
             self.driver.execute_script(f"window.scrollBy(0, {-random.randint(30, 70)});")
             time.sleep(random.uniform(0.2, 0.4))
             self.driver.execute_script(f"window.scrollBy(0, {random.randint(40, 80)});")
             time.sleep(random.uniform(0.3, 0.6))
-            
-            # 1. Random small scrolls (mimic mouse wheel)
+
             for _ in range(random.randint(2, 4)):
-                amount = random.randint(400, 1200)
-                self.driver.execute_script(f"window.scrollBy(0, {amount});")
+                self.driver.execute_script(f"window.scrollBy(0, {random.randint(400, 1200)});")
                 time.sleep(random.uniform(0.7, 1.4))
-            
-            # 2. Use Page Down keys (very effective for Facebook)
+
             actions = ActionChains(self.driver)
             for _ in range(random.randint(1, 3)):
                 actions.send_keys(Keys.PAGE_DOWN)
                 time.sleep(random.uniform(0.3, 0.7))
             actions.perform()
-            
-            # 3. Use JavaScript to scroll to the last found article
-            # This triggers the IntersectionObserver better than just scrolling to the bottom
+
             self.driver.execute_script("""
                 const articles = document.querySelectorAll('div[role="article"]');
                 if (articles.length > 0) {
@@ -820,445 +719,619 @@ class FacebookScraper(BaseScraper):
                     window.scrollTo(0, document.body.scrollHeight);
                 }
             """)
-            
-            # 4. Occasional 'End' key to trigger lazy loading
+
             if scroll_count % 3 == 0:
-                self.logger.info("sending_end_key_for_lazy_load")
                 ActionChains(self.driver).send_keys(Keys.END).perform()
                 time.sleep(random.uniform(2, 4))
-            
-            # 5. Simulated mouse micro-movements while loading
-            try:
-                self.driver.execute_script("""
-                    const e = new MouseEvent('mousemove', {
-                        view: window, bubbles: true, cancelable: true,
-                        clientX: Math.random() * window.innerWidth,
-                        clientY: Math.random() * window.innerHeight
-                    });
-                    document.dispatchEvent(e);
-                """)
-            except: pass
 
-            time.sleep(random.uniform(2.5, 4.5)) # Allow meaningful time for fetch
-            
+            time.sleep(random.uniform(2.5, 4.5))
         except Exception as e:
             self.logger.debug("scroll_failed", error=str(e))
 
-    def login(self, email, password):
-        """Login to Facebook with credentials and handle multi-stage security checkpoints."""
-        self.logger.info("logging_in_to_facebook")
-        
+    # ── GraphQL parsing helpers ───────────────────────────────────────────────
+
+    @staticmethod
+    def _deep_find(obj, target_keys: set, results: list, depth: int = 0) -> None:
+        if depth > 25:
+            return
+        if isinstance(obj, dict):
+            if target_keys & obj.keys():
+                results.append(obj)
+            for v in obj.values():
+                FacebookScraper._deep_find(v, target_keys, results, depth + 1)
+        elif isinstance(obj, list):
+            for item in obj:
+                FacebookScraper._deep_find(item, target_keys, results, depth + 1)
+
+    @staticmethod
+    def _gql_get_text(node: dict) -> str:
+        candidates = []
+        for key in ("message", "body", "primary_body"):
+            val = node.get(key)
+            if isinstance(val, dict):
+                t = val.get("text", "")
+                if t:
+                    candidates.append(t)
+        comet_story = (
+            node.get("comet_sections", {}).get("content", {}).get("story", {})
+        )
+        if isinstance(comet_story, dict):
+            msg = comet_story.get("message")
+            if isinstance(msg, dict):
+                t = msg.get("text", "")
+                if t:
+                    candidates.append(t)
+        valid = [c for c in candidates if c and len(c.strip()) > 20]
+        return max(valid, key=len).strip() if valid else ""
+
+    @staticmethod
+    def _gql_get_author(node: dict) -> str:
+        actors = node.get("actors") or []
+        if actors and isinstance(actors, list):
+            first = actors[0]
+            if isinstance(first, dict):
+                return first.get("name", "Unknown")
+        actor = node.get("actor")
+        if isinstance(actor, dict):
+            return actor.get("name", "Unknown")
+        return "Unknown"
+
+    @staticmethod
+    def _gql_get_url(node: dict, post_id: str) -> str:
+        for key in ("wwwURL", "url", "permalink_url"):
+            val = node.get(key, "")
+            if val and isinstance(val, str) and val.startswith("http"):
+                return val
+        if post_id and post_id.isdigit():
+            return f"https://www.facebook.com/permalink.php?story_fbid={post_id}"
+        return ""
+
+    @staticmethod
+    def _gql_get_post_id(node: dict) -> str:
+        for key in ("post_id", "story_fbid", "id"):
+            val = node.get(key)
+            if val and isinstance(val, str):
+                return val
+        return ""
+
+    @staticmethod
+    def _gql_get_timestamp(node: dict) -> str:
+        for key in ("creation_time", "created_time", "publish_time"):
+            ts = node.get(key)
+            if ts:
+                try:
+                    return datetime.utcfromtimestamp(int(ts)).strftime(
+                        "%Y-%m-%d %H:%M:%S UTC"
+                    )
+                except Exception:
+                    pass
+        return ""
+
+    def _extract_posts_from_graphql(self, raw_bodies: list) -> list:
+        posts = []
+        seen_ids: set = set()
+        seen_txt: set = set()
+
+        story_keys = {
+            "message", "actors", "actor", "wwwURL", "story_fbid",
+            "creation_time", "body", "comet_sections",
+        }
+
+        for body in raw_bodies:
+            for line in body.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                candidates: list = []
+                self._deep_find(data, story_keys, candidates)
+
+                for node in candidates:
+                    text = self._gql_get_text(node)
+                    if not text or len(text) < 20:
+                        continue
+
+                    post_id = self._gql_get_post_id(node)
+
+                    if post_id and post_id in seen_ids:
+                        continue
+                    txt_sig = text[:200]
+                    if txt_sig in seen_txt:
+                        continue
+                    if post_id:
+                        seen_ids.add(post_id)
+                    seen_txt.add(txt_sig)
+
+                    url = self._gql_get_url(node, post_id)
+                    posts.append({
+                        "id": post_id,
+                        "title": text.split("\n")[0][:100],
+                        "text": text,
+                        "post_date": self._gql_get_timestamp(node),
+                        "link": url,
+                        "images": [],
+                        "image_count": 0,
+                        "video_count": 0,
+                        "has_media": False,
+                        "word_count": len(text.split()),
+                        "scraped_at": datetime.utcnow().isoformat(),
+                        "author_name": self._gql_get_author(node),
+                        "author_url": None,
+                    })
+
+        self.logger.info("graphql_posts_parsed", count=len(posts))
+        return posts
+
+    # ── Lead pipeline ─────────────────────────────────────────────────────────
+
+    def _run_lead_pipeline(self, raw_posts: list, stats: dict) -> list:
+        """
+        Apply the full 3-gate lead pipeline from facebook_lead_engine_v2.py:
+          Gate 1 — buyer intent present AND not a promo/ad/hiring post
+          Gate 2 — US location detected
+          Gate 3 — intent score >= MIN_SCORE
+
+        Returns a list of dicts ready to be turned into FacebookLead objects.
+        """
+        qualified = []
+
+        for raw in raw_posts:
+            content = raw.get("text", "")
+
+            # Gate 1: buyer intent + not a promo
+            if not _is_valid_lead(content):
+                stats["excluded_non_buyer"] += 1
+                continue
+
+            # Gate 2: US-only
+            is_us, location = _is_us_location(content)
+            if not is_us:
+                stats["excluded_non_us"] += 1
+                continue
+
+            # Gate 3: score threshold
+            score = _score_lead(content)
+            if score < MIN_SCORE:
+                stats["excluded_low_score"] += 1
+                continue
+
+            stats["qualified"] += 1
+            category = _classify_category(content)
+
+            qualified.append({
+                **raw,
+                "location": location,
+                "intent_score": score,
+                "category": category,
+                "is_buyer_request": True,
+            })
+
+        # Highest intent first
+        qualified.sort(key=lambda x: x["intent_score"], reverse=True)
+        return qualified
+
+    def _raw_to_lead(self, raw: dict) -> Optional[FacebookLead]:
+        """Convert a pipeline-qualified raw dict to a FacebookLead model."""
         try:
-            # 0. Check if already logged in (important for Persistent Profiles)
-            self.driver.get('https://www.facebook.com/')
+            return FacebookLead(
+                source_url=raw.get("link"),
+                source_id=raw.get("id"),
+                title=raw.get("title"),
+                description=raw.get("text"),
+                posted_date=raw.get("post_date") or None,
+                author_name=raw.get("author_name"),
+                author_url=raw.get("author_url"),
+                location=raw.get("location"),
+                category=raw.get("category"),
+                intent_score=raw.get("intent_score"),
+                images=raw.get("images", []),
+                videos=raw.get("videos", []),
+                image_count=raw.get("image_count", 0),
+                video_count=raw.get("video_count", 0),
+                has_media=raw.get("has_media", False),
+                word_count=raw.get("word_count", 0),
+                is_buyer_request=raw.get("is_buyer_request", True),
+                extra_data={
+                    "raw_date": raw.get("post_date"),
+                    "scraped_at": raw.get("scraped_at"),
+                },
+            )
+        except Exception as e:
+            self.logger.warning("failed_to_create_facebook_lead", error=str(e))
+            return None
+
+    # ── Scroll + CDP capture for a single URL ─────────────────────────────────
+
+    def _capture_graphql_for_url(
+        self, url: str, scroll_rounds: int, seen_req_ids: set
+    ) -> list:
+        """
+        Navigate to *url*, scroll to trigger GraphQL calls, and return
+        the list of captured response body strings for this URL.
+        Reuses *seen_req_ids* across calls so duplicate CDP request IDs
+        are never double-fetched across URLs in the same browser session.
+        """
+        graphql_bodies: list = []
+
+        try:
+            self.logger.info("navigating_to_search_url", url=url)
+            self.driver.get(url)
+            time.sleep(random.uniform(6, 10))
+
+            current_url = self.driver.current_url
+            if "login" in current_url or "checkpoint" in current_url:
+                self.logger.warning("login_wall_detected_skipping_url", url=current_url)
+                return graphql_bodies
+
+            self._close_popups()
+
+            last_height = self.driver.execute_script("return document.body.scrollHeight")
+            no_change_count = 0
+
+            for i in range(scroll_rounds):
+                self.logger.info(
+                    "scroll_iteration", scroll=i + 1, total=scroll_rounds, url=url
+                )
+                self._scroll_smoothly(scroll_count=i)
+                time.sleep(2.5)
+
+                # ── Poll CDP performance log ──────────────────────────────
+                try:
+                    perf_logs = self.driver.get_log("performance")
+                    for entry in perf_logs:
+                        try:
+                            msg = json.loads(entry.get("message", "{}"))
+                            params = msg.get("message", {}).get("params", {})
+                            req_id = params.get("requestId", "")
+                            url_check = (
+                                params.get("response", {}).get("url", "")
+                                or params.get("request", {}).get("url", "")
+                            )
+                            if "api/graphql" not in url_check:
+                                continue
+                            if req_id in seen_req_ids:
+                                continue
+                            seen_req_ids.add(req_id)
+
+                            try:
+                                resp = self.driver.execute_cdp_cmd(
+                                    "Network.getResponseBody", {"requestId": req_id}
+                                )
+                                body = resp.get("body", "")
+                                if body and len(body) > 20:
+                                    graphql_bodies.append(body)
+                                    self.logger.debug(
+                                        "graphql_body_captured",
+                                        req_id=req_id,
+                                        size=len(body),
+                                    )
+                            except Exception:
+                                pass
+                        except Exception:
+                            continue
+                except Exception as perf_err:
+                    self.logger.debug("perf_log_fetch_failed", error=str(perf_err))
+
+                new_height = self.driver.execute_script("return document.body.scrollHeight")
+                if new_height <= last_height:
+                    no_change_count += 1
+                    if no_change_count >= 4:
+                        self.logger.info(
+                            "no_scroll_progress_stopping_url_early", iteration=i
+                        )
+                        break
+                else:
+                    no_change_count = 0
+                    last_height = new_height
+
+        except Exception as e:
+            self.logger.error("capture_failed_for_url", url=url, error=str(e))
+
+        self.logger.info(
+            "graphql_bodies_for_url",
+            url=url,
+            bodies=len(graphql_bodies),
+        )
+        return graphql_bodies
+
+    # ── Main scrape method ────────────────────────────────────────────────────
+
+    def scrape(self, target: Optional[str] = None, **kwargs) -> List[ScrapedLead]:
+        """
+        Main entry point.
+
+        Parameters
+        ──────────
+        search_urls : list[str]
+            Facebook search URLs to scrape (loaded from MongoDB by the caller).
+            If not supplied, falls back to *target* as a single URL.
+        limit       : int
+            Max qualified leads to collect across all URLs (-1 = unlimited).
+        scroll_rounds : int
+            Scroll iterations per URL (default 6).
+        headless    : bool
+            Override headless setting for this run.
+        email / password : str
+            Fallback credentials if cookie auth fails.
+        """
+        # ── Resolve search URLs ───────────────────────────────────────────────
+        search_urls: list = kwargs.get("search_urls") or []
+        if not search_urls and target:
+            search_urls = [target]
+        if not search_urls:
+            self.logger.error("no_search_urls_provided")
+            return []
+
+        limit = kwargs.get("limit", 15)
+        target_leads = 999_999 if limit == -1 else (limit if limit and limit > 0 else 999_999)
+        scroll_rounds = kwargs.get("scroll_rounds", 6)
+        headless = kwargs.get("headless", self.headless_default)
+        email = kwargs.get("email") or os.getenv("FACEBOOK_EMAIL")
+        password = kwargs.get("password") or os.getenv("FACEBOOK_PASSWORD")
+
+        self.logger.info(
+            "starting_scrape",
+            urls=len(search_urls),
+            limit=target_leads,
+            scroll_rounds=scroll_rounds,
+        )
+
+        # ── Pipeline stats ────────────────────────────────────────────────────
+        stats: dict = defaultdict(int)
+        all_leads: List[ScrapedLead] = []
+        global_seen: set = set()       # dedup across all URLs
+        seen_req_ids: set = set()      # dedup CDP request IDs across URLs
+
+        try:
+            self._init_driver(headless=headless)
+
+            # Enable CDP network capture once for the whole session
+            try:
+                self.driver.execute_cdp_cmd("Network.enable", {})
+                self.logger.info("cdp_network_enabled")
+            except Exception as e:
+                self.logger.warning("cdp_network_enable_failed", error=str(e))
+
+            # ── Auth ──────────────────────────────────────────────────────────
+            session_ok = self._load_cookies()
+
+            if not session_ok and self.cookies and self.user_email:
+                self.logger.warning(
+                    "facebook_cookies_expired_removing_stale_record",
+                    user=self.user_email,
+                )
+                UserCredentialManager().delete_cookies(self.user_email, "facebook")
+
+            if not session_ok and email and password:
+                self.logger.info("attempting_login_with_credentials")
+                session_ok = self.login(email, password)
+
+            if not session_ok:
+                self.logger.error("failed_to_establish_authenticated_session")
+                raise ValueError(
+                    "Facebook authentication failed. Please update credentials or cookies."
+                )
+
+            # ── Iterate over every search URL ─────────────────────────────────
+            for url_idx, search_url in enumerate(search_urls, start=1):
+                if len(all_leads) >= target_leads:
+                    self.logger.info(
+                        "lead_limit_reached_stopping_url_loop",
+                        collected=len(all_leads),
+                    )
+                    break
+
+                self.logger.info(
+                    "processing_search_url",
+                    index=url_idx,
+                    total=len(search_urls),
+                    url=search_url,
+                )
+
+                # Capture raw GraphQL bodies for this URL
+                raw_bodies = self._capture_graphql_for_url(
+                    search_url, scroll_rounds, seen_req_ids
+                )
+                stats["total_graphql_bodies"] += len(raw_bodies)
+
+                # Parse bodies → raw post dicts
+                raw_posts = self._extract_posts_from_graphql(raw_bodies)
+                stats["total_raw_posts"] += len(raw_posts)
+                self.logger.info(
+                    "raw_posts_for_url",
+                    url=search_url,
+                    count=len(raw_posts),
+                )
+
+                # Apply full lead pipeline (buyer intent + US filter + scoring)
+                qualified = self._run_lead_pipeline(raw_posts, stats)
+
+                # Global dedup + convert to leads
+                new_this_url = 0
+                for raw in qualified:
+                    if len(all_leads) >= target_leads:
+                        break
+
+                    dedup_key = raw.get("id") or raw.get("text", "")[:200]
+                    if dedup_key in global_seen:
+                        continue
+                    global_seen.add(dedup_key)
+
+                    lead = self._raw_to_lead(raw)
+                    if lead:
+                        all_leads.append(lead)
+                        new_this_url += 1
+
+                self.logger.info(
+                    "new_leads_from_url",
+                    url=search_url,
+                    new=new_this_url,
+                    total_so_far=len(all_leads),
+                )
+
+                # Brief pause between URLs to avoid rate-limiting
+                if url_idx < len(search_urls):
+                    time.sleep(random.uniform(4, 8))
+
+            # ── Summary ───────────────────────────────────────────────────────
+            urgent = sum(1 for l in all_leads if getattr(l, "intent_score", 0) == 5)
+            per_cat: dict = defaultdict(int)
+            for l in all_leads:
+                per_cat[getattr(l, "category", "other")] += 1
+
+            self.logger.info(
+                "scrape_complete",
+                urls_processed=url_idx if search_urls else 0,
+                total_graphql_bodies=stats["total_graphql_bodies"],
+                total_raw_posts=stats["total_raw_posts"],
+                excluded_non_buyer=stats["excluded_non_buyer"],
+                excluded_non_us=stats["excluded_non_us"],
+                excluded_low_score=stats["excluded_low_score"],
+                qualified_leads=len(all_leads),
+                urgent_leads=urgent,
+                per_category=dict(per_cat),
+            )
+
+        except Exception as e:
+            err_str = str(e).lower()
+            if any(sig in err_str for sig in ["tab crashed", "no such session", "invalid session"]):
+                self.logger.warning(
+                    "chrome_tab_crashed_returning_partial_results",
+                    collected=len(all_leads),
+                    error=str(e),
+                )
+            else:
+                self.logger.error("scraping_failed", error=str(e))
+                traceback.print_exc()
+                raise
+        finally:
+            self.quit()
+
+        return all_leads
+
+    # ── login / captcha helpers (unchanged from previous version) ─────────────
+
+    def login(self, email, password):
+        """Login to Facebook with credentials and handle security checkpoints."""
+        self.logger.info("logging_in_to_facebook")
+        try:
+            self.driver.get("https://www.facebook.com/")
             time.sleep(5)
             if self._is_logged_in():
                 self.logger.info("already_logged_in_skipping_credentials_entry")
                 return True
 
-            self.driver.get('https://www.facebook.com/login')
+            self.driver.get("https://www.facebook.com/login")
             time.sleep(5)
-            
-            # 1. Handle initial blockers
-            if self._is_captcha_present():
-                self.logger.warning("captcha_detected_at_login_start")
-                self._try_solve_captcha()
 
             self._handle_cookie_banners()
-            
-            # 2. Fill Credentials
+
             if not self._fill_credentials(email, password):
                 return False
-            
-            # 3. Handle Security Sequence (Loop until logged in or timeout)
-            # Facebook often presents multiple screens: Captcha -> Identity Confirmation -> Home
-            self.logger.info("entering_security_sequence_monitoring")
+
             start_time = time.time()
-            max_wait = 150 # 2.5 minutes total for the whole sequence
-            
+            max_wait = 150
+
             while time.time() - start_time < max_wait:
                 if self._is_logged_in():
                     self.logger.info("login_successful_verified")
                     self._save_cookies()
                     return True
-                
-                # Check for Security Checkpoint or CAPTCHA
+
                 if self._is_captcha_present():
-                    self.logger.warning("security_challenge_detected_solving")
                     self._try_solve_captcha()
-                    time.sleep(8) # Wait for page to process solve
+                    time.sleep(8)
                     continue
-                
-                # Check for "Enter Code" / OTP screens (New Logic)
+
+                # OTP handling
                 otp_input = None
-                otp_selectors = [
+                for sel in [
                     'input[name="approvals_code"]',
                     'input[id="approvals_code"]',
-                    'input[name="captcha_response"]',
                     'input[placeholder*="Code"]',
-                    'input[aria-label*="Code"]',
-                    'input#code'
-                ]
-                
-                for sel in otp_selectors:
+                    'input#code',
+                ]:
                     try:
                         el = self.driver.find_element(By.CSS_SELECTOR, sel)
                         if el.is_displayed():
                             otp_input = el
                             break
-                    except: continue
-                
+                    except Exception:
+                        continue
+
                 if otp_input:
-                    self.logger.info("otp_input_field_detected_attempting_auto_solve")
-                    
-                    # 1. Try TOTP (Authentictor App) first - Most Reliable
-                    fa_secret = self.cfg.get("facebook_2fa_secret")
+                    fa_secret = os.getenv("FACEBOOK_2FA_SECRET")
                     if fa_secret:
                         try:
-                            self.logger.info("generating_totp_code_from_secret")
-                            totp = pyotp.TOTP(fa_secret.replace(" ", ""))
-                            code = totp.now()
-                            if code:
-                                self.logger.info("totp_generated_successfully", code="******")
-                                otp_input.clear()
-                                otp_input.send_keys(code)
-                                time.sleep(2)
-                                button_clicked = False # Let the next block handle the button click
+                            import pyotp
+                            code = pyotp.TOTP(fa_secret.replace(" ", "")).now()
+                            otp_input.clear()
+                            otp_input.send_keys(code)
                         except Exception as e:
                             self.logger.error("totp_generation_failed", error=str(e))
-                    
-                    # 2. Fallback to Email OTP if TOTP failed or not available
-                    else:
+                    elif EmailManager:
                         email_user = os.getenv("FACEBOOK_EMAIL")
                         app_pass = os.getenv("FACEBOOK_APP_PASSWORD")
-                        
-                        if EmailManager and email_user and app_pass:
+                        if email_user and app_pass:
                             code = EmailManager.get_facebook_otp(email_user, app_pass)
                             if code:
-                                self.logger.info("otp_fetched_successfully_entering_code", code=code)
                                 otp_input.clear()
                                 for char in code:
                                     otp_input.send_keys(char)
                                     time.sleep(random.uniform(0.1, 0.3))
-                                
-                                time.sleep(2)
-                            else:
-                                self.logger.warning("failed_to_fetch_otp_from_email")
-                        else:
-                            self.logger.warning("otp_solver_skipped_missing_creds", 
-                                             has_manager=EmailManager is not None, 
-                                             has_user=bool(email_user), 
-                                             has_pass=bool(app_pass))
 
-                # Check for "Continue" / "Next" buttons common in security checkpoints
-                continue_selectors = [
+                # Continue / Next buttons
+                button_clicked = False
+                for sel in [
                     'button[type="submit"]',
                     'button#checkpointSubmitButton',
-                    'div[role="button"][id*="checkpoint"]',
                     '//button[contains(., "Continue")]',
                     '//button[contains(., "Next")]',
-                    '//button[contains(., "Yes")]',
-                    '//button[contains(., "OK")]',
                     '//button[contains(., "This was me")]',
-                    '//button[contains(., "Continuar")]',
-                    '//button[contains(., "Próximo")]',
                     '//button[contains(., "Confirm")]',
-                    '//span[contains(., "Continue")]/ancestor::button',
-                    '//div[@role="button" and (contains(., "Continue") or contains(., "Continuar"))]'
-                ]
-                
-                button_clicked = False
-                for sel in continue_selectors:
+                ]:
                     try:
-                        btn = self.driver.find_element(By.XPATH, sel) if sel.startswith('//') else self.driver.find_element(By.CSS_SELECTOR, sel)
+                        btn = (
+                            self.driver.find_element(By.XPATH, sel)
+                            if sel.startswith("//")
+                            else self.driver.find_element(By.CSS_SELECTOR, sel)
+                        )
                         if btn.is_displayed() and btn.is_enabled():
-                            self.logger.info("clicking_security_continue_button", selector=sel)
-                            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
+                            self.driver.execute_script(
+                                "arguments[0].scrollIntoView({block:'center'});", btn
+                            )
                             time.sleep(1)
                             self.driver.execute_script("arguments[0].click();", btn)
                             button_clicked = True
-                            time.sleep(10) # Give it time to load next stage
+                            time.sleep(10)
                             break
-                    except: continue
-                
+                    except Exception:
+                        continue
+
                 if not button_clicked:
-                    self.logger.debug("no_actionable_security_elements_waiting", url=self.driver.current_url)
                     time.sleep(8)
-                    
-            self.logger.error("login_timed_out_no_success_indicators", url=self.driver.current_url)
+
+            self.logger.error("login_timed_out", url=self.driver.current_url)
             return False
-            
+
         except Exception as e:
-            self.logger.error("login_exception", error=str(e), url=self.driver.current_url)
+            self.logger.error("login_exception", error=str(e))
             try:
-                # Save screenshot for debugging on crash
-                dump_path = "/tmp/fb_login_crash.png"
-                self.driver.save_screenshot(dump_path)
-                self.logger.info("debug_screenshot_saved", path=dump_path)
-            except: pass
-            return False
-
-    def _is_captcha_present(self):
-        """Detect if reCAPTCHA or Meta CAPTCHA is on screen.
-
-        IMPORTANT: This method uses conservative detection to avoid false positives.
-        Short or ambiguous strings (e.g. 'puzzle', 'checkpoint') have been removed
-        from text-based detection. Text checks also require the matching element to
-        be visible, ruling out hidden ad units or off-screen content.
-        """
-        try:
-            # 1. Check for known challenge URLs or path segments
-            current_url = self.driver.current_url.lower()
-            if any(x in current_url for x in ['checkpoint', 'challenge', 'captcha']):
-                self.logger.info("captcha_detected_via_url", url=current_url)
-                return True
-
-            # 2. Check for reCAPTCHA / hCaptcha / FunCaptcha iframes (Highest Reliability)
-            iframes = self.driver.find_elements(By.TAG_NAME, 'iframe')
-            for iframe in iframes:
-                try:
-                    src = iframe.get_attribute('src') or ""
-                    if any(x in src.lower() for x in ['recaptcha', 'captcha', 'hcaptcha', 'arkoselabs', 'checkpoint']):
-                        self.logger.info("captcha_detected_via_iframe", src=src[:100])
-                        return True
-                except: continue
-
-            # 3. Text-based detection — ONLY use long, highly specific phrases that won't
-            #    false-match unrelated page content (ads, nav labels, sidebar text, etc.).
-            #    Removed: 'checkpoint' (covered by URL check), 'puzzle'/'puzzel' (too short,
-            #    caused false positive matching e.g. "bus" substring in prior logs).
-            captcha_texts = [
-                'Confirm Your Identity',
-                'Security Check',
-                'Please solve the puzzle',
-                'Enter the code below',
-                'Help us confirm your identity',
-                'verify your account',
-            ]
-            for text in captcha_texts:
-                try:
-                    text_lower = text.lower()
-                    # Use case-insensitive XPath contains on normalized text
-                    xpath = (
-                        f"//*[contains("
-                        f"translate(normalize-space(.), "
-                        f"'ABCDEFGHIJKLMNOPQRSTUVWXYZ', "
-                        f"'abcdefghijklmnopqrstuvwxyz'), "
-                        f"'{text_lower}')]"
-                    )
-                    matches = self.driver.find_elements(By.XPATH, xpath)
-                    # Extra guard: only count visible elements to avoid hidden ad units
-                    visible = [m for m in matches if m.is_displayed()]
-                    if visible:
-                        self.logger.info("captcha_detected_via_text", text=text)
-                        return True
-                except:
-                    continue
-
-            # 4. Look for the "Meta" challenge container or specific elements
-            captcha_indicators = [
-                'img[src*="captcha"]',
-                'input[name="captcha_response"]',
-                '.rc-anchor',
-                '#captcha_image',
-                'header img[alt="Meta"]',
-                '.g-recaptcha',
-                '#recaptcha',
-                '#shredder-iframe', # Internal FB captcha iframe
-                'div[id*="captcha"]'
-            ]
-            for selector in captcha_indicators:
-                if self.driver.find_elements(By.CSS_SELECTOR, selector):
-                    self.logger.info("captcha_detected_via_selector", selector=selector)
-                    return True
-            
-            return False
-        except: return False
-
-    def _try_solve_captcha(self):
-        """Bypass CAPTCHA using 2Captcha if API key is present."""
-        api_key = os.getenv("TWO_CAPTCHA_API_KEY")
-        if not api_key:
-            self.logger.error("captcha_solver_missing_api_key", msg="Please add TWO_CAPTCHA_API_KEY to your .env to bypass the Meta challenge.")
-            return False
-
-        try:
-            from twocaptcha import TwoCaptcha
-            solver = TwoCaptcha(api_key)
-            self.logger.info("attempting_captcha_solve_via_2captcha")
-            
-            # Try to find reCAPTCHA site key first
-            site_key = None
-            try:
-                # Primary method: check for the recaptcha iframe src
-                iframes = self.driver.find_elements(By.CSS_SELECTOR, 'iframe[src*="recaptcha/api2/anchor"]')
-                if iframes:
-                    src = iframes[0].get_attribute('src')
-                    match = re.search(r'k=([^&]+)', src)
-                    if match: site_key = match.group(1)
-            except: pass
-
-            if not site_key:
-                try:
-                    # Secondary method: look for data-sitekey attribute in DOM
-                    elements = self.driver.find_elements(By.CSS_SELECTOR, '[data-sitekey]')
-                    if elements:
-                        site_key = elements[0].get_attribute('data-sitekey')
-                except: pass
-
-            if site_key:
-                self.logger.info("solving_recaptcha", site_key=site_key)
-                result = solver.recaptcha(sitekey=site_key, url=self.driver.current_url)
-                code = result['code']
-                
-                # Use JS to inject the code into all possible reCAPTCHA response fields
-                self.driver.execute_script(f"""
-                    const fields = document.querySelectorAll('[id^="g-recaptcha-response"], [name^="g-recaptcha-response"]');
-                    fields.forEach(f => {{
-                        f.innerHTML = "{code}";
-                        f.value = "{code}";
-                        f.style.display = 'block'; // Ensure it's not hidden
-                    }});
-                """)
-                
-                # Check for callbacks
-                try:
-                    self.driver.execute_script("""
-                        if (typeof(onCaptchaFinished) === 'function') { onCaptchaFinished(); }
-                        if (typeof(___grecaptcha_cfg) !== 'undefined') {
-                            Object.keys(___grecaptcha_cfg.clients).forEach(clientId => {
-                                const client = ___grecaptcha_cfg.clients[clientId];
-                                Object.keys(client).forEach(prop => {
-                                    if (client[prop] && client[prop].callback) {
-                                        client[prop].callback();
-                                    }
-                                });
-                            });
-                        }
-                    """) 
-                except:
-                    # Fallback: Click verify button if callback is not found
-                    try:
-                        verify_btn = self.driver.find_element(By.ID, "recaptcha-verify-button")
-                        verify_btn.click()
-                    except: pass
-                
-                self.logger.info("recaptcha_solved_successfully")
-                time.sleep(5)
-                return True
-            
-            # Fallback: Check for Image CAPTCHA (Normal)
-            captcha_img = None
-            image_selectors = [
-                'img[src*="captcha"]', 
-                '#captcha_image', 
-                'img[alt="Captcha"]',
-                'img[src*="checkpoint/dyi"]',
-                'img.captcha'
-            ]
-            for selector in image_selectors:
-                try:
-                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                    if elements and elements[0].is_displayed():
-                        captcha_img = elements[0]
-                        break
-                except: continue
-                
-            if captcha_img:
-                self.logger.info("solving_image_captcha")
-                # Wait for image to load
-                time.sleep(2)
-                # Take element screenshot
-                captcha_path = "/tmp/fb_captcha.png"
-                captcha_img.screenshot(captcha_path)
-                
-                result = solver.normal(captcha_path)
-                code = result['code']
-                self.logger.info("image_captcha_solved", code=code)
-                
-                # Find input field to enter the code
-                input_field = None
-                input_selectors = [
-                    'input[name="captcha_response"]', 
-                    'input#captcha_response', 
-                    'input[type="text"]',
-                    'input.captcha_input'
-                ]
-                for selector in input_selectors:
-                    try:
-                        inputs = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                        # Find the first visible/interactable one
-                        for inp in inputs:
-                            if inp.is_displayed():
-                                input_field = inp
-                                break
-                        if input_field: break
-                    except: continue
-                
-                if input_field:
-                    input_field.clear()
-                    input_field.send_keys(code)
-                    time.sleep(1)
-                    
-                    # Instead of .submit(), try to find the "Continue" or "Submit" button
-                    submitted = False
-                    submit_selectors = [
-                        'button[type="submit"]',
-                        'input[type="submit"]',
-                        'button#checkpointSubmitButton',
-                        '//button[contains(., "Continue")]',
-                        '//button[contains(., "Submit")]',
-                        '//button[contains(., "Next")]',
-                        '//button[contains(., "Continuar")]',
-                        '//button[contains(., "Confirm")]',
-                        '//button[contains(., "Entrar")]',
-                        '//div[@role="button" and (contains(., "Continue") or contains(., "Continuar"))]'
-                    ]
-                    
-                    for sel in submit_selectors:
-                        try:
-                            if sel.startswith('//'):
-                                btn = self.driver.find_element(By.XPATH, sel)
-                            else:
-                                btn = self.driver.find_element(By.CSS_SELECTOR, sel)
-                                
-                            if btn.is_displayed():
-                                self.driver.execute_script("arguments[0].click();", btn)
-                                self.logger.info("captcha_submit_button_clicked", selector=sel)
-                                submitted = True
-                                break
-                        except: continue
-                        
-                    if not submitted:
-                        # Fallback: Send Enter key
-                        self.logger.info("no_submit_button_found_sending_enter")
-                        input_field.send_keys(Keys.ENTER)
-                        
-                    time.sleep(5)
-                    return True
-                else:
-                    self.logger.error("could_not_find_captcha_input_field")
-            
-            self.logger.error("could_not_extract_any_captcha_type")
-            return False
-        except Exception as e:
-            self.logger.error("captcha_solver_error", error=str(e))
+                self.driver.save_screenshot("/tmp/fb_login_crash.png")
+            except Exception:
+                pass
             return False
 
     def _handle_cookie_banners(self):
-        cookie_selectors = [
+        for xpath in [
             "//button[contains(., 'Allow all cookies')]",
-            "//button[contains(., 'Allow essential and optional cookies')]",
             "//button[contains(., 'Accept All')]",
-            "//button[contains(., 'Accept all')]",
             "//button[contains(., 'Only allow essential cookies')]",
-            "//button[contains(., 'Decline optional cookies')]",
-            "//button[@data-cookiebanner='accept_button']",
-            "//button[@id='cookie_banner_accept_button']",
-            "//button[contains(., 'Permitir todos os cookies')]",
-            "//button[contains(., 'Allow all')]"
-        ]
-        for xpath in cookie_selectors:
+        ]:
             try:
                 btns = self.driver.find_elements(By.XPATH, xpath)
                 if btns:
@@ -1266,588 +1339,224 @@ class FacebookScraper(BaseScraper):
                     time.sleep(0.5)
                     try:
                         btns[0].click()
-                    except:
+                    except Exception:
                         self.driver.execute_script("arguments[0].click();", btns[0])
-                    self.logger.info("cookie_banner_clicked", xpath=xpath)
                     time.sleep(2)
                     break
-            except: continue
+            except Exception:
+                continue
 
     def _fill_credentials(self, email, password, retry_count=0):
-        """Fill email and password fields, handling popups and interactability issues."""
         if retry_count > 3:
-            self.logger.error("max_fill_retries_reached_aborting")
             return False
-            
         try:
-            self.logger.info("filling_credentials", url=self.driver.current_url)
-            # 1. Enter Email
             email_field = None
-            email_selectors = [
-                'input[name="email"]', 
-                'input[data-testid="royal_email"]',
-                '#email', 
-                'input[type="text"]', 
-                'input[placeholder*="Email"]', 
-                'input[aria-label*="email"]'
-            ]
-            
-            for selector in email_selectors:
+            for selector in [
+                'input[name="email"]',
+                '#email',
+                'input[type="text"]',
+                'input[placeholder*="Email"]',
+            ]:
                 try:
                     email_field = WebDriverWait(self.driver, 10).until(
                         EC.presence_of_element_located((By.CSS_SELECTOR, selector))
                     )
-                    if email_field.is_displayed(): 
-                        self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", email_field)
-                        time.sleep(1)
+                    if email_field.is_displayed():
                         break
-                except: continue
-                
-            if not email_field:
-                url = self.driver.current_url
-                
-                # Check for "Login with Profile" screen (LN Test)
-                try:
-                    profile_name = self.driver.find_element(By.XPATH, "//div[contains(text(), 'LN Test')]")
-                    if profile_name.is_displayed():
-                        self.logger.info("profile_login_screen_detected", profile="LN Test")
-                        profile_name.click()
-                        time.sleep(2)
-                except: pass
+                except Exception:
+                    continue
 
-                self.logger.warning("email_field_not_found", url=url, title=self.driver.title)
-                if self._is_captcha_present():
-                    self.logger.warning("captcha_detected_during_fill_credentials")
-                    self._try_solve_captcha()
-                    return self._fill_credentials(email, password, retry_count + 1)
-                
-                if "cookie" in url.lower() or "consent" in url.lower():
-                    self.logger.info("looks_like_cookie_consent_landing_page")
-                    self._handle_cookie_banners()
-                    time.sleep(3)
-                    return self._fill_credentials(email, password, retry_count + 1)
-                
-                raise ValueError(f"Could not find email field on page: {url}")
-                
-            # Use JS to focus and clear to avoid focus issues
+            if not email_field:
+                raise ValueError(f"Email field not found on {self.driver.current_url}")
+
             self.driver.execute_script("arguments[0].focus();", email_field)
             self.driver.execute_script("arguments[0].value = '';", email_field)
             time.sleep(0.5)
+            for char in email:
+                email_field.send_keys(char)
+                time.sleep(random.uniform(0.04, 0.12))
 
-            # Try to type normally first, fallback to JS if it fails
-            try:
-                for char in email:
-                    email_field.send_keys(char)
-                    time.sleep(random.uniform(0.04, 0.12))
-                self.logger.info("email_typed_standard")
-            except Exception as e:
-                self.logger.warning("email_typing_standard_failed_using_js", error=str(e))
-                self.driver.execute_script("arguments[0].value = arguments[1];", email_field, email)
-
-            # 2. Enter Password
             password_field = None
-            password_selectors = [
-                'input[name="pass"]', 
-                'input[data-testid="royal_pass"]',
-                '#pass', 
-                'input[type="password"]', 
-                'input[placeholder*="Password"]', 
-                'input[aria-label*="password"]'
-            ]
-            
-            for selector in password_selectors:
+            for selector in ['input[name="pass"]', '#pass', 'input[type="password"]']:
                 try:
                     password_field = self.driver.find_element(By.CSS_SELECTOR, selector)
-                    if password_field.is_displayed(): 
-                        self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", password_field)
-                        time.sleep(1)
+                    if password_field.is_displayed():
                         break
-                except: continue
-                
+                except Exception:
+                    continue
+
             if not password_field:
-                raise ValueError("Could not find password field.")
-                
+                raise ValueError("Password field not found.")
+
             self.driver.execute_script("arguments[0].focus();", password_field)
             self.driver.execute_script("arguments[0].value = '';", password_field)
             time.sleep(0.5)
+            for char in password:
+                password_field.send_keys(char)
+                time.sleep(random.uniform(0.04, 0.12))
 
-            try:
-                for char in password:
-                    password_field.send_keys(char)
-                    time.sleep(random.uniform(0.04, 0.12))
-                self.logger.info("password_typed_standard")
-            except Exception as e:
-                self.logger.warning("password_typing_standard_failed_using_js", error=str(e))
-                self.driver.execute_script("arguments[0].value = arguments[1];", password_field, password)
-            
-            # 3. Click Login
             login_btn = None
-            login_selectors = ['button[name="login"]', 'button[type="submit"]', 'input[type="submit"]', '[data-testid="royal_login_button"]']
-            
-            for selector in login_selectors:
-                try:
-                    login_btn = self.driver.find_element(By.CSS_SELECTOR, selector)
-                    if login_btn.is_displayed(): 
-                        self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", login_btn)
-                        time.sleep(1)
-                        break
-                except: continue
-                
-            if not login_btn:
-                # Last resort: look for any button with "Log In"
-                try:
-                    login_btn = self.driver.find_element(By.XPATH, "//button[contains(., 'Log In')] | //button[contains(., 'Entrar')]")
-                except: pass
-                
-            if not login_btn:
-                raise ValueError("Could not find login button.")
-                
-            self.logger.info("clicking_login_button")
-            try:
-                # Try clicking normally with a shorter wait
-                WebDriverWait(self.driver, 5).until(EC.element_to_be_clickable(login_btn))
-                login_btn.click()
-            except Exception as e:
-                self.logger.warning("click_standard_failed_using_js", error=str(e))
-                self.driver.execute_script("arguments[0].click();", login_btn)
-                
-            return True
-        except Exception as e:
-            url = self.driver.current_url
-            title = self.driver.title
-            self.logger.error("credential_fill_failed", error=str(e), url=url, title=title)
-            
-            # Diagnostic: Log page source and save screenshot
-            try:
-                source_snippet = self.driver.page_source[:2000].replace('\n', ' ')
-                self.logger.info("page_source_snippet", source=source_snippet)
-                
-                dump_path = "/tmp/fb_fill_fail.png"
-                self.driver.save_screenshot(dump_path)
-                self.logger.info("debug_screenshot_saved", path=dump_path)
-            except: pass
-
-            # Check for captcha one last time if failed
-            if retry_count < 2 and self._is_captcha_present():
-                self.logger.warning("captcha_detected_after_fill_failure_attempting_solve")
-                if self._try_solve_captcha():
-                    time.sleep(5)
-                    return self._fill_credentials(email, password, retry_count + 1)
-            return False
-
-    def _save_cookies(self):
-        """Save current driver cookies to MongoDB using UserCredentialManager."""
-        try:
-            cookies = self.driver.get_cookies()
-            if not cookies:
-                self.logger.warning("no_cookies_found_in_browser_nothing_to_save")
-                return None
-            
-            if self.user_email:
-                manager = UserCredentialManager()
-                # Remove existing (as per "remove then save" preference for efficiency/cleanliness)
-                manager.delete_cookies(self.user_email, 'facebook')
-                manager.save_cookies(self.user_email, 'facebook', cookies)
-                self.logger.info("cookies_saved_to_mongodb", user=self.user_email)
-            else:
-                # Fallback to local file if no user context
-                cookie_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 
-                                         "cookies", "facebook_cookies.json")
-                os.makedirs(os.path.dirname(cookie_file), exist_ok=True)
-                with open(cookie_file, 'w') as f:
-                    json.dump(cookies, f, indent=2)
-                self.logger.info("cookies_saved_to_file_fallback", path=cookie_file)
-                
-            return cookies
-        except Exception as e:
-            self.logger.error("failed_to_save_cookies", error=str(e))
-            return None
-
-    def _is_logged_in(self):
-        """Check if session is authenticated."""
-        try:
-            # Log state for debugging
-            current_url = self.driver.current_url.lower()
-            page_title = self.driver.title
-            
-            # Check current URL first
-            if "login" in current_url or "checkpoint" in current_url or "confirmemail" in current_url:
-                self.logger.debug("login_check_failed_due_to_url", url=current_url)
-                return False
-
-            # Check for profile link, account menu, or home feed indicators
-            if "home.php" in current_url:
-                self.logger.debug("login_confirmed_via_url", url=current_url)
-                return True
-
-            indicators = [
-                'div[aria-label*="Account"]',
-                'div[aria-label*="Your profile"]',
-                'a[href*="/me/"]',
-                'svg[aria-label="Your profile"]',
-                'a[aria-label="Home"]',
-                'div[aria-label*="Stories"]',
-                '[role="feed"]',
-                'div[aria-label*="What\'s on your mind?"]', # Feed indicator
-                'a[href="/"]'
-            ]
-            for inc in indicators:
-                if self.driver.find_elements(By.CSS_SELECTOR, inc):
-                    self.logger.debug("login_confirmed_via_indicator", selector=inc)
-                    return True
-            
-            # Fallback: check if the "Log In" button exists (if it does, we are NOT logged in)
-            login_buttons = [
+            for selector in [
                 'button[name="login"]',
-                'a[href*="/login"]',
-            ]
-            for btn_sel in login_buttons:
-                if self.driver.find_elements(By.CSS_SELECTOR, btn_sel):
-                    return False
-                     
-            return False
-        except Exception as e:
-            self.logger.debug("is_logged_in_check_error", error=str(e))
-            return False
+                'button[type="submit"]',
+                'input[type="submit"]',
+                '[data-testid="royal_login_button"]',
+                '[aria-label="Log In"]',
+                '[aria-label="Log in"]',
+            ]:
+                try:
+                    el = self.driver.find_element(By.CSS_SELECTOR, selector)
+                    if el.is_displayed():
+                        login_btn = el
+                        break
+                except Exception:
+                    continue
 
-    def scrape(self, target: str = None, **kwargs) -> List[ScrapedLead]:
-        """Main scraping method using Selenium."""
-        limit = kwargs.get('limit', 15)
-        # Handle limit -1 as unlimited
-        if limit == -1:
-            target_posts = 999999
-        else:
-            target_posts = limit if limit and limit > 0 else 999999
-            
-        headless = kwargs.get('headless', self.headless_default)
-        extracted_leads = []
-        
-        email = kwargs.get('email') or os.getenv('FACEBOOK_EMAIL')
-        password = kwargs.get('password') or os.getenv('FACEBOOK_PASSWORD')
-        
-        if target_posts == 999999:
-            self.logger.info("starting_unlimited_scrape")
-        else:
-            self.logger.info("starting_limited_scrape", limit=target_posts)
-        
-        try:
-            self._init_driver(headless=headless)
-            
-            # Try loading cookies first
-            session_ok = self._load_cookies()
-            
-            # Handle expired cookies: If loaded but not logged in, clear them
-            if not session_ok and self.cookies and self.user_email:
-                self.logger.warning("facebook_cookies_expired_removing_stale_record", user=self.user_email)
-                UserCredentialManager().delete_cookies(self.user_email, 'facebook')
-            
-            # If cookies fail but we have credentials, try to login (Automatic Rotation)
-            if not session_ok and email and password:
-                self.logger.info("attempting_automatic_session_rotation", user=self.user_email)
-                session_ok = self.login(email, password)
-            
-            if not session_ok:
-                self.logger.error("failed_to_establish_authenticated_session")
-                raise ValueError("Facebook authentication failed. Please update credentials or cookies.")
-            
-            self.logger.info("navigating_to_target", url=target)
-            self.driver.get(target)
-            
-            # Allow more time for initial load and redirects (e.g. share links)
-            time.sleep(8)
-            
-            # Check for redirect or login wall
-            current_url = self.driver.current_url
-            if 'login' in current_url or 'checkpoint' in current_url:
-                self.logger.warning("login_wall_detected", url=current_url)
-            
-            self._close_popups()
-            
-            last_height = self.driver.execute_script("return document.body.scrollHeight")
-            scroll_count = 0
-            no_change_count = 0
-            consecutive_no_new_posts = 0
-            last_batch_save = 0
-            
-            while len(extracted_leads) < target_posts:
-                self.logger.info("scroll_iteration", 
-                               scroll=scroll_count, 
-                               extracted=len(extracted_leads), 
-                               target=target_posts,
-                               no_change=no_change_count)
-                
-                # Perform scrolling
-                self._scroll_smoothly(scroll_count=scroll_count)
-                
-                # Expand "See more" buttons
-                self._expand_see_more_buttons()
-                
-                # Wait for content to load - Facebook is heavy
-                time.sleep(2.5)
-                
-                # Broadened selectors for Facebook's dynamic UI
-                selectors = [
-                    'div[role="feed"] div[role="article"]',
-                    'div[role="main"] div[role="article"]',
-                    'div[role="article"]',
-                    'div[aria-posinset]', # Very reliable for FB posts
-                    'div[data-testid="fbfeed_story"]',
-                    'div.x1yztpqf.x17906v1', # Common feed item container
-                    'div[data-ad-preview="message"]'
-                ]
-                
-                articles = []
-                for selector in selectors:
-                    articles = self.driver.find_elements(By.CSS_SELECTOR, selector)
-                    if articles:
-                        self.logger.debug("articles_found_with_selector", selector=selector, count=len(articles))
-                        break
-                    
-                if not articles:
-                    # Debug: Log what IS in the feed if nothing was found
+            if not login_btn:
+                for xpath in [
+                    "//button[contains(., 'Log In')]",
+                    "//button[contains(., 'Log in')]",
+                    "//button[contains(., 'Entrar')]",
+                    "//input[@type='submit']",
+                ]:
                     try:
-                        feed_content = self.driver.execute_script("return document.body.innerText.substring(0, 500);")
-                        self.logger.debug("no_articles_found_body_preview", preview=feed_content)
-                        # Try to find any div with substantial text
-                        divs = self.driver.find_elements(By.CSS_SELECTOR, 'div[dir="auto"]')
-                        if divs:
-                            self.logger.debug("found_generic_divs_instead", count=len(divs))
-                            # Fallback to these divs if they look like posts
-                            articles = [d for d in divs[:20] if len(d.text) > 50]
-                    except: pass
-                    
-                self.logger.info("articles_found_in_dom", count=len(articles))
-                
-                posts_before = len(extracted_leads)
-                
-                for article in articles:
-                    if len(extracted_leads) >= target_posts:
-                        break
-                        
-                    try:
-                        # Extract link with more patterns
-                        link = None
-                        # Priority order: most specific post-URL patterns first.
-                        # NOTE: /group/ is intentionally omitted — it matches group nav links,
-                        # not individual posts, and would give the group page as the source_url.
-                        link_selectors = [
-                            'a[href*="/posts/"]',
-                            'a[href*="/permalink/"]',
-                            'a[href*="/photos/"]',
-                            'a[href*="/videos/"]',
-                            'a[href*="/reel/"]',
-                            'a[href*="fbid="]',
-                            'a[href*="story_fbid="]',
-                        ]
-                        
-                        for sel in link_selectors:
-                            try:
-                                els = article.find_elements(By.CSS_SELECTOR, sel)
-                                for e in els:
-                                    href = e.get_attribute('href') or ''
-                                    if 'facebook.com' not in href or any(x in href for x in ['#', 'javascript:']):
-                                        continue
-                                    # Store the COMPLETE URL exactly as Facebook serves it.
-                                    # No splitting, no stripping — full URL with all query
-                                    # params (fbid, story_fbid, __cft__, etc.) is preserved.
-                                    link = href
-                                    break
-                                if link: break
-                            except: continue
-                        
-                        # Extract post text
-                        post_text = self._extract_post_content_only(article)
-                        text_hash = post_text[:200].strip() if post_text else ""
-                        
-                        # VALIDATION: Skip if no valid link found (as per User requirement)
-                        # We do not create custom/fallback URLs; missing links are skipped.
-                        if not link:
-                            self.logger.debug("skipping_article_no_link")
-                            continue
-                        
-                        # Skip if we've seen this URL
-                        if link and link in self.seen_urls:
-                            continue
-                        
-                        # Skip if we've seen this text (for posts without fixed URLs)
-                        # We use a longer hash for better uniqueness
-                        if not link and text_hash and text_hash in self.seen_texts:
-                            continue
-                        
-                        # Mark as seen
-                        if link: 
-                            self.seen_urls.add(link)
-                        if text_hash: 
-                            self.seen_texts.add(text_hash)
-                        
-                        # Extract other data
-                        title = post_text.split('\n')[0][:100] if post_text else "No Title"
-                        post_date = self._extract_exact_post_date(article)
-                        
-                        # Extract images
-                        images = []
-                        imgs = article.find_elements(By.CSS_SELECTOR, 'img')
-                        for im in imgs:
-                            src = im.get_attribute('src')
-                            if src and not any(x in src.lower() for x in ['emoji', 'static', 'px']):
-                                images.append(src)
-                        images = list(dict.fromkeys(images))
-                        
-                        # Create raw item
-                        raw_item = {
-                            'id': f'post_{len(self.seen_urls)}',
-                            'title': title,
-                            'text': post_text,
-                            'post_date': post_date,
-                            'link': link,
-                            'images': images,
-                            'image_count': len(images),
-                            'video_count': 0,
-                            'has_media': bool(images),
-                            'word_count': len(post_text.split()) if post_text else 0,
-                            'scraped_at': datetime.now().isoformat()
-                        }
-                        
-                        if (lead := self.parse_item(raw_item, 
-                                                   custom_keywords=kwargs.get('keywords'),
-                                                   exclude_keywords=kwargs.get('exclude_keywords'),
-                                                   custom_indicators=kwargs.get('custom_indicators'))):
-                            extracted_leads.append(lead)
-                            self.logger.debug("post_extracted", 
-                                            total=len(extracted_leads),
-                                            text_preview=post_text[:50])
-                            
-                    except Exception as e:
-                        self.logger.debug("failed_to_extract_article", error=str(e))
+                        el = self.driver.find_element(By.XPATH, xpath)
+                        if el.is_displayed():
+                            login_btn = el
+                            break
+                    except Exception:
                         continue
 
-                # Check if we got new posts
-                posts_after = len(extracted_leads)
-                new_posts_this_iteration = posts_after - posts_before
-                
-                if new_posts_this_iteration == 0:
-                    consecutive_no_new_posts += 1
-                    self.logger.info("no_new_posts_iteration", consecutive=consecutive_no_new_posts)
-                else:
-                    consecutive_no_new_posts = 0
-                    self.logger.info("new_posts_found", count=new_posts_this_iteration)
-                    
-                    # Batch save every 25 posts to MongoDB during the scrape
-                    if len(extracted_leads) >= last_batch_save + 25:
-                        self.logger.info("intermediate_batch_save_triggered", 
-                                       count=len(extracted_leads),
-                                       batch_size=len(extracted_leads) - last_batch_save)
-                        try:
-                            scraper_cap = self.scraper_name.capitalize()
-                            # Save to both raw and final collections
-                            self.save_leads(extracted_leads, collection=f"{scraper_cap}_raw_data")
-                            self.save_leads(extracted_leads, collection=f"{scraper_cap}_final_data")
-                            last_batch_save = len(extracted_leads)
-                        except Exception as e:
-                            self.logger.error("intermediate_batch_save_failed", error=str(e))
-                
-                # If we haven't found new posts in 4 scrolls, we assume we reached the end or are blocked
-                if consecutive_no_new_posts >= 4:
-                    self.logger.warning("no_new_posts_for_multiple_scrolls_stopping_scrape")
-                    break
-                
-                # Check if reached target
-                if len(extracted_leads) >= target_posts:
-                    self.logger.info("target_reached", extracted=len(extracted_leads))
-                    break
-                    
-                # Check page height changes
-                new_height = self.driver.execute_script("return document.body.scrollHeight")
-                
-                if new_height <= last_height:
-                    no_change_count += 1
-                    self.logger.info("no_height_change", count=no_change_count)
-                    
-                    # Be even more patient - Facebook feed can be very slow
-                    if no_change_count >= 20: 
-                        self.logger.info("end_of_content_reached_confirmed")
-                        break
-                    
-                    # Try more aggressive unsticking after 5 fails
-                    if no_change_count > 5:
-                        self.logger.info("forcing_content_load_via_alternative_scroll")
-                        # Scroll UP then DOWN
-                        self.driver.execute_script("window.scrollBy(0, -1500);")
-                        time.sleep(1)
-                        self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                        time.sleep(3)
-                        # Also click the body just in case
-                        try:
-                            self.driver.find_element(By.TAG_NAME, "body").click()
-                        except: pass
-                else:
-                    no_change_count = 0
-                    last_height = new_height
-                
-                scroll_count += 1
-                
-                # Safety limit
-                if scroll_count > 200:
-                    self.logger.info("safety_scroll_limit_reached")
-                    break
-                
-            self.logger.info("scraping_completed", total_posts=len(extracted_leads))
-            
+            if not login_btn:
+                # Last resort — JS-click the first visible submit-like element
+                try:
+                    self.driver.execute_script("""
+                        const btn = Array.from(
+                            document.querySelectorAll('button,input[type=submit]')
+                        ).find(el => el.offsetParent !== null);
+                        if (btn) btn.click();
+                    """)
+                    self.logger.warning("login_btn_not_found_used_js_fallback")
+                    return True
+                except Exception:
+                    raise ValueError("Login button not found.")
+
+            try:
+                WebDriverWait(self.driver, 5).until(EC.element_to_be_clickable(login_btn))
+                login_btn.click()
+            except Exception:
+                self.driver.execute_script("arguments[0].click();", login_btn)
+
+            return True
         except Exception as e:
-            err_str = str(e).lower()
-            # "tab crashed" / "no such session" means Chrome OOM'd in Docker.
-            # Treat it as a graceful early-exit: return whatever we already collected
-            # rather than raising and losing all progress.
-            if any(sig in err_str for sig in ['tab crashed', 'no such session', 'invalid session']):
-                self.logger.warning(
-                    "chrome_tab_crashed_returning_partial_results",
-                    collected=len(extracted_leads),
-                    error=str(e)
+            self.logger.error("credential_fill_failed", error=str(e))
+            return False
+
+    def _is_captcha_present(self):
+        try:
+            current_url = self.driver.current_url.lower()
+            if any(x in current_url for x in ["checkpoint", "challenge", "captcha"]):
+                return True
+            for iframe in self.driver.find_elements(By.TAG_NAME, "iframe"):
+                try:
+                    src = iframe.get_attribute("src") or ""
+                    if any(x in src.lower() for x in ["recaptcha", "captcha", "hcaptcha", "arkoselabs"]):
+                        return True
+                except Exception:
+                    continue
+            for selector in [
+                'img[src*="captcha"]',
+                'input[name="captcha_response"]',
+                ".g-recaptcha",
+                "#recaptcha",
+            ]:
+                if self.driver.find_elements(By.CSS_SELECTOR, selector):
+                    return True
+            return False
+        except Exception:
+            return False
+
+    def _try_solve_captcha(self):
+        api_key = os.getenv("TWO_CAPTCHA_API_KEY")
+        if not api_key:
+            self.logger.error("captcha_solver_missing_api_key")
+            return False
+        try:
+            from twocaptcha import TwoCaptcha
+            solver = TwoCaptcha(api_key)
+            site_key = None
+            try:
+                iframes = self.driver.find_elements(
+                    By.CSS_SELECTOR, 'iframe[src*="recaptcha/api2/anchor"]'
                 )
-            else:
-                self.logger.error("scraping_failed", error=str(e))
-                traceback.print_exc()
-                raise  # Re-raise only for genuine unexpected errors
-        finally:
-            self.quit()
-                
-        return extracted_leads
+                if iframes:
+                    src = iframes[0].get_attribute("src")
+                    match = re.search(r"k=([^&]+)", src)
+                    if match:
+                        site_key = match.group(1)
+            except Exception:
+                pass
 
+            if site_key:
+                result = solver.recaptcha(sitekey=site_key, url=self.driver.current_url)
+                code = result["code"]
+                self.driver.execute_script(f"""
+                    document.querySelectorAll('[id^="g-recaptcha-response"]').forEach(f => {{
+                        f.innerHTML = "{code}";
+                        f.value = "{code}";
+                        f.style.display = 'block';
+                    }});
+                """)
+                time.sleep(5)
+                return True
+            return False
+        except Exception as e:
+            self.logger.error("captcha_solver_error", error=str(e))
+            return False
 
-if __name__ == "__main__":
-    # Standard setup to allow running this file directly for the "Hybrid" approach
-    from dotenv import load_dotenv
-    import sys
-    
-    # Add project root to path so imports work
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if project_root not in sys.path:
-        sys.path.append(project_root)
-        
-    load_dotenv()
-    
-    # Configure basic logging for standalone run
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-    
-    # Get target from env or default
-    target_url = os.getenv('FACEBOOK_TARGET_URL', 'https://www.facebook.com/groups/712316496457199')
-    print(f"\n🚀 Starting HYBRID Facebook Scraper")
-    print(f"📍 Target: {target_url}\n")
-    
-    scraper = FacebookScraper()
-    
-    # In hybrid mode, we can run with headless=False to debug locally
-    results = scraper.run(
-        target=target_url, 
-        limit=10, 
-        headless=False,
-        save_to_db=True
-    )
-    
-    print(f"\n✅ Scraping session finished!")
-    print(f"📊 Extracted {len(results)} posts.")
-    if results:
-        print(f"📝 Sample Title: {results[0].title[:50]}...")
+    # ── Legacy parse_item kept for compatibility ──────────────────────────────
+
+    def parse_item(
+        self,
+        raw_data: Dict[str, Any],
+        custom_keywords: Optional[str] = None,
+        exclude_keywords: Optional[list] = None,
+        custom_indicators: Optional[list] = None,
+    ) -> Optional[FacebookLead]:
+        """Legacy parse path — still available for callers that use it directly."""
+        try:
+            text = f"{raw_data.get('title', '')} {raw_data.get('text', '')}"
+            is_buyer = _is_valid_lead(text)
+            is_us, location = _is_us_location(text)
+            if not is_us:
+                is_buyer = False
+            score = _score_lead(text)
+            category = _classify_category(text)
+
+            return FacebookLead(
+                source_url=raw_data.get("link"),
+                source_id=raw_data.get("id"),
+                title=raw_data.get("title"),
+                description=raw_data.get("text"),
+                posted_date=raw_data.get("post_date") or None,
+                author_name=raw_data.get("author_name"),
+                author_url=raw_data.get("author_url"),
+                location=location if is_us else None,
+                category=category,
+                intent_score=score,
+                images=raw_data.get("images", []),
+                videos=raw_data.get("videos", []),
+                image_count=raw_data.get("image_count", 0),
+                video_count=raw_data.get("video_count", 0),
+                has_media=raw_data.get("has_media", False),
+                word_count=raw_data.get("word_count", 0),
+                is_buyer_request=is_buyer,
+                extra_data={
+                    "raw_date": raw_data.get("post_date"),
+                    "scraped_at": raw_data.get("scraped_at"),
+                },
+            )
+        except Exception as e:
+            self.logger.warning("failed_to_create_facebook_lead", error=str(e))
+            return None
+

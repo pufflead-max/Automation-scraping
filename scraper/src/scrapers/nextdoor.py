@@ -33,10 +33,9 @@ except ImportError:
 class NextdoorScraper(BaseScraper):
     """Scraper for Nextdoor service posts supporting both Playwright and Selenium."""
     
-    def __init__(self, cookies: Optional[Dict[str, str]] = None, proxy_override: Optional[Dict[str, str]] = None, **kwargs):
+    def __init__(self, cookies: Optional[Dict[str, str]] = None, **kwargs):
         super().__init__("nextdoor", **kwargs)
         self.cookies = cookies or {}
-        self.proxy_override = proxy_override
         self.user_email = os.getenv("NEXTDOOR_EMAIL")
         
         # Load cookie file if path provided
@@ -161,8 +160,6 @@ class NextdoorScraper(BaseScraper):
     def login_selenium(self, email: str, password: str, **kwargs) -> List[Dict[str, Any]]:
         """Log in to Nextdoor using Selenium and return cookies (Proxies disabled)."""
         headless = kwargs.get('headless', True)
-        # Proxy usage disabled per user request
-        proxy_data = None 
         
         chrome_options = Options()
         if headless:
@@ -263,18 +260,7 @@ class NextdoorScraper(BaseScraper):
         collected_posts = {}
         
         with sync_playwright() as p:
-            # ── TEMPORARY: disabled proxy for nextdoor scraper ─────────────────────
-            proxy_config = None
-            """
-            _proxy_server = os.getenv("PROXY_SERVER")
-            _proxy_user   = os.getenv("PROXY_USER")
-            _proxy_pass   = os.getenv("PROXY_PASS")
-            proxy_config = None
-            if _proxy_server and _proxy_user and _proxy_pass:
-                _server_url = f"http://{_proxy_server}" if "://" not in _proxy_server else _proxy_server
-                proxy_config = {"server": _server_url, "username": _proxy_user, "password": _proxy_pass}
-                self.logger.info("proxy_enabled_for_scraper", server=_proxy_server)
-            """
+
 
             launch_args = {"headless": True}
             if chrome_bin := os.getenv("CHROME_BIN"):
@@ -287,8 +273,6 @@ class NextdoorScraper(BaseScraper):
                 'user_agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'ignore_https_errors': True
             }
-            if proxy_config:
-                context_args['proxy'] = proxy_config
 
             context = browser.new_context(**context_args)
             

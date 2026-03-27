@@ -1,4 +1,4 @@
-"""Base scraper class with common functionality  ."""
+"""Base scraper class with common functionality."""
 
 import uuid, os, requests, time
 from abc import ABC, abstractmethod
@@ -15,7 +15,6 @@ try:
     from ..integrations.ghl import GHLClient
     from ..utils.lead_enrichment import LeadEnricher
     from ..utils.mappings import get_mapping_manager
-    from ..utils.image_ocr import scan_images_for_seller
 except (ImportError, ValueError):
     try:
         from logger import ScraperLogger
@@ -25,11 +24,8 @@ except (ImportError, ValueError):
         from integrations.ghl import GHLClient
         from utils.lead_enrichment import LeadEnricher
         from utils.mappings import get_mapping_manager
-        from utils.image_ocr import scan_images_for_seller
     except ImportError:
-        # Final fallback for unusual Airflow pathing
         import sys
-        import os
         sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
         from logger import ScraperLogger
         from database import DatabaseManager, get_db_manager
@@ -38,7 +34,6 @@ except (ImportError, ValueError):
         from integrations.ghl import GHLClient
         from utils.lead_enrichment import LeadEnricher
         from utils.mappings import get_mapping_manager
-        from utils.image_ocr import scan_images_for_seller
 
 class BaseScraper(ABC):
     def __init__(self, scraper_name: str, db_manager: Optional[DatabaseManager] = None):
@@ -47,7 +42,7 @@ class BaseScraper(ABC):
         self.ghl = GHLClient(self.ghl_cfg['api_key'], self.ghl_cfg['location_id']) if self.ghl_cfg.get('api_key') else None
         self.current_job = None
         self.scraped_items = []
-        self.user_email = None  # Store current user context
+        self.user_email = None
         self.logger.info("init", scraper=scraper_name)
     
     @abstractmethod
@@ -87,17 +82,9 @@ class BaseScraper(ABC):
     def save_leads(self, leads: List[ScrapedLead], col: str = "leads") -> int:
         if not leads: return 0
         try:
-            # 1. Ensure Index for fast lookups
             self.db.get_collection(col).create_index("source_url", background=True)
-            
-            # 2. Convert to dicts for bulk update
-            # We no longer filter by existing_urls here because we want to allow 
-            # existing leads to be updated with enriched information (like dates).
             leads_to_save = [l.model_dump() for l in leads]
-            
-            if not leads_to_save:
-                return 0
-                
+            if not leads_to_save: return 0
             count = self.db.bulk_upsert(col, leads_to_save, key="source_url")
             self.logger.info("leads_saved", col=col, count=count)
             return count
@@ -107,181 +94,63 @@ class BaseScraper(ABC):
     def run(self, target: str, save: bool = True, **kw) -> List[ScrapedLead]:
         user_data = kw.get('user_data')
         if user_data:
-            self.user_email = user_data.get('email')
+            user_profile = user_data.get('user') if 'user' in user_data else user_data
+            self.user_email = user_profile.get('email')
             
         self.start_job(target, kw.get('category'))
         try:
             leads = self.scrape(target, **kw)
             self.scraped_items = leads
             
-            print(f"\nDEBUG [{self.name}]: Scraped {len(leads)} leads from target: {target} (BEFORE 48h filter)")
-            # 1. Decorate ALL leads with user metadata and fresh scraped_date
-            for i, l in enumerate(leads):
+            # Decorate leads with user metadata
+            for l in leads:
                 l.scraped_date = datetime.utcnow()
                 l.target_url = target
                 if user_data:
-                    l.user_email = user_data.get('user', {}).get('email')
-                    l.user_name = user_data.get('user', {}).get('name')
-                    l.user_phone = user_data.get('user', {}).get('phone')
+                    user_profile = user_data.get('user') if 'user' in user_data else user_data
+                    l.user_email = user_profile.get('email')
+                    l.user_name  = user_profile.get('name')
+                    l.user_phone = user_profile.get('phone')
                     l.extra_data = l.extra_data or {}
                     l.extra_data['user_detail'] = user_data
-                
-                print(f"  [{i+1}/{len(leads)}] RAW_LEAD_JSON: {l.model_dump_json()}")
-            
-            # 2. ── Age Filter: Drop leads older than 48 hours ─────────────────
+
+            # Age Filter (48h)
             age_limit = datetime.utcnow() - timedelta(hours=48)
             fresh_leads = []
-            stale_count = 0
             for l in leads:
                 posted = getattr(l, 'posted_date', None)
                 if posted:
-                    try:
-                        # Normalize to naive datetime if timezone-aware
-                        if hasattr(posted, 'tzinfo') and posted.tzinfo is not None:
-                            posted = posted.replace(tzinfo=None)
-                        elif isinstance(posted, str):
-                            from dateutil import parser as dateparser
-                            posted = dateparser.parse(posted)
-                            if posted and posted.tzinfo:
-                                posted = posted.replace(tzinfo=None)
-                    except Exception:
-                        posted = None
-
-                    if posted and posted < age_limit:
-                        stale_count += 1
-                        self.logger.debug("lead_too_old_skipped",
-                                          url=getattr(l, 'source_url', ''),
-                                          age_hours=round((datetime.utcnow() - posted).total_seconds() / 3600, 1))
+                    if hasattr(posted, 'tzinfo') and posted.tzinfo is not None:
+                        posted = posted.replace(tzinfo=None)
+                    if posted < age_limit:
                         continue
                 fresh_leads.append(l)
-
-            if stale_count:
-                self.logger.info("stale_leads_dropped", count=stale_count, kept=len(fresh_leads))
             leads = fresh_leads
 
-            # 3. ── Global Enrichment: OCR + AI ───────────────────────────────
-            ai = None
-            try:
-                from utils.ai_classifier import get_ai_classifier
-                ai = get_ai_classifier()
-            except Exception as e:
-                self.logger.warning("ai_classifier_unavailable", error=str(e))
-
+            # Enrichment & Vertical Matching
             user_allowed_slugs = set()
             mapper = None
             if user_data and user_data.get('verticals'):
                 try:
                     mapper = get_mapping_manager()
-                    user_allowed_slugs = {
-                        mapper._resolve_vertical_slug(v)
-                        for v in user_data.get('verticals', [])
-                    }
-                    self.logger.info("user_verticals_loaded",
-                                     email=self.user_email, slugs=list(user_allowed_slugs))
-                except Exception as e:
-                    self.logger.warning("failed_to_load_user_verticals", error=str(e))
+                    user_allowed_slugs = {mapper._resolve_vertical_slug(v) for v in user_data.get('verticals', [])}
+                except Exception: pass
 
             for l in leads:
                 text = f"{l.title or ''} {l.description or ''}".strip()
-                if not text:
-                    continue
-
-                # ── OCR Image Scan: Detect seller signals hidden in images ───
-                # Skip if already hard-rejected by regex to save processing time
-                ocr_blocked = False
-                if l.is_buyer_request: 
-                    images = getattr(l, 'images', [])
-                    if images:
-                        try:
-                            # Use list of images if available, else just thumbnail
-                            image_urls = images if isinstance(images, list) else [images]
-                            if scan_images_for_seller(image_urls):
-                                ocr_blocked = True
-                                l.is_buyer_request = False
-                                self.logger.info("ocr_blocked_seller_post", 
-                                               url=getattr(l, 'source_url', ''),
-                                               platform=self.name)
-                        except Exception as e:
-                            self.logger.debug("ocr_scan_failed", error=str(e))
-
-                # ── AI Classification ────────────────────────────────────────
-                if ai:
-                    try:
-                        # Get user's verticals names (not slugs) for better AI understanding
-                        user_v_names = user_data.get('verticals', ["Home Services"]) if user_data else ["Home Services"]
-                        
-                        result = ai.classify_lead(
-                            post_text=text, 
-                            verticals=user_v_names,
-                            platform=self.name,
-                            location=getattr(l, 'location', 'unknown')
-                        )
-                        
-                        is_qualified = result.get('is_qualified_lead', False)
-                        detected_vertical = result.get('vertical')
-
-                        # ── CRITICAL: Hard-rejects (Regex/OCR) cannot be overridden by AI ──
-                        if not l.is_buyer_request and is_qualified:
-                            self.logger.debug(
-                                "ai_overridden_by_hard_reject",
-                                url=getattr(l, 'source_url', ''),
-                                ai_said=True,
-                                reason="Regex or OCR hard-rejected this post — AI override blocked"
-                            )
-                            is_qualified = False
-
-                        l.is_buyer_request = is_qualified
-                        l.vertical = detected_vertical
-                        
-                        # Verify the vertical match against user's allowed slugs
-                        if is_qualified and detected_vertical and user_allowed_slugs and mapper:
-                            detected_slug = mapper._resolve_vertical_slug(detected_vertical)
-                            l.is_vertical_match = (detected_slug in user_allowed_slugs)
-                        else:
-                            l.is_vertical_match = is_qualified
-
-                        l.is_spam = not is_qualified
-                        l.extra_data = l.extra_data or {}
-                        l.extra_data['ai_reason'] = result.get('reason')
-                        l.extra_data['ai_confidence'] = result.get('confidence')
-                    except Exception as e:
-                        l.is_spam = not l.is_buyer_request
-                        self.logger.warning("ai_classification_failed", url=getattr(l, 'source_url', ''), error=str(e))
+                if not text: continue
+                l.vertical = LeadEnricher.extract_vertical(text)
+                if user_allowed_slugs and mapper and l.vertical:
+                    l.is_vertical_match = (mapper._resolve_vertical_slug(l.vertical) in user_allowed_slugs)
                 else:
-                    # Fallback if AI is unavailable (Legacy detection)
-                    detected_vertical = LeadEnricher.extract_vertical(text)
-                    l.vertical = detected_vertical
-                    if user_allowed_slugs and mapper and detected_vertical:
-                        detected_slug = mapper._resolve_vertical_slug(detected_vertical)
-                        l.is_vertical_match = (detected_slug in user_allowed_slugs)
-                    else:
-                        l.is_vertical_match = True
+                    l.is_vertical_match = True
 
-                self.logger.debug("lead_flagged_final",
-                                  url=getattr(l, 'source_url', ''),
-                                  is_buyer=l.is_buyer_request,
-                                  is_spam=l.is_spam,
-                                  vertical=l.vertical)
-
-            # 4. Save leads to MongoDB collections
+            # Persistence
             if save and leads:
-                # Always save everything to raw collection
                 self.save_leads(leads, f"{self.name.capitalize()}_raw_data")
-                
-                # Filter results for "Final" data (Buyer, Matching Vertical, Not Spam)
-                final_leads = [
-                    l for l in leads 
-                    if l.is_buyer_request and l.is_vertical_match and not l.is_spam
-                ]
-                
+                final_leads = [l for l in leads if l.is_buyer_request and l.is_vertical_match]
                 if final_leads:
                     self.save_leads(final_leads, f"{self.name.capitalize()}_final_data")
-                    self.logger.info("final_leads_saved", count=len(final_leads))
-
-                buyers = sum(1 for l in leads if l.is_buyer_request)
-                self.logger.info("leads_processed_and_saved",
-                                 total=len(leads), buyers=buyers, final=len(final_leads), 
-                                 spam=sum(1 for l in leads if l.is_spam))
 
             self.complete_job("completed")
             return leads

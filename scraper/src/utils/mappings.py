@@ -232,15 +232,83 @@ class MappingManager:
                     cl_urls.append(f"{base_url}?query={city_query}")
 
                 # 3. Facebook Dynamic Search URLs
-                v_config = self.get_vertical_config(v_slug)
+                # Use the exact query formats requested for maximum buyer intent
+                _RECENT_FILTER = (
+                    "eyJyZWNlbnRfcG9zdHM6MCI6IntcIm5hbWVcIjpcInJlY2VudF9wb3N0c1wiLFwiYXJncyI6"
+                    "XCJcIn0ifQ%3D%3D"
+                )
+                
+                search_query_templates = {
+                    "plumbing": [
+                        "need a plumber in {city}",
+                        "looking for plumber {city}",
+                        "need a plumber in {city}",
+                        "need plumber in {city}",
+                        "pipe leak repair needed",
+                        "water leak repair help",
+                    ],
+                    "electrical": [
+                        "need an electrician in {city}",
+                        "looking for electrician {city}",
+                        "need electrician in {city}",
+                        "electrical issue help needed",
+                        "wiring problem need help",
+                    ],
+                    "painting": [
+                        "need a painter {city}",
+                        "looking for house painter",
+                        "recommend a good painter",
+                        "need painting done {city}",
+                    ],
+                    "carpentry": [
+                        "need a carpenter {city}",
+                        "furniture repair help needed",
+                        "woodwork repair needed",
+                    ],
+                    "landscaping": [
+                        "need landscaping help {city}",
+                        "lawn care service needed",
+                        "garden cleanup help needed",
+                    ],
+                    "cleaning": [
+                        "need house cleaning service",
+                        "looking for cleaning service {city}",
+                        "deep cleaning help needed",
+                    ],
+                    "flooring": [
+                        "need flooring installation {city}",
+                        "floor repair help needed",
+                        "tile installation help needed",
+                    ],
+                    "fencing": [
+                        "need fence installation {city}",
+                        "fence repair help needed",
+                    ],
+                    "asphalt_paving": [
+                        "need driveway paving {city}",
+                        "asphalt repair help needed",
+                    ],
+                    "kitchen_and_bath": [
+                        "need kitchen renovation {city}",
+                        "bathroom renovation help needed",
+                        "home renovation contractor needed",
+                    ],
+                }
+                
                 fb_urls = []
-                if v_config and v_config.get("keywords"):
-                    # Use lead keywords for searches
-                    keywords = v_config.get("keywords")[:3]
-                    for kw in keywords:
-                        # Create search URL for Facebook
-                        query_str = f"{kw} {user_city}".replace(" ", "%20")
-                        fb_urls.append(f"https://www.facebook.com/search/posts?q={query_str}")
+                templates = search_query_templates.get(v_slug, [])
+                if templates:
+                    for template in templates:
+                        q = template.format(city=user_city).replace(" ", "%20")
+                        fb_urls.append(f"https://www.facebook.com/search/top?q={q}&filters={_RECENT_FILTER}")
+                else:
+                    # Fallback for unknown verticals
+                    v_config = self.get_vertical_config(v_slug)
+                    if v_config and v_config.get("keywords"):
+                        keywords = v_config.get("keywords")[:3]
+                        for kw in keywords:
+                            q = f"need a {kw} in {user_city}".replace(" ", "%20")
+                            fb_urls.append(f"https://www.facebook.com/search/top?q={q}&filters={_RECENT_FILTER}")
 
 
                 results.append({

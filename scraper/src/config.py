@@ -31,9 +31,6 @@ class Settings(BaseSettings):
     google_sheet_id: Optional[str] = Field(default=None, description="Google Spreadsheet ID")
     google_credentials_path: str = Field(default="google_credentials.json")
 
-    # Ollama Cloud
-    ollama_cloud_url: str = Field(default="http://localhost:11434/api/chat")
-    ollama_cloud_model: str = Field(default="qwen2.5:7b")
 
     # Bright Data Proxy (Legacy)
     brightdata_proxy_server: Optional[str] = None
@@ -108,7 +105,9 @@ def get_scraper_config() -> dict:
             "brightdata_proxy_pass": s.brightdata_proxy_pass,
             "proxy_server": s.proxy_server,
             "proxy_user": s.proxy_user,
-            "proxy_pass": s.proxy_pass}
+            "proxy_pass": s.proxy_pass,
+            "google_sheet_id": s.google_sheet_id,
+            "google_credentials_path": s.google_credentials_path}
 def get_proxy_list() -> List[Dict[str, str]]:
     """Read proxies from proxies.txt and return as a list of dictionaries."""
     # Current dir is scraper/src/

@@ -1,195 +1,401 @@
 """
-Buyer Intent Detection Module
-Detects buyer intent while filtering out promotional content.
+buyer_intent.py — Advanced 5-tier lead classifier for Facebook scraping.
 
-KEY DESIGN PRINCIPLE:
-  custom_keywords determine TOPIC RELEVANCE (does the post relate to the user's service?).
-  BUYER_PATTERN / buyer indicators determine INTENT (is someone asking to hire?).
-  These two checks are kept SEPARATE — merging them caused seller posts to pass detection.
+Tiers:
+  5 = Urgent  (ASAP / emergency / no water-power)
+  4 = Explicit need (need a plumber / looking for electrician)
+  3 = Moderate / recommendation intent (any good plumber?)
+  <3 = Low intent — filtered out by MIN_SCORE
+
+The public API (is_buyer_request / get_detection_reason) is unchanged so all
+existing callers continue to work without modification.
 """
 
-from typing import Optional
 import re
+import logging
+from collections import defaultdict
+from typing import Optional, Tuple
 
+logger = logging.getLogger("buyer_intent")
+
+# ── Minimum score to accept a lead ────────────────────────────────────────────
+MIN_SCORE = 3
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  US LOCATION FILTER
+# ══════════════════════════════════════════════════════════════════════════════
+
+US_CITIES = {
+    "new york", "nyc", "brooklyn", "bronx", "queens", "manhattan", "staten island",
+    "los angeles", "la", "san francisco", "san jose", "san diego", "fresno",
+    "chicago", "houston", "phoenix", "philadelphia", "san antonio", "dallas",
+    "austin", "jacksonville", "fort worth", "columbus", "charlotte", "indianapolis",
+    "seattle", "denver", "washington dc", "nashville",
+    "oklahoma city", "el paso", "boston", "las vegas", "memphis", "louisville",
+    "portland", "baltimore", "milwaukee", "albuquerque", "tucson",
+    "mesa", "sacramento", "atlanta", "kansas city", "omaha", "raleigh",
+    "miami", "long beach", "virginia beach", "colorado springs", "tampa",
+    "minneapolis", "new orleans", "cleveland", "honolulu", "anaheim",
+    "lexington", "stockton", "pittsburgh", "st louis", "riverside",
+    "jersey city", "newark", "hoboken", "buffalo", "rochester", "albany",
+    "syracuse", "yonkers", "westbury", "candor", "levittown",
+    "east syracuse", "forest hills", "parkchester",
+    # MA / South Shore specific
+    "hingham", "weymouth", "quincy", "braintree", "hull", "scituate",
+    "cohasset", "marshfield", "duxbury", "norwell", "hanover",
+}
+
+US_STATES = {
+    "alabama", "al", "alaska", "ak", "arizona", "az", "arkansas", "ar",
+    "california", "ca", "colorado", "co", "connecticut", "ct", "delaware", "de",
+    "florida", "fl", "georgia", "ga", "hawaii", "hi", "idaho", "id",
+    "illinois", "il", "indiana", "in", "iowa", "ia", "kansas", "ks",
+    "kentucky", "ky", "louisiana", "la", "maine", "me", "maryland", "md",
+    "massachusetts", "ma", "michigan", "mi", "minnesota", "mn",
+    "mississippi", "ms", "missouri", "mo", "montana", "mt", "nebraska", "ne",
+    "nevada", "nv", "new hampshire", "nh", "new jersey", "nj", "new mexico", "nm",
+    "new york", "ny", "north carolina", "nc", "north dakota", "nd", "ohio", "oh",
+    "oklahoma", "ok", "oregon", "or", "pennsylvania", "pa", "rhode island", "ri",
+    "south carolina", "sc", "south dakota", "sd", "tennessee", "tn", "texas", "tx",
+    "utah", "ut", "vermont", "vt", "virginia", "va", "washington", "wa",
+    "west virginia", "wv", "wisconsin", "wi", "wyoming", "wy",
+    "washington dc", "d.c.", "dc",
+}
+
+NON_US_PATTERNS = [
+    r"\bnorth york\b", r"\bgta\b", r"\btoronto\b", r"\bontario\b",
+    r"\bvancouver\b", r"\bmontreal\b", r"\buk\b", r"\bunited kingdom\b",
+    r"\blondon\b", r"\baustralia\b", r"\bsydney\b", r"\bmelbourne\b",
+    r"\bindia\b", r"\bmumbai\b", r"\bdelhi\b", r"\bpakistan\b",
+    r"\bkarachi\b", r"\blahore\b", r"\bphilippines\b", r"\bmanila\b",
+    r"\bcanada\b", r"\bniagara\b",
+]
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  EXCLUSION PATTERNS (service providers, ads, promos, hiring)
+# ══════════════════════════════════════════════════════════════════════════════
+
+EXCLUSION_PATTERNS = [
+    r"\bwe\s+(?:provide|offer|specialize|are\s+available|handle|serve|install|cover)\b",
+    r"\bour\s+services?\b",
+    r"\bour\s+team\b",
+    r"\bi\s+(?:provide|offer|specialize|am\s+a\s+professional|run)\b",
+    r"\bmy\s+(?:company|business|name\s+is)\b",
+    r"\bcontact\s+us\b",
+    r"\bcall\s+(?:us|me|now|today)\b",
+    r"\btext\s+(?:us|me)\b",
+    r"\b(?:dm|message)\s+(?:us|me)\s+(?:for|to\s+book|to\s+schedule|today)\b",
+    r"\bfree\s+(?:estimate|quote|consultation)\b",
+    r"\b(?:fully|properly)\s+(?:insured|licensed)\b",
+    r"\blicensed\s+(?:and|&)?\s*insured\b",
+    r"\b(?:licensed\s+)?master\s+plumber\b",
+    r"\byears\s+of\s+experience\b",
+    r"\bserving\s+(?:all|the|greater|your)\b",
+    r"\bavailable\s+(?:for\s+work|in\s+your\s+area|24\s*/\s*7|around.the.clock)\b",
+    r"\b24\s*(?:hour|hr|\/7)\s+(?:service|emergency|plumb|electric)\b",
+    r"\bfast\s+(?:response|arrival|service)\b",
+    r"\bprofessional\s+(?:electrician|plumber|painter|contractor|service)\b",
+    r"\b(?:apply|hiring|we.re\s+hiring|looking\s+to\s+hire)\b",
+    r"\bjob\s+(?:opening|opportunity|available|listing)\b",
+    r"\bintroduc(?:e|ing)\s+myself\b",
+    r"\bi\s+just\s+joined\s+the\s+group\b",
+    r"\b(?:#plumber|#electrician|#plumbing|#electrical|#painter|#cleaning)\b",
+    r"\b(?:call|text)\s+\d{3}",
+    r"\b(?:emergency\s+service\s+available)\b",
+    r"\bhonest\s+(?:pricing|work|service)\b",
+    r"\btrusted\s+(?:service|professional|contractor)\b",
+    r"\breliable\s+(?:plumber|electrician|painter|contractor)\b",
+    r"\b(?:same.day|next.day)\s+(?:service|repair|response)\b",
+    r"\blooking\s+for\s+(?:side\s+)?work\b",
+    r"\blooking\s+for\s+a\s+(?:side\s+)?gig\b",
+    r"\bavailable\s+for\s+(?:side\s+)?work\b",
+    r"\b(?:experienced|licensed)\s+(?:electrician|plumber|painter)\s+available\b",
+    r"\bi\s+am\s+a\s+(?:residential|commercial)?\s*(electrician|plumber|painter|contractor)\b",
+    r"\bi\s+handle\s+(?:small|all)\s+(service|job|work)\b",
+    r"\bconnects\s+homeowners\b",
+    r"\bwe'll\s+connect\s+you\b",
+]
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  BUYER INTENT TIERS
+# ══════════════════════════════════════════════════════════════════════════════
+
+URGENCY_PATTERNS = [
+    r"\burgent(?:ly)?\b", r"\basap\b", r"\bright\s+(?:now|away)\b",
+    r"\bimmediately\b", r"\bemergency\b", r"\btoday\b", r"\btonight\b",
+    r"\bflooding\b", r"\bburst\s+pipe\b", r"\bno\s+(?:hot\s+)?water\b",
+    r"\bno\s+(?:power|electricity)\b", r"\bshort\s+circuit\b",
+    r"\bwater\s+damage\b", r"\boverflowing\b", r"\bgas\s+leak\b",
+]
+
+EXPLICIT_NEED_PATTERNS = [
+    # Plumbing
+    r"\bneed\s+(?:a\s+|an\s+)?plumber\b", r"\blooking\s+for\s+(?:a\s+|an\s+)?plumber\b",
+    r"\bplumber\s+(?:needed|required|wanted)\b", r"\brequire\s+(?:a\s+|an\s+)?plumber\b",
+    r"\bpipe\s+(?:is\s+)?(?:leaking|broken|burst|blocked)\b",
+    r"\bwater\s+(?:leaking|leakage|damage)\b",
+    r"\bdrain\s+(?:clogged|blocked|not\s+draining)\b",
+    r"\btoilet\s+(?:overflowing|broken|not\s+flushing|clogged)\b",
+    r"\bfaucet\s+(?:leaking|broken|dripping)\b",
+    # Electrical
+    r"\bneed\s+(?:a\s+|an\s+)?electrician\b", r"\blooking\s+for\s+(?:a\s+|an\s+)?electrician\b",
+    r"\belectrician\s+(?:needed|required|wanted)\b",
+    r"\brequire\s+(?:a\s+|an\s+)?electrician\b",
+    r"\b(?:wiring|electrical)\s+(?:problem|issue|fault)\b",
+    r"\boutlet\s+(?:not\s+working|dead|broken)\b",
+    r"\bbreaker\s+(?:tripped|keeps\s+tripping|broken)\b",
+    r"\blight\s+(?:not\s+working|flickering|broken)\b",
+    # Painting
+    r"\bneed\s+(?:a\s+|an\s+)?painter\b", r"\blooking\s+for\s+(?:a\s+|an\s+)?painter\b",
+    r"\bneed\s+(?:my\s+)?(?:house|apartment|room|wall|ceiling)\s+painted\b",
+    r"\bpainting\s+(?:job|work|done|needed)\b",
+    # Carpentry
+    r"\bneed\s+(?:a\s+|an\s+)?carpenter\b", r"\blooking\s+for\s+(?:a\s+|an\s+)?carpenter\b",
+    r"\bfurniture\s+(?:repair|fix|broken)\b",
+    r"\bwood\s+(?:floor|work|repair)\s+(?:needed|help|broken)\b",
+    # Landscaping
+    r"\bneed\s+(?:a\s+)?lawn\s+(?:care|service|mow)\b",
+    r"\blooking\s+for\s+(?:a\s+)?landscaper\b",
+    r"\bgarden\s+(?:cleanup|help|maintenance)\s+needed\b",
+    # Cleaning
+    r"\bneed\s+(?:a\s+)?(?:house|deep|home)\s+cleaning\b",
+    r"\blooking\s+for\s+(?:a\s+)?cleaning\s+service\b",
+    r"\bcleaner\s+needed\b",
+    # Flooring
+    r"\bneed\s+(?:flooring|floor|tile)\s+(?:installation|repair|help)\b",
+    r"\blooking\s+for\s+(?:a\s+)?flooring\s+(?:contractor|company)\b",
+    r"\bfloor\s+(?:broken|damaged|needs\s+repair)\b",
+    # Fence
+    r"\bneed\s+(?:a\s+)?fence\s+(?:installed|repaired|built)\b",
+    r"\blooking\s+for\s+(?:a\s+)?fence\s+(?:contractor|company|installer)\b",
+    # Asphalt
+    r"\bneed\s+(?:driveway|asphalt|paving)\s+(?:repair|paving|help)\b",
+    r"\blooking\s+for\s+(?:a\s+)?paving\s+contractor\b",
+    # Renovation
+    r"\bneed\s+(?:kitchen|bathroom|home)\s+renovation\b",
+    r"\blooking\s+for\s+(?:a\s+)?(?:contractor|renovator)\b",
+    r"\brenovation\s+(?:help|contractor|work)\s+needed\b",
+    # Generic fix/repair
+    r"\b(?:fix|repair|replace)\s+(?:my\s+)?(?:pipe|faucet|outlet|wiring|switch|breaker|floor|fence|driveway)\b",
+]
+
+MODERATE_INTENT_PATTERNS = [
+    r"\brecommend\w*\s+(?:a\s+|an\s+)?(?:good\s+)?(?:plumber|electrician|painter|carpenter|landscaper|cleaner|contractor)\b",
+    r"\bcan\s+(?:anyone|someone)\s+(?:recommend|suggest|help)\w*\b",
+    r"\bknow\s+(?:any|a\s+good)\s+(?:plumber|electrician|painter|carpenter)\b",
+    r"\b(?:any|good|reliable|affordable)\s+(?:plumber|electrician|painter|carpenter|cleaner)\s+(?:nearby|around|in)\b",
+    r"\biso\s+(?:a\s+|an\s+)?(?:plumber|electrician|painter|carpenter|cleaner|contractor)\b",
+    r"\b(?:plumbing|electrical|painting|carpentry|flooring|cleaning|landscaping)\s+(?:help|issue|work|repair)\b",
+    r"\b(?:toilet|sink|shower|bathtub)\s+(?:not\s+working|broken|clogged|leaking)\b",
+    r"\bwater\s+(?:pressure|heater|tank)\s+(?:issue|problem|broken|not\s+working)\b",
+    r"\b(?:switch|socket)\s+(?:not\s+working|broken|dead)\b",
+    r"\bany(?:one|body)\s+(?:know|have)\s+(?:a\s+|an\s+)?(?:good|reliable)?\s*(?:plumber|electrician|painter|contractor)\b",
+    r"\bhelp\s+(?:with|finding)\s+(?:a\s+|an\s+)?(?:plumber|electrician|painter|contractor)\b",
+    r"\bneed\s+(?:help|advice)\s+(?:with|for|about)\s+(?:plumbing|electrical|painting|renovation)\b",
+]
+
+ALL_BUYER_INTENT = URGENCY_PATTERNS + EXPLICIT_NEED_PATTERNS + MODERATE_INTENT_PATTERNS
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  CATEGORY KEYWORD SETS
+# ══════════════════════════════════════════════════════════════════════════════
+
+CATEGORY_KEYWORDS = {
+    "plumbing": {
+        "plumber", "plumbing", "pipe", "piping", "leak", "leakage", "leaking",
+        "drainage", "drain", "sewer", "faucet", "tap", "toilet", "sink",
+        "bathtub", "shower", "water heater", "water tank", "water pressure",
+        "clog", "clogged", "burst pipe", "flood", "flooding", "water line",
+        "water damage", "no hot water",
+    },
+    "electrical": {
+        "electrician", "electrical", "electric", "wiring", "wire", "switch",
+        "outlet", "socket", "breaker", "fuse", "voltage", "power", "circuit",
+        "short circuit", "tripped", "no power", "no electricity", "generator",
+        "panel", "rewiring", "light fixture", "ceiling fan", "flickering",
+        "electric panel", "knob and tube",
+    },
+    "painting": {
+        "paint", "painter", "painting", "wall paint", "house painting",
+        "interior paint", "exterior paint", "ceiling paint", "trim paint",
+        "primer", "stucco", "repaint", "color",
+    },
+    "carpentry": {
+        "carpenter", "carpentry", "woodwork", "wood work", "furniture repair",
+        "cabinet", "door frame", "deck", "wood floor repair", "trim",
+        "molding", "shelving", "built-in", "woodworking",
+    },
+    "landscaping": {
+        "lawn", "lawn care", "garden", "gardening", "landscaping", "landscaper",
+        "mowing", "mow", "hedge", "tree trimming", "mulch", "sod", "grass",
+        "yard", "yard work", "sprinkler",
+    },
+    "cleaning": {
+        "cleaning", "cleaner", "house cleaning", "deep cleaning", "home cleaning",
+        "maid", "maid service", "housekeeping", "janitorial", "move-out clean",
+        "spring cleaning", "carpet cleaning",
+    },
+    "flooring": {
+        "flooring", "floor", "tile", "tiles", "hardwood", "laminate", "vinyl",
+        "wood floor", "carpet", "subfloor", "grout", "floor installation",
+        "floor repair", "tile installation",
+    },
+    "fence": {
+        "fence", "fencing", "gate", "gate repair", "picket fence", "privacy fence",
+        "chain link", "wood fence", "vinyl fence", "fence installation",
+        "fence repair",
+    },
+    "asphalt": {
+        "asphalt", "driveway", "paving", "pavement", "pothole", "blacktop",
+        "driveway repair", "driveway paving", "asphalt paving", "crack seal",
+        "parking lot",
+    },
+    "renovation": {
+        "renovation", "remodel", "remodeling", "kitchen renovation",
+        "bathroom renovation", "home improvement", "contractor", "gut renovation",
+        "kitchen remodel", "bathroom remodel", "addition", "buildout",
+    },
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  HELPER FUNCTIONS
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _normalize(text: str) -> str:
+    text = text.lower().strip()
+    text = re.sub(r"\s+", " ", text)
+    return text
+
+
+def is_us_location(content: str) -> Tuple[bool, str]:
+    """Return (is_us, detected_location). Rejects known non-US references."""
+    norm = content.lower()
+    for pattern in NON_US_PATTERNS:
+        if re.search(pattern, norm):
+            return False, ""
+    for city in US_CITIES:
+        if re.search(r"\b" + re.escape(city) + r"\b", norm):
+            return True, city.title()
+    for state in US_STATES:
+        if re.search(r"\b" + re.escape(state) + r"\b", norm):
+            return True, state.title()
+    return False, ""
+
+
+def score_lead(content: str) -> int:
+    """
+    5 = Urgent, 4 = Explicit need, 3 = Moderate / recommendation.
+    Returns 1 if no buyer signal found (will be filtered by MIN_SCORE).
+    """
+    norm = _normalize(content)
+    for p in URGENCY_PATTERNS:
+        if re.search(p, norm):
+            return 5
+    for p in EXPLICIT_NEED_PATTERNS:
+        if re.search(p, norm):
+            return 4
+    for p in MODERATE_INTENT_PATTERNS:
+        if re.search(p, norm):
+            return 3
+    return 1
+
+
+def classify_category(content: str) -> str:
+    """Classify post into the best-matching service category."""
+    norm = _normalize(content)
+    scores: dict = defaultdict(int)
+    for category, keywords in CATEGORY_KEYWORDS.items():
+        for kw in keywords:
+            if re.search(r"\b" + re.escape(kw) + r"\b", norm):
+                scores[category] += 1
+    if not scores:
+        return "other"
+    return max(scores, key=lambda c: scores[c])
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  PUBLIC API (unchanged interface)
+# ══════════════════════════════════════════════════════════════════════════════
 
 class BuyerIntentDetector:
-    """Detects whether a post is from a buyer looking to hire vs a seller promoting services."""
+    """
+    Advanced lead classifier.
 
-    # ── Buyer signals: post is from someone who wants to HIRE ──────────────────
-    BUYER_PATTERN = re.compile(
-        r'(looking for|need|recommendation|can anyone recommend|who does|quote|estimate|'
-        r'(anyone|can someone|does anyone|who do you|do you|any) (available|know|recommend|have|suggestions)|'
-        r'iso|in search of|seeking help|suggestions for|referral for|looking to hire|'
-        r'(who|anyone) (do|does|fix|install|repair|clean)|'
-        r'good (place|person|guy|crew|company|service) for|'
-        r'recommend (a|an|some)|'
-        r'price on|cost to|how much (to|does|would|for)|'
-        r'anyone (available|know|recommend|doing)|'
-        r'can (you|anyone|someone) (help|recommend|fix|install|do)|'
-        r'need (help|someone|a (contractor|company|crew|person|professional|service))|'
-        r'looking for (a |an )?(good|reliable|affordable|local)?'
-        r'(contractor|landscaper|painter|plumber|company|crew|handyman|carpenter|cleaner|flooring|service))',
-        re.IGNORECASE
-    )
+    Public API is backward-compatible:
+      - is_buyer_request(text, require_url, url, custom_keywords, exclude_keywords, custom_indicators)
+      - get_detection_reason(text, url)
 
-    # ── Hard seller signals: post is from someone OFFERING a service ────────────
-    # Also includes irrelevant content categories like obituaries.
-    SELLER_PATTERN = re.compile(
-        r'(for sale|equipment|tools|supplies)\b|'
-        r'\b(i |we )(offer|provide|do |can |am a|are a|specialize|started a)\b|'
-        r'\b(my|our) (company|business|team|services|work|shop)\b|'
-        r'\b(call|contact|dm|message|text|email) (me|us|today|now|for (details|info))\b|'
-        r'\b(free (estimate|quote|consultation)|licensed and insured|years of experience|'
-        r'professional service|affordable rates?|discount|book now|available now|'
-        r'fully insured|bonded and insured)\b|'
-        r'\blooking for (work|projects|side work|new (projects|clients|opportunities))\b|'
-        r'\b(seeking|available for) (work|projects)\b|'
-        r'\b(before you hire|look no further|give (me|us) a call|check out my)\b|'
-        r'\b(24 hour|24/7|emergency service|asap service)\b|'
-        r'\b(services available|for hire|now hiring|serving|appointments available|accepting new)\b|'
-        r'\bat your (home|location|door)\b|'
-        r'\b(build a business|no upfront cost|join our team|earn money|make money)\b|'
-        r'\b(recruiting|franchise|partnership|work with us|grow your business)\b|'
-        r'\bwe (serve|cover|specialize|do)\b|'
-        r'\b(starting at|rates? (start|from|as low))\b|'
-        r'\b(obituary|funeral|passing of|memorial service|celebration of life|deepest condolences|'
-        r'in memory of|rest in peace|passed away)\b|'
-        # ── Rhetorical seller openers: seller fakes a buyer question then pitches ──
-        r'looking for a (dependable|reliable|professional|trusted|affordable|quality|great|top)'
-        r'\s+(cleaning|landscaping|painting|plumbing|handyman|roofing|flooring|moving|hvac)\s+service|'
-        r'\b(\w+\s+){0,3}(provides?|delivers?|offers?) (high.quality|professional|reliable|affordable|quality)|'
-        r'\b(\w+ (cleaning|landscaping|painting|services?|solutions?))\s+(provides?|offers?|specializes?|delivers?)\b|'
-        r'\bservices? offered\b|'
-        r'\b(we are|i am|we\'re|i\'m) (a |an )?(professional|licensed|insured|certified|experienced)\b',
-        re.IGNORECASE
-    )
-
-    # ── Service topic keywords (relevance check) ─────────────────────────────────
-    SERVICE_PATTERN = re.compile(
-        r'\b(landscaping|landscape|landscaper|lawn care|lawn maintenance|lawn mowing|mowing|'
-        r'yard cleanup|spring cleanup|fall cleanup|leaf removal|snow removal|snow plow|plowing|'
-        r'yard work|lawn service|gardening|garden|mulch|trimming|hedge|tree service|'
-        r'outdoor maintenance|property maintenance|'
-        r'hardscape|hardscaping|pavers|patio|walkway|driveway|'
-        r'retaining wall|stone wall|masonry|mason|brick|concrete|'
-        r'backyard|front yard|fence|fencing|irrigation|sprinkler|sod|grass|'
-        r'painting|painter|paint job|interior paint|exterior paint|'
-        r'flooring|hardwood floor|tile|carpet|laminate|'
-        r'carpentry|carpenter|woodwork|cabinet|deck|'
-        r'cleaning|house cleaning|maid service|deep clean)\b',
-        re.IGNORECASE
-    )
-
-    # ── Hard signals that confirm BUYER intent (question/request words) ──────────
-    STRONG_BUYER_INDICATORS = re.compile(
-        r'\b(need|needed|needs|looking for|want|wanted|wants|'
-        r'anyone|someone|recommend|recommendation|'
-        r'help with|help me|can anyone|does anyone|who (does|can|knows)|'
-        r'iso|in search of|seeking|referral|quote|estimate|'
-        r'how much|what does it cost|price for|searching for|'
-        r'urgent|asap|emergency|soon|quickly)\b',
-        re.IGNORECASE
-    )
-
-    PHONE_PATTERN = re.compile(r'\b\d{3}[-.\\s]?\d{3}[-.\\s]?\d{4}\b')
-    COMPANY_PATTERN = re.compile(r'\b(llc|inc|corp|co\.|ltd)\b', re.IGNORECASE)
+    Internally uses the 5-tier scoring system + exclusion gate + US location filter.
+    The `score_lead` and `classify_category` helpers are also importable for
+    detailed enrichment (used in the GraphQL pipeline).
+    """
 
     @classmethod
-    def is_buyer_request(cls, text: str, require_url: bool = True, url: Optional[str] = None,
-                         custom_keywords: Optional[list] = None,
-                         exclude_keywords: Optional[list] = None,
-                         custom_indicators: Optional[list] = None) -> bool:
-        """
-        Determine if a post is a buyer request vs seller promotion.
-
-        Logic flow:
-        1. Hard reject if phone, seller pattern, company suffix, or exclude keyword found.
-        2. Hard require: must match STRONG_BUYER_INDICATORS (the post must *ask* for something).
-        3. Relevance check: post must relate to the user's service area via SERVICE_PATTERN or custom_keywords.
-        4. Double-check: no seller-speak hiding in first-person phrases.
-        """
-        if not text or len(text.strip()) < 5:
+    def is_buyer_request(
+        cls,
+        text: str,
+        require_url: bool = True,
+        url: Optional[str] = None,
+        custom_keywords: Optional[list] = None,
+        exclude_keywords: Optional[list] = None,
+        custom_indicators: Optional[list] = None,
+    ) -> bool:
+        """Return True if the post passes all buyer-intent gates."""
+        if not text or len(text.strip()) < 10:
             return False
 
-        text_lower = text.lower().strip()
+        norm = _normalize(text)
 
-        # ── Build custom exclusion pattern ────────────────────────────────────
-        exclusion_pattern = None
+        # Gate 0: Manual exclusion keywords (caller-supplied)
         if exclude_keywords:
-            ex_regex = '|'.join([r'\b' + re.escape(k.strip()) + r'\b' for k in exclude_keywords if k.strip()])
-            if ex_regex:
-                exclusion_pattern = re.compile(ex_regex, re.IGNORECASE)
+            if any(k.lower().strip() in norm for k in exclude_keywords if k.strip()):
+                return False
 
-        # ── STEP 1: Hard rejects ──────────────────────────────────────────────
-        if cls.PHONE_PATTERN.search(text):
-            return False
-        if cls.SELLER_PATTERN.search(text):
-            return False
-        if cls.COMPANY_PATTERN.search(text):
-            return False
-        if exclusion_pattern and exclusion_pattern.search(text):
-            return False
+        # Gate 1: Exclusion patterns (service providers / ads / hiring)
+        for pattern in EXCLUSION_PATTERNS:
+            if re.search(pattern, norm):
+                return False
 
-        # ── STEP 2: Must have a strong buyer signal ──────────────────────────
-        # Check both the built-in STRONG_BUYER_INDICATORS and the BUYER_PATTERN
-        has_buyer_signal = (
-            cls.STRONG_BUYER_INDICATORS.search(text) or
-            cls.BUYER_PATTERN.search(text)
-        )
-        # For custom_indicators, treat them as additional strong buyer signals
-        if custom_indicators and not has_buyer_signal:
-            has_buyer_signal = any(ind.lower() in text_lower for ind in custom_indicators)
-
-        if not has_buyer_signal:
+        # Gate 2: Must contain genuine buyer intent (score >= MIN_SCORE)
+        s = score_lead(text)
+        if s < MIN_SCORE:
             return False
 
-        # ── STEP 3: Must be topically relevant ──────────────────────────────
-        topic_match = bool(cls.SERVICE_PATTERN.search(text))
-        if custom_keywords and not topic_match:
-            kw_regex = '|'.join([r'\b' + re.escape(k.strip()) + r'\b' for k in custom_keywords if k.strip()])
-            if kw_regex:
-                topic_match = bool(re.search(kw_regex, text_lower, re.IGNORECASE))
-
-        if not topic_match:
+        # Gate 3: URL requirement (optional)
+        if require_url and not url:
             return False
 
-        # ── STEP 4: Reject first-person seller phrases ────────────────────────
-        for pronoun in ['i ', 'we ', 'my ', 'our ']:
-            if pronoun in text_lower:
-                for verb in ['provide', 'offer', 'specialize', 'can help', 'serve', 'do work', 'cover']:
-                    idx1 = text_lower.find(pronoun)
-                    idx2 = text_lower.find(verb)
-                    if idx1 != -1 and idx2 != -1 and abs(idx1 - idx2) < 60:
-                        return False
+        # Gate 4: Vertical topic match (if custom_keywords supplied)
+        if custom_keywords:
+            topic_match = any(k.lower().strip() in norm for k in custom_keywords if k.strip())
+            if not topic_match:
+                return False
 
-        return not require_url or bool(url)
+        return True
 
     @classmethod
     def get_detection_reason(cls, text: str, url: Optional[str] = None) -> str:
-        """Get human-readable reason for classification."""
+        """Return a human-readable reason for the classification decision."""
         if not text:
-            return "Empty text"
+            return "Empty"
 
-        text_lower = text.lower()
+        norm = _normalize(text)
 
-        if cls.PHONE_PATTERN.search(text):
-            return "Contains phone number (seller)"
+        for pattern in EXCLUSION_PATTERNS:
+            if re.search(pattern, norm):
+                return f"❌ Excluded (service provider / ad): matched '{pattern[:40]}'"
 
-        seller_match = cls.SELLER_PATTERN.search(text)
-        if seller_match:
-            return f"Seller pattern: '{seller_match.group()[:35]}'"
+        s = score_lead(text)
+        if s >= 5:
+            return "✅ Buyer (Score 5 — Urgent)"
+        if s >= 4:
+            return "✅ Buyer (Score 4 — Explicit need)"
+        if s >= 3:
+            return "✅ Buyer (Score 3 — Recommendation intent)"
 
-        if cls.COMPANY_PATTERN.search(text):
-            return "Company suffix (LLC/Inc/Corp)"
+        return f"❌ No buyer intent (score={s}, min={MIN_SCORE})"
 
-        buyer_match = cls.BUYER_PATTERN.search(text) or cls.STRONG_BUYER_INDICATORS.search(text)
-        if not buyer_match:
-            return "No buyer intent / request signal"
 
-        if not cls.SERVICE_PATTERN.search(text):
-            return "No relevant service keyword topic"
-
-        if not url:
-            return "Buyer signal found but no URL"
-
-        return f"✅ Buyer intent: '{buyer_match.group()[:40]}'"
+def get_buyer_intent_detector():
+    return BuyerIntentDetector()

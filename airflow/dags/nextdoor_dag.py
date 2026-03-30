@@ -39,7 +39,7 @@ def _build_search_urls_for_mapping(mapper, m: dict) -> list:
 
 def load_nextdoor_urls(**context):
     dag_run = context.get('dag_run')
-    user_email_override = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
+    user_email_override = "pnm.lnweb@yopmail.com"
     
     from utils.mappings import get_mapping_manager
     mapper = get_mapping_manager()
@@ -97,7 +97,7 @@ def scrape_nextdoor_url(target_data, **kwargs):
     
     nd_config_onboarding = user_details.get("nextdoor", {})
     user_nd_config = user_details.get("scraping_config", {}).get("nextdoor", {}) if user_details else {}
-    max_pages = user_nd_config.get("max_pages", int(Variable.get("nextdoor_max_pages", default_var="5")))
+    max_pages = user_nd_config.get("max_pages", int(Variable.get("nextdoor_max_pages", default_var="3")))
     
     from utils.mappings import get_mapping_manager
     vertical_config = get_mapping_manager().get_vertical_config(vertical_slug) if vertical_slug else None

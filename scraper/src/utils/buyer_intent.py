@@ -94,16 +94,30 @@ NON_US_PATTERNS = [
     r"\bbirmingham,\s*uk\b", r"\bbirmingham,\s*england\b", r"\bwest midlands\b",
 ]
 
+STORY_STYLE_REJECT = [
+    r"\b(?:married|widower|housekeeper|shameful|wedding|secret|grandchildren|broke\s+his\s+heart|richest)\b",
+    r"\b(?:years\s+old|70-year-old|billionaire|bought\s+the\s+entire|clinic\s+doors|crying|tears)\b",
+    r"\b(?:like\s+and\s+follow|lucky\s+number|read\s+full\s+story|share\s+to\s+groups)\b",
+    r"\b(?:greedy|doctor|clinic|furious|hospital|poverty|wealthy)\b",
+    r"\b(?:surrendered\s+his\s+parents|track\s+down)\b",
+    r"\b(?:kill\s+command|urgent\s+foster|acc\s+manhattan|shelter\s+dog|kill\s+list)\b",
+    r"\b(?:amazon\s+wishlist|wishlist|trapped|stray|rescue\s+if\s+needed|feed\s+strays)\b",
+    r"\b(?:struggling\s+to\s+put\s+up|prioritized\s+his\s+home|family\s+the\s+privacy|building\s+department)\b",
+    r"\b(?:hosted\s+a\s+memorable\s+evening|special\s+evening\s+in\s+support|donated\s+to\s+programs|our\s+mission|strengthen\s+the\s+collective)\b",
+    r"\b(?:art\s+curator|social\s+entrepreneur|metropolitan\s+museum|museum\s+of\s+art|wandered\s+for\s+a\s+few\s+hours|human\s+experience)\b",
+    r"👇", r"✨", r"🔥", r"👉", r"✨", r"🏡", r"📩",
+]
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  EXCLUSION PATTERNS (service providers, ads, promos, hiring)
 # ══════════════════════════════════════════════════════════════════════════════
 
 EXCLUSION_PATTERNS = [
-    r"\b(?:we|i)\s+(?:provide|offer|specialize|are\s+available|handle|serve|install|cover|just\s+completed|rewire|finished|understand|have\s+been\s+out|visited|busy|completed|worked)\b",
-    r"\b(?:we've|we’ve|weve|i've|i’ve|ive)\s+(?:been|completed|just|finished)\b",
-    r"\bour\s+(?:services?|team|company|business|work|clients?|licensed|technicians|experts|electricians|plumbers|painters|installations?)\b",
-    r"\bi\s+(?:provide|offer|specialize|am\s+a\s+professional|run|do|handle|work\s+on|just\s+completed|rewired|installed)\b",
-    r"\bmy\s+(?:company|business|name\s+is|services?|work)\b",
+    r"\b(?:we|i)\s+(?:provide|offer|specialize|are\s+available|handle|serve|install|cover|just\s+completed|rewire|finished|understand|have\s+been\s+out|visited|busy|completed|worked|book)\b",
+    r"\b(?:we've|we’ve|weve|i've|i’ve|ive)\s+(?:been|completed|just|finished|got\s+you\s+covered)\b",
+    r"\bour\s+(?:services?|team|company|business|work|clients?|licensed|technicians|experts|electricians|plumbers|painters|installations?|schedule|spots)\b",
+    r"\bi\s+(?:provide|offer|specialize|am\s+a\s+professional|run|do|handle|work\s+on|just\s+completed|rewired|installed|have\s+my\s+own)\b",
+    r"\bmy\s+(?:company|business|name\s+is|services?|work|clients|schedule)\b",
     r"\bcontact\s+(?:us|me)\s+(?:for|at|today|now)\b",
     r"\bcall\s+(?:us|me|now|today|for\s+a\s+quote|for\s+estimate)\b",
     r"\btext\s+(?:us|me)\b",
@@ -503,7 +517,9 @@ ACCEPT ONLY IF:
 * The location is in the United States
 
 REJECT IF:
-* Any form of promotion or marketing
+* Any form of promotion or marketing (business services, "we provide", "book now")
+* Any long-form storytelling, AI-generated fictional stories, or emotional clickbait
+* Any animal rescue, shelter, "kill command", or pet adoption posts
 * Any service provider offering services
 * Any hiring or job-seeking post
 * Any unclear or vague intent
@@ -646,7 +662,13 @@ class BuyerIntentDetector:
 
         norm = _normalize(text)
         
-        prefilter_words = ["we provide", "our services", "contact us", "dm", "call now", "hiring", "job", "apply", "we offer", "special offer", "free estimate"]
+        # Immediate rejection of AI story-style spam and clickbait
+        for pattern in STORY_STYLE_REJECT:
+            if re.search(pattern, norm):
+                logger.info("prefilter_rejected", reason="AI story/spam pattern", pattern=pattern)
+                return False
+
+        prefilter_words = ["we provide", "our services", "contact us", "dm", "call now", "hiring", "job", "apply", "we offer", "special offer", "free estimate", "book today", "spots available", "schedule your service", "built robert", "amazon wishlist", "wishlist", "future home", "perfect for families", "schedule your tripping", "support of sacss", "memorable evening", "museum of art", "human experience"]
         for word in prefilter_words:
             if re.search(r"\b" + re.escape(word) + r"\b", norm):
                 logger.info("prefilter_rejected", word=word)

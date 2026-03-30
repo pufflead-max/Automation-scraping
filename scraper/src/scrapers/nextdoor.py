@@ -17,18 +17,14 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
-from .base import BaseScraper
-try:
-    from ..models import NextdoorLead, ScrapedLead
-    from ..utils.buyer_intent import BuyerIntentDetector
-    from ..user_credential_manager import UserCredentialManager
-    from ..utils.email_manager import EmailManager
-except ImportError:
-    from models import NextdoorLead, ScrapedLead
-    from utils.buyer_intent import BuyerIntentDetector
-    from user_credential_manager import UserCredentialManager
-    from utils.email_manager import EmailManager
+# Internal project imports (Absolute to work in Docker/Airflow)
+from models import NextdoorLead, ScrapedLead
+from utils.buyer_intent import BuyerIntentDetector, _is_ollama_buyer_request, classify_category
+from user_credential_manager import UserCredentialManager
+from utils.email_manager import EmailManager
 
+
+from scrapers.base import BaseScraper
 
 class NextdoorScraper(BaseScraper):
     """Scraper for Nextdoor service posts supporting both Playwright and Selenium."""
@@ -111,38 +107,52 @@ class NextdoorScraper(BaseScraper):
     
     def parse_item(self, raw_data: Dict[str, Any], custom_keywords: Optional[str] = None, 
                    exclude_keywords: Optional[list] = None,
-                   custom_indicators: Optional[list] = None) -> Optional[NextdoorLead]:
-        """Parse raw data into a NextdoorLead model."""
+                   custom_indicators: Optional[list] = None) -> Optional[Any]:
+        """Strict parsing funnel utilizing BuyerIntentDetector AI"""
         try:
-            # Combine title and description for buyer intent analysis
-            text = f"{raw_data.get('title', '')} {raw_data.get('description', '') or raw_data.get('body', '')}"
+            # Combine title and body
+            title = raw_data.get('title', '')
+            body = raw_data.get('body', '') or raw_data.get('description', '')
+            text = f"{title}\n{body}".strip()
             
-            # Use centralized buyer intent detector
+            # Use strict, centralized buyer intent detector
+            # This automatically handles: pre-filter, length, promo, Ollama 1-5 scoring, and US location
             is_service_request = BuyerIntentDetector.is_buyer_request(
                 text=text,
-                require_url=True,
+                require_url=False,
                 url=raw_data.get('url'),
                 custom_keywords=custom_keywords,
                 exclude_keywords=exclude_keywords,
                 custom_indicators=custom_indicators
             )
             
-            # Log detection reason for debugging (Info level for search tests)
+            intent_score = 0
+            category = "other"
+            
             if not is_service_request:
                 reason = BuyerIntentDetector.get_detection_reason(text, raw_data.get('url'))
-                self.logger.info("filtered_non_buyer_post", reason=reason, title=raw_data.get('title'))
-            
+                self.logger.debug("filtered_non_buyer_post", reason=reason, title=title[:40])
+            else:
+                # Re-fetch ollama payload locally since it passed Gate 4
+                ollama_result = _is_ollama_buyer_request(text)
+                intent_score = ollama_result.get("intent_score", 0)
+                category = ollama_result.get("category", classify_category(text))
+                
+                # Final extra gate natively specified:
+                if category not in ["plumbing", "electrical"] or intent_score < 4:
+                    is_service_request = False
+                    
             return NextdoorLead(
                 source_url=raw_data.get('url', ''),
                 source_id=raw_data.get('post_id'),
                 post_id=raw_data.get('post_id'),
-                title=raw_data.get('title'),
-                description=raw_data.get('description') or raw_data.get('body'),
-                author_name=raw_data.get('author_name'),
+                title=title,
+                description=body,
+                author_name=raw_data.get('author_name') or "Nextdoor User",
                 author_url=raw_data.get('author_url'),
                 neighborhood=raw_data.get('neighborhood'),
-                city=raw_data.get('city'),
-                state=raw_data.get('state'),
+                city=raw_data.get('city', ''),
+                state=raw_data.get('state', ''),
                 location=f"{raw_data.get('city')}, {raw_data.get('state')}" if raw_data.get('city') else None,
                 posted_date=raw_data.get('posted_date'),
                 comment_count=raw_data.get('comment_count', 0),
@@ -152,6 +162,8 @@ class NextdoorScraper(BaseScraper):
                 tagged_business_category=raw_data.get('tagged_category'),
                 topics=raw_data.get('topics', []),
                 is_service_request=is_service_request,
+                intent_score=intent_score,
+                category=category
             )
         except Exception as e:
             self.logger.warning("failed_to_create_nextdoor_lead", error=str(e))
@@ -239,11 +251,11 @@ class NextdoorScraper(BaseScraper):
         finally:
             driver.quit()
 
-    def scrape(self, target: str = None, **kwargs) -> List[ScrapedLead]:
-        """Main scraping method using Playwright (Proxies disabled)."""
+    def scrape(self, target: str = None, **kwargs) -> List[Dict[str, Any]]:
+        """Main scraping method using Playwright with US sticky proxy & network intercept."""
         if not self.cookies:
             self.logger.error("nextdoor_cookies_required")
-            raise ValueError("Nextdoor cookies not configured.")
+            raise ValueError("Nextdoor cookies not configured. Ensure a valid US account session is loaded.")
         
         # Normalize URL
         if target:
@@ -256,11 +268,12 @@ class NextdoorScraper(BaseScraper):
             if target != original_target:
                 self.logger.info("normalized_nextdoor_url", original=original_target, normalized=target)
 
-        max_pages = kwargs.get('max_pages', 5)
+        # REDUCED: default to 3 scrolls for faster execution
+        max_pages = kwargs.get('max_pages', 2)
         collected_posts = {}
+        proxy_ip = "Local/Direct"
         
         with sync_playwright() as p:
-
 
             launch_args = {"headless": True}
             if chrome_bin := os.getenv("CHROME_BIN"):
@@ -273,6 +286,26 @@ class NextdoorScraper(BaseScraper):
                 'user_agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'ignore_https_errors': True
             }
+
+            # Proxy setup with Sticky US Session
+            proxy_server = os.getenv("BRIGHTDATA_PROXY_SERVER") or os.getenv("PROXY_SERVER")
+            proxy_user = os.getenv("BRIGHTDATA_PROXY_USER") or os.getenv("PROXY_USER")
+            proxy_pass = os.getenv("BRIGHTDATA_PROXY_PASS") or os.getenv("PROXY_PASS")
+
+            if proxy_server and proxy_user and proxy_pass:
+                session_id = str(int(time.time() * 1000))
+                # Nextdoor requires US location - inject country parameter
+                if "brd.superproxy.io" in proxy_server:
+                    user_str = f"{proxy_user}-country-us-session-{session_id}"
+                else:
+                    user_str = proxy_user
+                
+                context_args['proxy'] = {
+                    'server': f"http://{proxy_server}" if "http" not in proxy_server else proxy_server,
+                    'username': user_str,
+                    'password': proxy_pass
+                }
+                proxy_ip = f"Proxied via US session {session_id}"
 
             context = browser.new_context(**context_args)
             
@@ -297,19 +330,34 @@ class NextdoorScraper(BaseScraper):
             page = context.new_page()
             
             def _find_feed_items(data):
-                """Recursively locate a feedItems list anywhere in the JSON tree."""
-                if isinstance(data, dict):
-                    if 'feedItems' in data and isinstance(data['feedItems'], list):
-                        return data['feedItems']
-                    for v in data.values():
-                        result = _find_feed_items(v)
-                        if result is not None:
-                            return result
-                elif isinstance(data, list):
-                    for item in data:
-                        result = _find_feed_items(item)
-                        if result is not None:
-                            return result
+                """Helper to extract feed items from Nextdoor search/feed JSON response."""
+                if not isinstance(data, dict):
+                    return None
+                # Search results usually in 'searchConnection' or 'searchResults'
+                # Neighborhood posts usually in 'neighborhoodFeed' or 'feedConnection'
+                for key in ['searchConnection', 'searchResults', 'neighborhoodFeed', 'feedConnection', 'edges', 'items']:
+                    if key in data:
+                        result = data[key]
+                        if isinstance(result, list):
+                            # FILTER: Only keep items that look like actual user posts
+                            # Business/Profiles usually have different type signatures in JSON
+                            filtered = []
+                            for r in result:
+                                if isinstance(r, dict):
+                                    node = r.get('node', r)
+                                    # Nextdoor post IDs typically start with certain patterns or have specific fields
+                                    if node.get('__typename') in ['Post', 'NeighborhoodPost']:
+                                        filtered.append(r)
+                            return filtered
+                        if isinstance(result, dict):
+                            res = _find_feed_items(result)
+                            if res: return res
+                
+                # Recursive search for anything that looks like a list of posts
+                for k, v in data.items():
+                    if isinstance(v, (dict, list)):
+                        res = _find_feed_items(v)
+                        if res: return res
                 return None
             
             def scrape_from_dom(page):
@@ -317,9 +365,10 @@ class NextdoorScraper(BaseScraper):
                 try:
                     # Selectors based on the Search Page HTML structure
                     selectors = [
-                        'a[data-app="2"][href*="/p/"]', # Specific Post links in search
-                        'a[data-app="2"][href*="/page/"]', # Business page links
-                        '[data-testid="styled-text-wrapper"]' 
+                        'a[data-app="2"][href*="/p/"]', # Specific Post links ONLY
+                        # REMOVED: '[href*="/page/"]' - Business pages
+                        # REMOVED: '[href*="/profile/"]' - User profiles
+                        # REMOVED: '[href*="/local_events/"]' - Local events
                     ]
                     
                     found_any = False
@@ -341,9 +390,10 @@ class NextdoorScraper(BaseScraper):
                                     href = target_el.get_attribute("href") or ""
                                     post_url = href if "http" in href else f"https://nextdoor.com{href}"
                                     
-                                    # Check for "Sponsored" text in the card
-                                    if "sponsored" in text.lower() or "promoted" in text.lower():
-                                        self.logger.info("skipping_sponsored_dom_result", url=post_url)
+                                    # Check for "Sponsored" or "Thumbtack" text in the card
+                                    low_text = text.lower()
+                                    if "sponsored" in low_text or "promoted" in low_text or "thumbtack" in low_text or "thumbtack.com" in post_url:
+                                        self.logger.info("skipping_excluded_result", url=post_url)
                                         continue
                                     
                                     import hashlib
@@ -403,13 +453,15 @@ class NextdoorScraper(BaseScraper):
             try:
                 self.logger.info("navigating_to_url", target=target or "news_feed")
                 url = target if target else "https://nextdoor.com/news_feed/"
-                page.goto(url, timeout=90000)
+                # Faster navigation: 45s instead of 90s.
+                page.goto(url, timeout=45000)
                 try:
-                    # WAIT for network to be completely quiet
-                    page.wait_for_load_state("networkidle", timeout=60000)
+                    # WAIT for network to be quiet, but only for 15s (Thumbtack ads often hang networkidle)
+                    page.wait_for_load_state("networkidle", timeout=15000)
                 except:
                     pass
-                page.wait_for_timeout(5000)
+                # Short wait for any dynamic content
+                page.wait_for_timeout(2000)
 
                 # Initial DOM extraction
                 scrape_from_dom(page)
@@ -421,24 +473,48 @@ class NextdoorScraper(BaseScraper):
                 previous_count = 0
                 for i in range(max_pages):
                     page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                    page.wait_for_timeout(4000)
+                    # Reduced scroll wait from 4s to 2s
+                    page.wait_for_timeout(2000)
                     
                     # Call DOM extract during each scroll
                     scrape_from_dom(page)
                     
                     if "login" in page.url or "signup" in page.url: break
-                    if len(collected_posts) == previous_count: 
-                        break # Stop if no new posts found via JSON or DOM
-                    previous_count = len(collected_posts)
-                
-                self.logger.info("scrolling_complete", gathered=len(collected_posts))
+                if len(collected_posts) == 0:
+                    self.logger.error("feed_empty", reason="No posts detected in neighborhood feed")
+                    raise ValueError("Nextdoor feed is completely empty. Invalid location or banned session.")
+
+                self.logger.info("scrolling_complete", gathered_raw=len(collected_posts))
             except Exception as e:
                 self.logger.error("playwright_execution_failed", error=str(e))
+                raise
             finally:
                 browser.close()
         
-        return [lead for post_data in collected_posts.values() 
-                if (lead := self.parse_item(post_data, 
-                                            custom_keywords=kwargs.get('keywords'),
-                                            exclude_keywords=kwargs.get('exclude_keywords'),
-                                            custom_indicators=kwargs.get('custom_indicators')))]
+        self.logger.info("applying_ai_filter", proxy=proxy_ip, raw_count=len(collected_posts))
+        
+        # Filter raw dictionary using parse_item
+        final_leads = []
+        rejected = 0
+        for post_data in collected_posts.values():
+            lead_dict = self.parse_item(
+                post_data,
+                custom_keywords=kwargs.get('keywords'),
+                exclude_keywords=kwargs.get('exclude_keywords'),
+                custom_indicators=kwargs.get('custom_indicators')
+            )
+            if lead_dict:
+                # Ensure we also return standard models for pipeline compatibility if needed upstream
+                final_leads.append(lead_dict)
+            else:
+                rejected += 1
+
+        self.logger.info(
+            "pipeline_summary_nextdoor",
+            total_scraped=len(collected_posts),
+            rejected_spam_non_intent=rejected,
+            final_leads=len(final_leads),
+            proxy_ip_used=proxy_ip
+        )
+        
+        return final_leads

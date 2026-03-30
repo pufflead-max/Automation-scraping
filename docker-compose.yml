@@ -16,6 +16,16 @@ services:
       - ./mongo-init:/docker-entrypoint-initdb.d:ro
     networks: [ appnet ]
 
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks: [ appnet ]
+
   postgres:
     image: postgres:16
     container_name: airflow-postgres
@@ -141,6 +151,7 @@ services:
 volumes:
   mongo_data:
   pg_data:
+  ollama_data:
 
 
 networks:

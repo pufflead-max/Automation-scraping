@@ -43,6 +43,7 @@ US_CITIES = {
     # MA / South Shore specific
     "hingham", "weymouth", "quincy", "braintree", "hull", "scituate",
     "cohasset", "marshfield", "duxbury", "norwell", "hanover",
+    "birmingham",
 }
 
 US_STATES = {
@@ -69,6 +70,7 @@ NON_US_PATTERNS = [
     r"\bindia\b", r"\bmumbai\b", r"\bdelhi\b", r"\bpakistan\b",
     r"\bkarachi\b", r"\blahore\b", r"\bphilippines\b", r"\bmanila\b",
     r"\bcanada\b", r"\bniagara\b",
+    r"\bbirmingham,\s*uk\b", r"\bbirmingham,\s*england\b", r"\bwest midlands\b",
 ]
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -324,7 +326,7 @@ def score_lead(content: str) -> int:
 def classify_category(content: str) -> str:
     """Classify post into the best-matching service category."""
     norm = _normalize(content)
-    scores: dict = defaultdict(int)
+    scores = defaultdict(int)
     for category, keywords in CATEGORY_KEYWORDS.items():
         for kw in keywords:
             if re.search(r"\b" + re.escape(kw) + r"\b", norm):
@@ -334,100 +336,142 @@ def classify_category(content: str) -> str:
     return max(scores, key=lambda c: scores[c])
 
 
-def _is_ollama_buyer_request(text: str, platform: str = "Facebook", location: str = "Unknown", verticals: str = "Home Services") -> bool:
+def _is_ollama_buyer_request(text: str, platform: str = "Facebook", location: str = "Unknown", verticals: str = "Home Services") -> dict:
     """Secondary gate: Classified using Ollama (default qwen2.5:7b)."""
+    
+    # 5. Add Hard Pre-Filter (Before LLM)
+    pre_filter_words = [
+        "we offer", "contact us", "dm us", "call now", "special offer", 
+        "free estimate", "licensed and insured", "looking for job", "hiring"
+    ]
+    
+    text_lower = text.lower()
+    for word in pre_filter_words:
+        if word in text_lower:
+            print(f"[DEBUG] Pre-filter matched: '{word}' -> Rejecting")
+            return {
+                "is_qualified_lead": False,
+                "reason": f"Pre-filter matched: {word}",
+                "confidence": 1.0,
+                "category": None
+            }
+
+    print(f"\n[DEBUG] Input text:\n{text[:200]}...")
+
     try:
         from config import get_settings
         settings = get_settings()
-        ollama_url = f"{settings.ollama_cloud_url.rstrip('/')}/api/chat"
+        
+        # 1. Fix Ollama API URL
+        ollama_url = settings.ollama_cloud_url.rstrip('/')
+        if not ollama_url.endswith("/api/chat"):
+            ollama_url += "/api/chat"
+            
+        # 8. Ensure Model Config
         ollama_model = getattr(settings, 'ollama_cloud_model', "qwen2.5:7b")
         
-        # New strict prompt using JSON output
-        prompt = f"""
-You are an extremely strict lead qualification system for a home services marketplace.
-Your job is to classify whether a social media post represents a REAL BUYER INTENT — meaning the person is likely to HIRE and PAY a contractor.
+        # 7. Enforce Strict Prompt
+        prompt = f"""You are a strict lead qualification AI.
 
---------------------------------------------------
-SUPPORTED SERVICE CATEGORIES:
-{verticals}
---------------------------------------------------
+Your task is to determine if the post is from a REAL CUSTOMER who wants to HIRE a service provider.
 
-RETURN JSON ONLY (no extra text):
+---
+
+Reject:
+* service ads
+* job seekers
+* recommendations
+* general discussions
+
+Accept ONLY:
+* real hiring intent (need plumber, need electrician, etc.)
+
+---
+
+If unsure → return false
+
+---
+
+Return ONLY valid JSON:
 {{
-  "is_qualified_lead": true/false,
-  "vertical": "one of the supported categories or null",
-  "intent_type": "urgent|explicit|recommendation|none",
-  "confidence": "high|medium|low",
-  "reason": "max 15 words explaining decision"
+"is_qualified_lead": true/false,
+"category": "one category or null",
+"reason": "short reason",
+"confidence": 0.0-1.0
 }}
 
---------------------------------------------------
-STRICT CLASSIFICATION RULES:
-
-✅ TRUE (Qualified Lead) ONLY IF:
-- The user clearly needs a service OR
-- Is actively looking to hire OR
-- Is asking for recommendations for a service provider
-
-Examples:
-- "Need a plumber ASAP"
-- "Looking for electrician"
-- "Anyone recommend a good cleaner?"
-
---------------------------------------------------
-❌ ALWAYS FALSE (Reject):
-1. SERVICE PROVIDERS / SELLERS
-- Offering services ("we provide", "DM me", "call now")
-- Promotions, ads, discounts, business posts
-2. JOB POSTS / HIRING WORKERS
-3. COMPLETED WORK / SHOWCASE POSTS
-- "Just finished a project"
-4. PRODUCT BUY/SELL POSTS
-- Furniture, tools, materials
-5. GENERAL DISCUSSIONS / ADVICE
-- Tips, opinions, questions without hiring intent
-6. SPAM / UNCLEAR INTENT
---------------------------------------------------
-
-INTENT TYPE RULES:
-urgent: emergency, ASAP, immediately, serious issue
-explicit: clearly hiring ("need plumber", "looking for electrician")
-recommendation: asking suggestions ("any good plumber?")
-none: everything else
-
---------------------------------------------------
-IMPORTANT BEHAVIOR:
-- Be VERY STRICT → if unclear, return false
-- Do NOT assume intent
-- Ignore emojis, hashtags, fluff
-- Focus only on hiring intent
-- AVOID false positives at all cost
-
---------------------------------------------------
-POST INPUT:
-Platform: {platform}
-Location: {location}
-Post: {text}
+Post:
+\"\"\"
+{text}
+\"\"\"
 """
         import requests
         import json
-        resp = requests.post(ollama_url, json={
+        
+        payload = {
             "model": ollama_model,
             "messages": [{"role": "user", "content": prompt}],
             "stream": False,
-            "format": "json" # Force JSON output
-        }, timeout=15)
+            "format": "json",
+            "options": {
+                "temperature": 0.1
+            }
+        }
         
-        if resp.status_code == 200:
-            data = resp.json().get('message', {}).get('content', '')
-            result = json.loads(data)
-            is_qualified = result.get('is_qualified_lead', False)
-            logger.info("ollama_intent_result", text=text[:50], is_qualified=is_qualified, reason=result.get('reason'))
-            return is_qualified
-        return True # Fallback if API error to avoid missing leads
+        resp = requests.post(ollama_url, json=payload, timeout=60)
+        
+        # 3. Fix Fallback Logic (don't default to True)
+        if resp.status_code != 200:
+            print(f"[DEBUG] API error: {resp.status_code} - {resp.text}")
+            logger.error(f"ollama_intent_failed: API error {resp.status_code}")
+            return {
+                "is_qualified_lead": False,
+                "reason": f"LLM API error {resp.status_code}",
+                "confidence": 0.0,
+                "category": None
+            }
+            
+        # 2. Fix Response Parsing
+        raw_response = resp.json()
+        raw_content = raw_response.get("message", {}).get("content", "")
+        
+        # 6. Add Debug Logs
+        print(f"[DEBUG] Raw Ollama response:\n{raw_content}")
+        
+        try:
+            parsed_result = json.loads(raw_content)
+        except json.JSONDecodeError as e:
+            print(f"[DEBUG] Failed to parse JSON: {e}")
+            logger.error(f"ollama_intent_failed: JSON parse error - {e}")
+            return {
+                "is_qualified_lead": False,
+                "reason": "LLM failed (JSON parsing error)",
+                "confidence": 0.0,
+                "category": None
+            }
+            
+        print(f"[DEBUG] Parsed result:\n{json.dumps(parsed_result, indent=2)}")
+        
+        # 4. Fix Classification Logic
+        is_qualified = parsed_result.get("is_qualified_lead")
+        if is_qualified is True:
+            parsed_result["is_qualified_lead"] = True
+            print("[DEBUG] Final decision: ACCEPTED")
+        else:
+            parsed_result["is_qualified_lead"] = False  # Ensure it strictly evaluates False for all else
+            print("[DEBUG] Final decision: REJECTED")
+            
+        return parsed_result
+
     except Exception as e:
-        logger.error("ollama_intent_failed", error=str(e))
-        return True
+        print(f"[DEBUG] Exception occurred: {str(e)}")
+        logger.error(f"ollama_intent_failed: {str(e)}")
+        return {
+            "is_qualified_lead": False,
+            "reason": "LLM failed",
+            "confidence": 0.0,
+            "category": None
+        }
 
 
 # ══════════════════════════════════════════════════════════════════════════════

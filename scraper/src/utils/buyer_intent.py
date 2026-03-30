@@ -35,6 +35,7 @@ except ImportError:
             def debug(self, ev, **kw): print(f"DEBUG [{self.name}] {ev} {kw}")
             def error(self, ev, **kw): print(f"ERROR [{self.name}] {ev} {kw}")
             def exception(self, ev, **kw): print(f"EXCEPTION [{self.name}] {ev} {kw}")
+            def warning(self, ev, **kw): print(f"WARNING [{self.name}] {ev} {kw}")
 
 logger = ScraperLogger("buyer_intent")
 
@@ -357,138 +358,255 @@ def classify_category(content: str) -> str:
 
 
 def _is_ollama_buyer_request(text: str, platform: str = "Facebook", location: str = "Unknown", verticals: str = "Home Services") -> dict:
-    """Secondary gate: Classified using Ollama (default qwen2.5:7b)."""
+    """Secondary gate: classified using Ollama (default qwen2.5:7b).
     
-    # 5. Add Hard Pre-Filter (Before LLM)
-    pre_filter_words = [
-        "we offer", "contact us", "dm us", "call now", "special offer", 
-        "free estimate", "licensed and insured", "looking for job", "hiring"
-    ]
-    
-    text_lower = text.lower()
-    for word in pre_filter_words:
-        if word in text_lower:
-            logger.info("ollama_pre_filter_matched", word=word, action="rejecting")
-            return {
-                "is_qualified_lead": False,
-                "reason": f"Pre-filter matched: {word}",
-                "confidence": 1.0,
-                "category": None
-            }
-
+    Returns a dict with keys:
+        is_lead (bool), category (str), intent_score (int), location (str)
+    Defaults to FALSE on ANY error or parse failure.
+    """
     logger.debug("ollama_qualification_started", text_preview=text[:150].replace("\n", " "))
 
     try:
         from config import get_settings
         settings = get_settings()
-        
-        # 1. Fix Ollama API URL
+
         ollama_url = settings.ollama_cloud_url.rstrip('/')
         if not ollama_url.endswith("/api/chat"):
             ollama_url += "/api/chat"
-            
-        # 8. Ensure Model Config
+
         ollama_model = getattr(settings, 'ollama_cloud_model', "qwen2.5:7b")
-        
-        # 7. Enforce Strict Prompt
-        prompt = f"""You are a strict lead qualification AI.
 
-Your task is to determine if the post is from a REAL CUSTOMER who wants to HIRE a service provider.
+        # Strict prompt — requires exact JSON matches
+        prompt = f"""You are a strict lead qualification system.
 
----
+Your task is to analyze a Facebook post and determine if it is a REAL BUYER looking for a service.
 
-Reject:
-* service ads
-* job seekers
-* recommendations
-* general discussions
-
-Accept ONLY:
-* real hiring intent (need plumber, need electrician, etc.)
+Be VERY STRICT. Reject anything unclear.
 
 ---
 
-If unsure → return false
+Classify the post using these rules:
+
+A post is a VALID LEAD ONLY IF:
+- Person is clearly asking for a service
+- Example: "need a plumber", "looking for electrician urgently"
+- Must sound like a customer, NOT a business
 
 ---
 
-Return ONLY valid JSON:
+REJECT if:
+- Business promotion ("we provide", "contact us")
+- Job posts ("hiring", "looking for workers")
+- General discussion
+- Recommendations without clear need
+- Non-US or unclear location
+
+---
+
+Return ONLY JSON:
+
 {{
-"is_qualified_lead": true/false,
-"category": "one category or null",
-"reason": "short reason",
-"confidence": 0.0-1.0
+  "is_lead": true/false,
+  "category": "plumbing|electrical|other",
+  "intent_score": 1-5,
+  "location": "US|Non-US|Unknown"
 }}
 
+---
+
+Scoring:
+5 = urgent need ("need plumber ASAP")
+4 = clear need ("looking for electrician")
+3 = weak ("any recommendations?")
+<=2 = reject
+
+---
+
 Post:
-\"\"\"
 {text}
-\"\"\"
 """
         import requests
         import json
-        
+
         payload = {
             "model": ollama_model,
             "messages": [{"role": "user", "content": prompt}],
             "stream": False,
             "format": "json",
-            "options": {
-                "temperature": 0.1
-            }
+            "options": {"temperature": 0.1}
         }
-        
+
         resp = requests.post(ollama_url, json=payload, timeout=60)
-        
-        # 3. Fix Fallback Logic (don't default to True)
+
         if resp.status_code != 200:
             logger.error("ollama_api_failed", status_code=resp.status_code, response=resp.text)
             return {
-                "is_qualified_lead": False,
-                "reason": f"LLM API error {resp.status_code}",
-                "confidence": 0.0,
-                "category": None
+                "is_lead": False,
+                "category": "other",
+                "intent_score": 1,
+                "location": "Unknown"
             }
-            
-        # 2. Fix Response Parsing
+
         raw_response = resp.json()
         raw_content = raw_response.get("message", {}).get("content", "")
-        
-        # 6. Add Debug Logs
         logger.debug("ollama_raw_response_received", content=raw_content)
-        
+
         try:
             parsed_result = json.loads(raw_content)
         except json.JSONDecodeError as e:
             logger.error("ollama_json_parse_failed", error=str(e), raw_content=raw_content)
             return {
-                "is_qualified_lead": False,
-                "reason": "LLM failed (JSON parsing error)",
-                "confidence": 0.0,
-                "category": None
+                "is_lead": False,
+                "category": "other",
+                "intent_score": 1,
+                "location": "Unknown"
             }
-            
-        logger.info("ollama_classification_result", result=parsed_result)
-        
-        # 4. Fix Classification Logic
-        is_qualified = parsed_result.get("is_qualified_lead")
-        if is_qualified is True:
-            parsed_result["is_qualified_lead"] = True
-            logger.info("ollama_final_decision", decision="ACCEPTED")
-        else:
-            parsed_result["is_qualified_lead"] = False  # Ensure it strictly evaluates False for all else
-            logger.info("ollama_final_decision", decision="REJECTED")
-            
+
+        # Safe defaults
+        parsed_result["is_lead"] = parsed_result.get("is_lead") is True
+        parsed_result["intent_score"] = int(parsed_result.get("intent_score", 1))
+        parsed_result["location"] = str(parsed_result.get("location", "Unknown"))
+        parsed_result["category"] = str(parsed_result.get("category", "other"))
+
+        decision = "ACCEPTED" if parsed_result["is_lead"] else "REJECTED"
+        logger.info("ollama_final_decision", decision=decision, result=parsed_result)
         return parsed_result
 
     except Exception as e:
         logger.exception("ollama_processing_exception", error=str(e))
         return {
-            "is_qualified_lead": False,
-            "reason": "LLM failed",
-            "confidence": 0.0,
-            "category": None
+            "is_lead": False,
+            "category": "other",
+            "intent_score": 1,
+            "location": "Unknown"
         }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  GEMINI VALIDATION (Gate 7 — strict second-pass after Ollama)
+# ══════════════════════════════════════════════════════════════════════════════
+
+_GEMINI_PROMPT = """\
+You are a highly strict lead validation AI.
+
+Your job is to verify whether a social media post is from a REAL CUSTOMER who
+wants to HIRE a service provider.
+
+You must reject aggressively.
+
+ACCEPT ONLY IF:
+* A real person clearly needs help
+* They intend to hire someone
+* It is NOT a business advertisement
+* It is NOT a job post
+* It is NOT a recommendation request
+* The location is in the United States
+
+REJECT IF:
+* Any form of promotion or marketing
+* Any service provider offering services
+* Any hiring or job-seeking post
+* Any unclear or vague intent
+* Any non-US or unknown location
+
+STRICT RULE: If there is ANY doubt → return false
+
+Return ONLY valid JSON (no markdown, no extra text):
+{
+  "is_valid_lead": true or false,
+  "reason": "short explanation",
+  "confidence": 0.0-1.0
+}
+"""
+
+
+def validate_with_gemini(description: str) -> dict:
+    """Strict second-pass validator using Google Gemini Flash.
+
+    Only called after Ollama already classified the lead as qualified.
+    Gemini is MORE strict than Ollama — one FALSE from Gemini = REJECT.
+
+    Returns a dict with keys:
+        is_valid_lead (bool), reason (str), confidence (float)
+    Defaults to FALSE on ANY error, parse failure, or missing API key.
+    """
+    _reject = {"is_valid_lead": False, "reason": "default reject", "confidence": 0.0}
+
+    if not description or len(description.strip()) < 10:
+        logger.info("gemini_skip_empty_text")
+        return {**_reject, "reason": "Text too short"}
+
+    try:
+        from config import get_settings
+        settings = get_settings()
+    except Exception as e:
+        logger.error("gemini_config_load_failed", error=str(e))
+        return {**_reject, "reason": "Config unavailable"}
+
+    api_key = getattr(settings, "gemini_api_key", None) or os.getenv("GEMINI_API_KEY", "")
+    model_name = getattr(settings, "gemini_model", None) or os.getenv("GEMINI_MODEL", "gemini-3.0-flash-preview")
+
+    if not api_key:
+        logger.warning("gemini_api_key_missing", action="skipping_gemini_gate",
+                       note="Set GEMINI_API_KEY in .env to enable. Lead auto-rejected.")
+        return {**_reject, "reason": "GEMINI_API_KEY not configured"}
+
+    try:
+        import google.generativeai as genai
+        import json
+
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(
+            model_name=model_name,
+            generation_config=genai.GenerationConfig(
+                temperature=0.1,
+                response_mime_type="application/json",
+            ),
+        )
+
+        prompt = f"{_GEMINI_PROMPT}\n\nPost:\n\"\"\"\n{description[:2000]}\n\"\"\""
+
+        logger.debug("gemini_request_started", model=model_name,
+                     text_preview=description[:120].replace("\n", " "))
+
+        response = model.generate_content(prompt)
+        raw_text = response.text.strip()
+
+        logger.debug("gemini_raw_response", content=raw_text)
+
+        # Strip optional markdown code fences
+        if raw_text.startswith("```"):
+            raw_text = raw_text.split("```")[1]
+            if raw_text.lower().startswith("json"):
+                raw_text = raw_text[4:]
+            raw_text = raw_text.strip()
+
+        try:
+            parsed = json.loads(raw_text)
+        except json.JSONDecodeError as e:
+            logger.error("gemini_json_parse_failed", error=str(e), raw=raw_text)
+            return {**_reject, "reason": "Gemini JSON parse error"}
+
+        # Strict boolean: any non-True value → False
+        is_valid = parsed.get("is_valid_lead") is True
+        result = {
+            "is_valid_lead": is_valid,
+            "reason": str(parsed.get("reason", "")),
+            "confidence": float(parsed.get("confidence", 0.0)),
+        }
+
+        decision = "ACCEPTED" if is_valid else "REJECTED"
+        logger.info("gemini_decision", decision=decision,
+                    reason=result["reason"], confidence=result["confidence"])
+        return result
+
+    except ImportError:
+        logger.error("gemini_sdk_missing",
+                     detail="Run: pip install google-generativeai")
+        return {**_reject, "reason": "google-generativeai not installed"}
+    except Exception as e:
+        logger.exception("gemini_api_exception", error=str(e))
+        return {**_reject, "reason": f"Gemini exception: {e}"}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -518,11 +636,21 @@ class BuyerIntentDetector:
         exclude_keywords: Optional[list] = None,
         custom_indicators: Optional[list] = None,
     ) -> bool:
-        """Return True if the post passes all buyer-intent gates."""
-        if not text or len(text.strip()) < 10:
+        """Return True only if the post passes ALL buyer-intent gates.
+        
+        Safe default: returns False on any unclear or failed check.
+        """
+        if not text or len(text.strip()) < 20:
+            logger.info("prefilter_rejected", reason="too short (under 20 chars)")
             return False
 
         norm = _normalize(text)
+        
+        prefilter_words = ["we provide", "our services", "contact us", "dm", "call now", "hiring", "job", "apply", "we offer", "special offer", "free estimate"]
+        for word in prefilter_words:
+            if re.search(r"\b" + re.escape(word) + r"\b", norm):
+                logger.info("prefilter_rejected", word=word)
+                return False
 
         # Gate 0: Manual exclusion keywords (caller-supplied)
         if exclude_keywords:
@@ -549,10 +677,36 @@ class BuyerIntentDetector:
             if not topic_match:
                 return False
 
-        # Gate 5: Ollama AI secondary check (commented out for now)
-        # if not _is_ollama_buyer_request(text):
-        #     return False
+        # Gate 5: US location check — strict matching before AI
+        # Must explicitly match a US city/state or be rejected as missing/ambiguous.
+        full_content = f"{text} {url or ''}"
+        is_us, loc_name = is_us_location(full_content)
+        if not is_us:
+            logger.info("location_rejected", reason="Failed explicit US city/state keyword check before AI")
+            return False
 
+        # Gate 6: Ollama AI — strictly check is_lead, intent_score, location
+        ollama_result = _is_ollama_buyer_request(text)
+        logger.info("ollama_result", result=ollama_result)
+        if not ollama_result.get("is_lead", False):
+            return False
+        if ollama_result.get("intent_score", 0) < 4:
+            logger.info("ollama_low_intent", score=ollama_result.get("intent_score"))
+            return False
+        if ollama_result.get("location") != "US":
+            logger.info("ollama_non_us", location=ollama_result.get("location"))
+            return False
+
+        # Gate 7: Gemini strict second-pass — only runs if Ollama passed.
+        # Gemini is MORE strict; a FALSE here = final REJECT.
+        gemini_result = validate_with_gemini(text)
+        logger.info("gemini_result", result=gemini_result)
+        if not gemini_result.get("is_valid_lead", False):
+            logger.info("gemini_rejected", reason=gemini_result.get("reason"))
+            return False
+
+        logger.info("lead_accepted", ollama_confidence=ollama_result.get("confidence"),
+                    gemini_confidence=gemini_result.get("confidence"))
         return True
 
     @classmethod
@@ -577,10 +731,26 @@ class BuyerIntentDetector:
         else:
             return f"❌ No buyer intent (score={s}, min={MIN_SCORE})"
 
-        # If regex passed, check Ollama (commented out for now)
-        # if not _is_ollama_buyer_request(text):
-        #     return f"❌ AI Rejected: Classified as SELLER/PROVIDER by Ollama"
-        
+        # Check non-US patterns & enforce US keyword matching
+        full_content = f"{text} {url or ''}"
+        is_us, loc_name = is_us_location(full_content)
+        if not is_us:
+            return "❌ Location Rejected: Failed explicit US city/state keyword check before AI or found non-US pattern"
+
+        # Check Ollama — strictly check is_lead, intent_score >= 4, location == "US"
+        ollama_result = _is_ollama_buyer_request(text)
+        if not ollama_result.get("is_lead"):
+            return "❌ AI Rejected: Not classified as a buyer lead"
+        if ollama_result.get("intent_score", 0) < 4:
+            return f"❌ AI Rejected: Intent score too low ({ollama_result.get('intent_score')})"
+        if ollama_result.get("location") != "US":
+            return f"❌ AI Rejected: Location not confirmed as US ({ollama_result.get('location')})"
+
+        # Check Gemini second pass
+        gemini_result = validate_with_gemini(text)
+        if not gemini_result.get("is_valid_lead"):
+            return f"❌ Gemini Rejected: {gemini_result.get('reason', 'Failed strict validation')}"
+
         return reason
 
 

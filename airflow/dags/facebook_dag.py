@@ -38,7 +38,8 @@ def get_user_details(email: str):
 
 def load_facebook_urls(**context):
     dag_run = context.get('dag_run')
-    user_email_override = dag_run.conf.get('user_email') if dag_run and dag_run.conf else None
+    # Hardcoded per request to target only one user
+    user_email_override = "pnmtestml@yopmail.com"
     
     from utils.mappings import get_mapping_manager
     mapper = get_mapping_manager()

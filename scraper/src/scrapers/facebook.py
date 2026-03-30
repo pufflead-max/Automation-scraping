@@ -606,9 +606,10 @@ class FacebookScraper(BaseScraper):
           Gate 2 — US location detected
           Gate 3 — intent score >= MIN_SCORE
 
-        Returns a list of dicts ready to be turned into FacebookLead objects.
+        Returns a list of ALL dicts (both valid and invalid) ready to be turned into FacebookLead objects.
+        Failed leads will have is_buyer_request=False.
         """
-        qualified = []
+        processed = []
 
         for raw in raw_posts:
             content = raw.get("text", "")
@@ -616,25 +617,31 @@ class FacebookScraper(BaseScraper):
             # Gate 1: buyer intent + not a promo + Ollama check
             if not BuyerIntentDetector.is_buyer_request(content):
                 stats["excluded_non_buyer"] += 1
+                raw["is_buyer_request"] = False
+                processed.append(raw)
                 continue
 
             # Gate 2: US-only
             is_us, location = is_us_location(content)
             if not is_us:
                 stats["excluded_non_us"] += 1
+                raw["is_buyer_request"] = False
+                processed.append(raw)
                 continue
 
             # Gate 3: score threshold
             score = score_lead(content)
             if score < MIN_SCORE:
                 stats["excluded_low_score"] += 1
+                raw["is_buyer_request"] = False
+                processed.append(raw)
                 continue
 
             stats.setdefault("qualified", 0)
             stats["qualified"] += 1
             category = classify_category(content)
 
-            qualified.append({
+            processed.append({
                 **raw,
                 "location": location,
                 "intent_score": score,
@@ -643,8 +650,8 @@ class FacebookScraper(BaseScraper):
             })
 
         # Highest intent first
-        qualified.sort(key=lambda x: x.get("intent_score", 0), reverse=True)
-        return qualified
+        processed.sort(key=lambda x: x.get("intent_score", 0), reverse=True)
+        return processed
 
     def _raw_to_lead(self, raw: dict) -> Optional[FacebookLead]:
         """Convert a pipeline-qualified raw dict to a FacebookLead model."""
@@ -666,7 +673,7 @@ class FacebookScraper(BaseScraper):
                 video_count=raw.get("video_count", 0),
                 has_media=raw.get("has_media", False),
                 word_count=raw.get("word_count", 0),
-                is_buyer_request=raw.get("is_buyer_request", True),
+                is_buyer_request=raw.get("is_buyer_request", False),
                 extra_data={
                     "raw_date": raw.get("post_date"),
                     "scraped_at": raw.get("scraped_at"),
@@ -1258,12 +1265,13 @@ class FacebookScraper(BaseScraper):
         """Legacy parse path — still available for callers that use it directly."""
         try:
             text = f"{raw_data.get('title', '')} {raw_data.get('text', '')}"
-            is_buyer = _is_valid_lead(text)
-            is_us, location = _is_us_location(text)
-            if not is_us:
-                is_buyer = False
-            score = _score_lead(text)
-            category = _classify_category(text)
+            is_us, location = is_us_location(text)
+            is_buyer = BuyerIntentDetector.is_buyer_request(
+                text=text,
+                require_url=False,
+            ) and is_us
+            score = score_lead(text)
+            category = classify_category(text)
 
             return FacebookLead(
                 source_url=raw_data.get("link"),

@@ -148,9 +148,23 @@ class BaseScraper(ABC):
             # Persistence
             if save and leads:
                 self.save_leads(leads, f"{self.name.capitalize()}_raw_data")
-                final_leads = [l for l in leads if l.is_buyer_request and l.is_vertical_match]
+                # Accept leads that passed buyer intent — handles both field names:
+                # - is_buyer_request (Facebook, Craigslist)
+                # - is_service_request (Nextdoor, stored in parse_item)
+                final_leads = [
+                    l for l in leads
+                    if (getattr(l, 'is_buyer_request', False) or getattr(l, 'is_service_request', False))
+                    and l.is_vertical_match
+                ]
                 if final_leads:
                     self.save_leads(final_leads, f"{self.name.capitalize()}_final_data")
+
+                self.logger.info("pipeline_summary",
+                    total_scraped=len(leads),
+                    rejected=len(leads) - len(final_leads),
+                    final_leads=len(final_leads),
+                    rejection_reasons="promo / non-US / low intent / length"
+                )
 
             self.complete_job("completed")
             return leads

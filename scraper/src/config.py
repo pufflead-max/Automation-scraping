@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     ollama_cloud_url: str = Field(default="http://ollama:11434/api/chat")
     ollama_cloud_model: str = Field(default="qwen2.5:7b")
 
+    # Gemini AI Configuration
+    gemini_api_key: Optional[str] = Field(default=None, description="Google Gemini API key")
+    gemini_model: str = Field(default="gemini-3.0-flash-preview", description="Gemini model name")
+
     @field_validator('log_level')
     @classmethod
     def validate_log_level(cls, v: str) -> str:

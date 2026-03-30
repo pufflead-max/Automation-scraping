@@ -49,7 +49,13 @@ if src_dir not in sys.path:
 try:
     from scrapers.base import BaseScraper
     from models import FacebookLead, ScrapedLead
-    from utils.buyer_intent import BuyerIntentDetector
+    from utils.buyer_intent import (
+        BuyerIntentDetector,
+        is_us_location,
+        score_lead,
+        classify_category,
+        MIN_SCORE,
+    )
     from user_credential_manager import UserCredentialManager
     from utils.email_manager import EmailManager
 except ImportError:
@@ -74,284 +80,9 @@ except ImportError:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  LEAD PIPELINE — ported from facebook_lead_engine_v2.py
-#  All constants and helpers are module-level so they are computed once.
+#  LEAD PIPELINE — Consistently using BuyerIntentDetector
 # ══════════════════════════════════════════════════════════════════════════════
-
-MIN_SCORE = 3  # discard leads scored below this
-
-# ── US geography ──────────────────────────────────────────────────────────────
-_US_CITIES = {
-    "new york", "nyc", "brooklyn", "bronx", "queens", "manhattan", "staten island",
-    "los angeles", "la", "san francisco", "san jose", "san diego", "fresno",
-    "chicago", "houston", "phoenix", "philadelphia", "san antonio", "dallas",
-    "austin", "jacksonville", "fort worth", "columbus", "charlotte", "indianapolis",
-    "seattle", "denver", "washington dc", "nashville", "oklahoma city", "el paso",
-    "boston", "las vegas", "memphis", "louisville", "portland", "baltimore",
-    "milwaukee", "albuquerque", "tucson", "mesa", "sacramento", "atlanta",
-    "kansas city", "omaha", "raleigh", "miami", "long beach", "virginia beach",
-    "colorado springs", "tampa", "minneapolis", "new orleans", "cleveland",
-    "honolulu", "anaheim", "lexington", "stockton", "pittsburgh", "st louis",
-    "riverside", "jersey city", "newark", "hoboken", "buffalo", "rochester",
-    "albany", "syracuse", "yonkers", "westbury", "levittown", "forest hills",
-    "parkchester",
-}
-
-_US_STATES = {
-    "alabama", "al", "alaska", "ak", "arizona", "az", "arkansas", "ar",
-    "california", "ca", "colorado", "co", "connecticut", "ct", "delaware", "de",
-    "florida", "fl", "georgia", "ga", "hawaii", "hi", "idaho", "id",
-    "illinois", "il", "indiana", "in", "iowa", "ia", "kansas", "ks",
-    "kentucky", "ky", "louisiana", "la", "maine", "me", "maryland", "md",
-    "massachusetts", "ma", "michigan", "mi", "minnesota", "mn",
-    "mississippi", "ms", "missouri", "mo", "montana", "mt", "nebraska", "ne",
-    "nevada", "nv", "new hampshire", "nh", "new jersey", "nj", "new mexico", "nm",
-    "new york", "ny", "north carolina", "nc", "north dakota", "nd", "ohio", "oh",
-    "oklahoma", "ok", "oregon", "or", "pennsylvania", "pa", "rhode island", "ri",
-    "south carolina", "sc", "south dakota", "sd", "tennessee", "tn", "texas", "tx",
-    "utah", "ut", "vermont", "vt", "virginia", "va", "washington", "wa",
-    "west virginia", "wv", "wisconsin", "wi", "wyoming", "wy",
-    "washington dc", "d.c.", "dc",
-}
-
-_NON_US_PATTERNS = [
-    r"\bnorth york\b", r"\bgta\b", r"\btoronto\b", r"\bontario\b",
-    r"\bvancouver\b", r"\bmontreal\b", r"\buk\b", r"\bunited kingdom\b",
-    r"\blondon\b", r"\baustralia\b", r"\bsydney\b", r"\bmelbourne\b",
-    r"\bindia\b", r"\bmumbai\b", r"\bdelhi\b", r"\bpakistan\b",
-    r"\bkarachi\b", r"\blahore\b", r"\bphilippines\b", r"\bmanila\b",
-    r"\bcanada\b", r"\bniagara\b",
-]
-
-# ── Exclusion patterns (service providers / ads / hiring) ────────────────────
-_EXCLUSION_PATTERNS = [
-    r"\bwe\s+(?:provide|offer|specialize|are\s+available|handle|serve|install|cover)\b",
-    r"\bour\s+services?\b",
-    r"\bour\s+team\b",
-    r"\bi\s+(?:provide|offer|specialize|am\s+a\s+professional|run)\b",
-    r"\bmy\s+(?:company|business|name\s+is)\b",
-    r"\bcontact\s+us\b",
-    r"\bcall\s+(?:us|me|now|today)\b",
-    r"\btext\s+(?:us|me)\b",
-    r"\b(?:dm|message)\s+(?:us|me)\s+(?:for|to\s+book|to\s+schedule|today)\b",
-    r"\bfree\s+(?:estimate|quote|consultation)\b",
-    r"\b(?:fully|properly)\s+(?:insured|licensed)\b",
-    r"\blicensed\s+(?:and|&)?\s*insured\b",
-    r"\b(?:licensed\s+)?master\s+plumber\b",
-    r"\byears\s+of\s+experience\b",
-    r"\bserving\s+(?:all|the|greater|your)\b",
-    r"\bavailable\s+(?:for\s+work|in\s+your\s+area|24\s*/\s*7|around.the.clock)\b",
-    r"\b24\s*(?:hour|hr|\/7)\s+(?:service|emergency|plumb|electric)\b",
-    r"\bfast\s+(?:response|arrival|service)\b",
-    r"\bprofessional\s+(?:electrician|plumber|painter|contractor|service)\b",
-    r"\b(?:apply|hiring|we.re\s+hiring|looking\s+to\s+hire)\b",
-    r"\bjob\s+(?:opening|opportunity|available|listing)\b",
-    r"\bintroduc(?:e|ing)\s+myself\b",
-    r"\bi\s+just\s+joined\s+the\s+group\b",
-    r"\b(?:#plumber|#electrician|#plumbing|#electrical|#painter|#cleaning)\b",
-    r"\b(?:call|text)\s+\d{3}",
-    r"\b(?:emergency\s+service\s+available)\b",
-    r"\bhonest\s+(?:pricing|work|service)\b",
-    r"\btrusted\s+(?:service|professional|contractor)\b",
-    r"\breliable\s+(?:plumber|electrician|painter|contractor)\b",
-    r"\b(?:same.day|next.day)\s+(?:service|repair|response)\b",
-    r"\blooking\s+for\s+(?:side\s+)?work\b",
-    r"\blooking\s+for\s+a\s+(?:side\s+)?gig\b",
-    r"\bavailable\s+for\s+(?:side\s+)?work\b",
-    r"\b(?:experienced|licensed)\s+(?:electrician|plumber|painter)\s+available\b",
-    r"\bi\s+am\s+a\s+(?:residential|commercial)?\s*(electrician|plumber|painter|contractor)\b",
-    r"\bi\s+handle\s+(?:small|all)\s+(service|job|work)\b",
-    r"\bconnects\s+homeowners\b",
-    r"\bwe'll\s+connect\s+you\b",
-]
-
-# ── Buyer intent scoring patterns ─────────────────────────────────────────────
-_URGENCY_PATTERNS = [
-    r"\burgent(?:ly)?\b", r"\basap\b", r"\bright\s+(?:now|away)\b",
-    r"\bimmediately\b", r"\bemergency\b", r"\btoday\b", r"\btonight\b",
-    r"\bflooding\b", r"\bburst\s+pipe\b", r"\bno\s+(?:hot\s+)?water\b",
-    r"\bno\s+(?:power|electricity)\b", r"\bshort\s+circuit\b",
-    r"\bwater\s+damage\b", r"\boverflowing\b", r"\bgas\s+leak\b",
-]
-
-_EXPLICIT_NEED_PATTERNS = [
-    r"\bneed\s+(?:a\s+|an\s+)?plumber\b",
-    r"\blooking\s+for\s+(?:a\s+|an\s+)?plumber\b",
-    r"\bplumber\s+(?:needed|required|wanted)\b",
-    r"\brequire\s+(?:a\s+|an\s+)?plumber\b",
-    r"\bpipe\s+(?:is\s+)?(?:leaking|broken|burst|blocked)\b",
-    r"\bwater\s+(?:leaking|leakage|damage)\b",
-    r"\bdrain\s+(?:clogged|blocked|not\s+draining)\b",
-    r"\btoilet\s+(?:overflowing|broken|not\s+flushing|clogged)\b",
-    r"\bfaucet\s+(?:leaking|broken|dripping)\b",
-    r"\bneed\s+(?:a\s+|an\s+)?electrician\b",
-    r"\blooking\s+for\s+(?:a\s+|an\s+)?electrician\b",
-    r"\belectrician\s+(?:needed|required|wanted)\b",
-    r"\brequire\s+(?:a\s+|an\s+)?electrician\b",
-    r"\b(?:wiring|electrical)\s+(?:problem|issue|fault)\b",
-    r"\boutlet\s+(?:not\s+working|dead|broken)\b",
-    r"\bbreaker\s+(?:tripped|keeps\s+tripping|broken)\b",
-    r"\blight\s+(?:not\s+working|flickering|broken)\b",
-    r"\bneed\s+(?:a\s+|an\s+)?painter\b",
-    r"\blooking\s+for\s+(?:a\s+|an\s+)?painter\b",
-    r"\bneed\s+(?:my\s+)?(?:house|apartment|room|wall|ceiling)\s+painted\b",
-    r"\bpainting\s+(?:job|work|done|needed)\b",
-    r"\bneed\s+(?:a\s+|an\s+)?carpenter\b",
-    r"\blooking\s+for\s+(?:a\s+|an\s+)?carpenter\b",
-    r"\bfurniture\s+(?:repair|fix|broken)\b",
-    r"\bwood\s+(?:floor|work|repair)\s+(?:needed|help|broken)\b",
-    r"\bneed\s+(?:a\s+)?lawn\s+(?:care|service|mow)\b",
-    r"\blooking\s+for\s+(?:a\s+)?landscaper\b",
-    r"\bgarden\s+(?:cleanup|help|maintenance)\s+needed\b",
-    r"\bneed\s+(?:a\s+)?(?:house|deep|home)\s+cleaning\b",
-    r"\blooking\s+for\s+(?:a\s+)?cleaning\s+service\b",
-    r"\bcleaner\s+needed\b",
-    r"\bneed\s+(?:flooring|floor|tile)\s+(?:installation|repair|help)\b",
-    r"\blooking\s+for\s+(?:a\s+)?flooring\s+(?:contractor|company)\b",
-    r"\bfloor\s+(?:broken|damaged|needs\s+repair)\b",
-    r"\bneed\s+(?:a\s+)?fence\s+(?:installed|repaired|built)\b",
-    r"\blooking\s+for\s+(?:a\s+)?fence\s+(?:contractor|company|installer)\b",
-    r"\bneed\s+(?:driveway|asphalt|paving)\s+(?:repair|paving|help)\b",
-    r"\blooking\s+for\s+(?:a\s+)?paving\s+contractor\b",
-    r"\bneed\s+(?:kitchen|bathroom|home)\s+renovation\b",
-    r"\blooking\s+for\s+(?:a\s+)?(?:contractor|renovator)\b",
-    r"\brenovation\s+(?:help|contractor|work)\s+needed\b",
-    r"\b(?:fix|repair|replace)\s+(?:my\s+)?(?:pipe|faucet|outlet|wiring|switch|breaker|floor|fence|driveway)\b",
-]
-
-_MODERATE_INTENT_PATTERNS = [
-    r"\brecommend\w*\s+(?:a\s+|an\s+)?(?:good\s+)?(?:plumber|electrician|painter|carpenter|landscaper|cleaner|contractor)\b",
-    r"\bcan\s+(?:anyone|someone)\s+(?:recommend|suggest|help)\w*\b",
-    r"\bknow\s+(?:any|a\s+good)\s+(?:plumber|electrician|painter|carpenter)\b",
-    r"\b(?:any|good|reliable|affordable)\s+(?:plumber|electrician|painter|carpenter|cleaner)\s+(?:nearby|around|in)\b",
-    r"\biso\s+(?:a\s+|an\s+)?(?:plumber|electrician|painter|carpenter|cleaner|contractor)\b",
-    r"\b(?:plumbing|electrical|painting|carpentry|flooring|cleaning|landscaping)\s+(?:help|issue|work|repair)\b",
-    r"\b(?:toilet|sink|shower|bathtub)\s+(?:not\s+working|broken|clogged|leaking)\b",
-    r"\bwater\s+(?:pressure|heater|tank)\s+(?:issue|problem|broken|not\s+working)\b",
-    r"\b(?:switch|socket)\s+(?:not\s+working|broken|dead)\b",
-    r"\bany(?:one|body)\s+(?:know|have)\s+(?:a\s+|an\s+)?(?:good|reliable)?\s*(?:plumber|electrician|painter|contractor)\b",
-    r"\bhelp\s+(?:with|finding)\s+(?:a\s+|an\s+)?(?:plumber|electrician|painter|contractor)\b",
-    r"\bneed\s+(?:help|advice)\s+(?:with|for|about)\s+(?:plumbing|electrical|painting|renovation)\b",
-]
-
-_ALL_BUYER_INTENT = _URGENCY_PATTERNS + _EXPLICIT_NEED_PATTERNS + _MODERATE_INTENT_PATTERNS
-
-# ── Category keyword sets ─────────────────────────────────────────────────────
-_CATEGORY_KEYWORDS: Dict[str, set] = {
-    "plumbing": {
-        "plumber", "plumbing", "pipe", "piping", "leak", "leakage", "leaking",
-        "drainage", "drain", "sewer", "faucet", "tap", "toilet", "sink",
-        "bathtub", "shower", "water heater", "water tank", "water pressure",
-        "clog", "clogged", "burst pipe", "flood", "flooding", "water line",
-        "water damage", "no hot water",
-    },
-    "electrical": {
-        "electrician", "electrical", "electric", "wiring", "wire", "switch",
-        "outlet", "socket", "breaker", "fuse", "voltage", "power", "circuit",
-        "short circuit", "tripped", "no power", "no electricity", "generator",
-        "panel", "rewiring", "light fixture", "ceiling fan", "flickering",
-        "electric panel", "knob and tube",
-    },
-    "painting": {
-        "paint", "painter", "painting", "wall paint", "house painting",
-        "interior paint", "exterior paint", "ceiling paint", "trim paint",
-        "primer", "stucco", "repaint", "color",
-    },
-    "carpentry": {
-        "carpenter", "carpentry", "woodwork", "wood work", "furniture repair",
-        "cabinet", "door frame", "deck", "wood floor repair", "trim",
-        "molding", "shelving", "built-in", "woodworking",
-    },
-    "landscaping": {
-        "lawn", "lawn care", "garden", "gardening", "landscaping", "landscaper",
-        "mowing", "mow", "hedge", "tree trimming", "mulch", "sod", "grass",
-        "yard", "yard work", "sprinkler",
-    },
-    "cleaning": {
-        "cleaning", "cleaner", "house cleaning", "deep cleaning", "home cleaning",
-        "maid", "maid service", "housekeeping", "janitorial", "move-out clean",
-        "spring cleaning", "carpet cleaning",
-    },
-    "flooring": {
-        "flooring", "floor", "tile", "tiles", "hardwood", "laminate", "vinyl",
-        "wood floor", "carpet", "subfloor", "grout", "floor installation",
-        "floor repair", "tile installation",
-    },
-    "fence": {
-        "fence", "fencing", "gate", "gate repair", "picket fence", "privacy fence",
-        "chain link", "wood fence", "vinyl fence", "fence installation",
-        "fence repair",
-    },
-    "asphalt": {
-        "asphalt", "driveway", "paving", "pavement", "pothole", "blacktop",
-        "driveway repair", "driveway paving", "asphalt paving", "crack seal",
-        "parking lot",
-    },
-    "renovation": {
-        "renovation", "remodel", "remodeling", "kitchen renovation",
-        "bathroom renovation", "home improvement", "contractor", "gut renovation",
-        "kitchen remodel", "bathroom remodel", "addition", "buildout",
-    },
-}
-
-
-def _normalize(text: str) -> str:
-    return re.sub(r"\s+", " ", text.lower().strip())
-
-
-def _is_valid_lead(content: str) -> bool:
-    """Gate 1 + 2: reject promos/ads/hiring; require buyer intent."""
-    norm = _normalize(content)
-    for pat in _EXCLUSION_PATTERNS:
-        if re.search(pat, norm):
-            return False
-    for pat in _ALL_BUYER_INTENT:
-        if re.search(pat, norm):
-            return True
-    return False
-
-
-def _is_us_location(content: str):
-    """Return (is_us: bool, location: str)."""
-    norm = _normalize(content)
-    for pat in _NON_US_PATTERNS:
-        if re.search(pat, norm):
-            return False, ""
-    for city in _US_CITIES:
-        if re.search(r"\b" + re.escape(city) + r"\b", norm):
-            return True, city.title()
-    for state in _US_STATES:
-        if re.search(r"\b" + re.escape(state) + r"\b", norm):
-            return True, state.title()
-    return False, ""
-
-
-def _score_lead(content: str) -> int:
-    """Return intent score 5/4/3/1."""
-    norm = _normalize(content)
-    for pat in _URGENCY_PATTERNS:
-        if re.search(pat, norm):
-            return 5
-    for pat in _EXPLICIT_NEED_PATTERNS:
-        if re.search(pat, norm):
-            return 4
-    for pat in _MODERATE_INTENT_PATTERNS:
-        if re.search(pat, norm):
-            return 3
-    return 1
-
-
-def _classify_category(content: str) -> str:
-    """Return the best-matching service category."""
-    norm = _normalize(content)
-    scores: Dict[str, int] = defaultdict(int)
-    for cat, keywords in _CATEGORY_KEYWORDS.items():
-        for kw in keywords:
-            if re.search(r"\b" + re.escape(kw) + r"\b", norm):
-                scores[cat] += 1
-    if not scores:
-        return "other"
-    return max(scores, key=lambda c: scores[c])
+# Constants and helpers are now imported from utils.buyer_intent
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -870,8 +601,8 @@ class FacebookScraper(BaseScraper):
 
     def _run_lead_pipeline(self, raw_posts: list, stats: dict) -> list:
         """
-        Apply the full 3-gate lead pipeline from facebook_lead_engine_v2.py:
-          Gate 1 — buyer intent present AND not a promo/ad/hiring post
+        Apply the full 3-gate lead pipeline using the centralized BuyerIntentDetector:
+          Gate 1 — buyer intent present AND not a promo/ad/hiring post (includes Ollama AI check)
           Gate 2 — US location detected
           Gate 3 — intent score >= MIN_SCORE
 
@@ -882,25 +613,26 @@ class FacebookScraper(BaseScraper):
         for raw in raw_posts:
             content = raw.get("text", "")
 
-            # Gate 1: buyer intent + not a promo
-            if not _is_valid_lead(content):
+            # Gate 1: buyer intent + not a promo + Ollama check
+            if not BuyerIntentDetector.is_buyer_request(content):
                 stats["excluded_non_buyer"] += 1
                 continue
 
             # Gate 2: US-only
-            is_us, location = _is_us_location(content)
+            is_us, location = is_us_location(content)
             if not is_us:
                 stats["excluded_non_us"] += 1
                 continue
 
             # Gate 3: score threshold
-            score = _score_lead(content)
+            score = score_lead(content)
             if score < MIN_SCORE:
                 stats["excluded_low_score"] += 1
                 continue
 
+            stats.setdefault("qualified", 0)
             stats["qualified"] += 1
-            category = _classify_category(content)
+            category = classify_category(content)
 
             qualified.append({
                 **raw,
@@ -911,7 +643,7 @@ class FacebookScraper(BaseScraper):
             })
 
         # Highest intent first
-        qualified.sort(key=lambda x: x["intent_score"], reverse=True)
+        qualified.sort(key=lambda x: x.get("intent_score", 0), reverse=True)
         return qualified
 
     def _raw_to_lead(self, raw: dict) -> Optional[FacebookLead]:

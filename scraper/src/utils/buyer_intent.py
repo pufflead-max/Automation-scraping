@@ -12,11 +12,31 @@ existing callers continue to work without modification.
 """
 
 import re
-import logging
+import sys
+import os
 from collections import defaultdict
 from typing import Optional, Tuple
 
-logger = logging.getLogger("buyer_intent")
+# Add src to path if needed for logger import
+src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if src_dir not in sys.path:
+    sys.path.append(src_dir)
+
+try:
+    from logger import ScraperLogger
+except ImportError:
+    try:
+        from ..logger import ScraperLogger
+    except ImportError:
+        # Minimum fallback
+        class ScraperLogger:
+            def __init__(self, name): self.name = name
+            def info(self, ev, **kw): print(f"INFO [{self.name}] {ev} {kw}")
+            def debug(self, ev, **kw): print(f"DEBUG [{self.name}] {ev} {kw}")
+            def error(self, ev, **kw): print(f"ERROR [{self.name}] {ev} {kw}")
+            def exception(self, ev, **kw): print(f"EXCEPTION [{self.name}] {ev} {kw}")
+
+logger = ScraperLogger("buyer_intent")
 
 # ── Minimum score to accept a lead ────────────────────────────────────────────
 MIN_SCORE = 3
@@ -348,7 +368,7 @@ def _is_ollama_buyer_request(text: str, platform: str = "Facebook", location: st
     text_lower = text.lower()
     for word in pre_filter_words:
         if word in text_lower:
-            print(f"[DEBUG] Pre-filter matched: '{word}' -> Rejecting")
+            logger.info("ollama_pre_filter_matched", word=word, action="rejecting")
             return {
                 "is_qualified_lead": False,
                 "reason": f"Pre-filter matched: {word}",
@@ -356,7 +376,7 @@ def _is_ollama_buyer_request(text: str, platform: str = "Facebook", location: st
                 "category": None
             }
 
-    print(f"\n[DEBUG] Input text:\n{text[:200]}...")
+    logger.debug("ollama_qualification_started", text_preview=text[:150].replace("\n", " "))
 
     try:
         from config import get_settings
@@ -422,8 +442,7 @@ Post:
         
         # 3. Fix Fallback Logic (don't default to True)
         if resp.status_code != 200:
-            print(f"[DEBUG] API error: {resp.status_code} - {resp.text}")
-            logger.error(f"ollama_intent_failed: API error {resp.status_code}")
+            logger.error("ollama_api_failed", status_code=resp.status_code, response=resp.text)
             return {
                 "is_qualified_lead": False,
                 "reason": f"LLM API error {resp.status_code}",
@@ -436,13 +455,12 @@ Post:
         raw_content = raw_response.get("message", {}).get("content", "")
         
         # 6. Add Debug Logs
-        print(f"[DEBUG] Raw Ollama response:\n{raw_content}")
+        logger.debug("ollama_raw_response_received", content=raw_content)
         
         try:
             parsed_result = json.loads(raw_content)
         except json.JSONDecodeError as e:
-            print(f"[DEBUG] Failed to parse JSON: {e}")
-            logger.error(f"ollama_intent_failed: JSON parse error - {e}")
+            logger.error("ollama_json_parse_failed", error=str(e), raw_content=raw_content)
             return {
                 "is_qualified_lead": False,
                 "reason": "LLM failed (JSON parsing error)",
@@ -450,22 +468,21 @@ Post:
                 "category": None
             }
             
-        print(f"[DEBUG] Parsed result:\n{json.dumps(parsed_result, indent=2)}")
+        logger.info("ollama_classification_result", result=parsed_result)
         
         # 4. Fix Classification Logic
         is_qualified = parsed_result.get("is_qualified_lead")
         if is_qualified is True:
             parsed_result["is_qualified_lead"] = True
-            print("[DEBUG] Final decision: ACCEPTED")
+            logger.info("ollama_final_decision", decision="ACCEPTED")
         else:
             parsed_result["is_qualified_lead"] = False  # Ensure it strictly evaluates False for all else
-            print("[DEBUG] Final decision: REJECTED")
+            logger.info("ollama_final_decision", decision="REJECTED")
             
         return parsed_result
 
     except Exception as e:
-        print(f"[DEBUG] Exception occurred: {str(e)}")
-        logger.error(f"ollama_intent_failed: {str(e)}")
+        logger.exception("ollama_processing_exception", error=str(e))
         return {
             "is_qualified_lead": False,
             "reason": "LLM failed",

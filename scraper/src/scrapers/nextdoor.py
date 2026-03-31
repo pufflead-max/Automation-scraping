@@ -19,7 +19,7 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
 # Internal project imports (Absolute to work in Docker/Airflow)
 from models import NextdoorLead, ScrapedLead
-from utils.buyer_intent import BuyerIntentDetector, _is_ollama_buyer_request, classify_category
+from utils.buyer_intent import BuyerIntentDetector, classify_category
 from user_credential_manager import UserCredentialManager
 from utils.email_manager import EmailManager
 
@@ -115,33 +115,8 @@ class NextdoorScraper(BaseScraper):
             body = raw_data.get('body', '') or raw_data.get('description', '')
             text = f"{title}\n{body}".strip()
             
-            # Use strict, centralized buyer intent detector
-            # This automatically handles: pre-filter, length, promo, Ollama 1-5 scoring, and US location
-            is_service_request = BuyerIntentDetector.is_buyer_request(
-                text=text,
-                require_url=False,
-                url=raw_data.get('url'),
-                custom_keywords=custom_keywords,
-                exclude_keywords=exclude_keywords,
-                custom_indicators=custom_indicators
-            )
+            category = classify_category(text)
             
-            intent_score = 0
-            category = "other"
-            
-            if not is_service_request:
-                reason = BuyerIntentDetector.get_detection_reason(text, raw_data.get('url'))
-                self.logger.debug("filtered_non_buyer_post", reason=reason, title=title[:40])
-            else:
-                # Re-fetch ollama payload locally since it passed Gate 4
-                ollama_result = _is_ollama_buyer_request(text)
-                intent_score = ollama_result.get("intent_score", 0)
-                category = ollama_result.get("category", classify_category(text))
-                
-                # Final extra gate natively specified:
-                if category not in ["plumbing", "electrical"] or intent_score < 4:
-                    is_service_request = False
-                    
             return NextdoorLead(
                 source_url=raw_data.get('url', ''),
                 source_id=raw_data.get('post_id'),
@@ -161,8 +136,9 @@ class NextdoorScraper(BaseScraper):
                 tagged_business=raw_data.get('tagged_business'),
                 tagged_business_category=raw_data.get('tagged_category'),
                 topics=raw_data.get('topics', []),
-                is_service_request=is_service_request,
-                intent_score=intent_score,
+                is_service_request=False, # AI Check happens in BaseScraper.run
+                is_hiring=False,
+                intent_score=0,
                 category=category
             )
         except Exception as e:
@@ -333,27 +309,27 @@ class NextdoorScraper(BaseScraper):
                 """Helper to extract feed items from Nextdoor search/feed JSON response."""
                 if not isinstance(data, dict):
                     return None
-                # Search results usually in 'searchConnection' or 'searchResults'
-                # Neighborhood posts usually in 'neighborhoodFeed' or 'feedConnection'
-                for key in ['searchConnection', 'searchResults', 'neighborhoodFeed', 'feedConnection', 'edges', 'items']:
+                    
+                # Search results and news feed often nested under these keys
+                for key in ['searchConnection', 'searchResults', 'neighborhoodFeed', 'feedConnection', 
+                           'edges', 'items', 'posts', 'neighborhood_posts', 'search_results']:
                     if key in data:
                         result = data[key]
                         if isinstance(result, list):
-                            # FILTER: Only keep items that look like actual user posts
-                            # Business/Profiles usually have different type signatures in JSON
                             filtered = []
                             for r in result:
                                 if isinstance(r, dict):
                                     node = r.get('node', r)
-                                    # Nextdoor post IDs typically start with certain patterns or have specific fields
-                                    if node.get('__typename') in ['Post', 'NeighborhoodPost']:
+                                    typename = node.get('__typename', '')
+                                    # Include SearchResult and common post typenames
+                                    if typename in ['Post', 'NeighborhoodPost', 'SearchResult', 'PostSearchResult'] or 'id' in node:
                                         filtered.append(r)
                             return filtered
                         if isinstance(result, dict):
                             res = _find_feed_items(result)
                             if res: return res
                 
-                # Recursive search for anything that looks like a list of posts
+                # Recursive search deeper
                 for k, v in data.items():
                     if isinstance(v, (dict, list)):
                         res = _find_feed_items(v)
@@ -363,12 +339,13 @@ class NextdoorScraper(BaseScraper):
             def scrape_from_dom(page):
                 """Fallback: extract posts directly from HTML if JSON interception fails."""
                 try:
-                    # Selectors based on the Search Page HTML structure
+                    # Very broad selectors to capture both feed and search results
                     selectors = [
-                        'a[data-app="2"][href*="/p/"]', # Specific Post links ONLY
-                        # REMOVED: '[href*="/page/"]' - Business pages
-                        # REMOVED: '[href*="/profile/"]' - User profiles
-                        # REMOVED: '[href*="/local_events/"]' - Local events
+                        'a[href*="/p/"]', # Any link to a post
+                        '[data-testid="post-title"]',
+                        '[data-testid="styled-text-wrapper"]',
+                        'article[data-testid="post-container"]',
+                        '.feed-item-content',
                     ]
                     
                     found_any = False
@@ -377,31 +354,34 @@ class NextdoorScraper(BaseScraper):
                             elements = page.locator(selector).all()
                             for el in elements:
                                 try:
-                                    # For text wrappers, we want to look at their parent link card
                                     target_el = el
-                                    if selector == '[data-testid="styled-text-wrapper"]':
-                                        # Try to find the parent link card
-                                        try: target_el = el.locator('xpath=./ancestor::a[@data-app="2"]').first
-                                        except: continue
+                                    if selector in ['[data-testid="styled-text-wrapper"]', '[data-testid="post-title"]']:
+                                        # Try to find link parent or article
+                                        try: target_el = el.locator('xpath=./ancestor::a[contains(@href, "/p/")]|./ancestor::article').first
+                                        except: pass
                                     
                                     text = target_el.inner_text().strip()
-                                    if not text or len(text) < 40: continue
+                                    # Relaxed minimum text length
+                                    if not text or len(text) < 25: continue
                                     
                                     href = target_el.get_attribute("href") or ""
+                                    if not href:
+                                        try: href = target_el.locator('a[href*="/p/"]').first.get_attribute('href') or ""
+                                        except: pass
+                                    if not href: continue # No link, no post
+                                        
                                     post_url = href if "http" in href else f"https://nextdoor.com{href}"
                                     
-                                    # Check for "Sponsored" or "Thumbtack" text in the card
+                                    # Sponsored check
                                     low_text = text.lower()
-                                    if "sponsored" in low_text or "promoted" in low_text or "thumbtack" in low_text or "thumbtack.com" in post_url:
-                                        self.logger.info("skipping_excluded_result", url=post_url)
+                                    if "sponsored" in low_text or "promoted" in low_text or "thumbtack" in low_text:
                                         continue
                                     
                                     import hashlib
                                     post_id = f"search_{hashlib.md5(text[:100].encode()).hexdigest()}"
                                     
                                     if post_id not in collected_posts:
-                                        self.logger.info("search_result_found", url=post_url)
-                                        # Split text to find author (usually first line)
+                                        self.logger.info("dom_result_found", url=post_url)
                                         lines = text.split("\n")
                                         author = lines[0] if lines else "Nextdoor User"
                                         
@@ -420,18 +400,13 @@ class NextdoorScraper(BaseScraper):
                 except Exception as e:
                     self.logger.error("dom_parse_error", error=str(e))
                     return False
-                except Exception as e:
-                    self.logger.error("dom_parse_error", error=str(e))
-                    return False
 
             def handle_response(response):
                 try:
-                    if response.status != 200:
-                        return
+                    if response.status != 200: return
                     ct = response.headers.get('content-type', '')
-                    if 'json' not in ct:
-                        return
-                    self.logger.info("intercepted_json_endpoint", url=response.url)
+                    if 'json' not in ct: return
+                    
                     data = response.json()
                     feed_items = _find_feed_items(data) or []
                     if feed_items:
@@ -441,48 +416,53 @@ class NextdoorScraper(BaseScraper):
                         parsed = self.parse_post(item)
                         if parsed and parsed.get('post_id'):
                             collected_posts[parsed['post_id']] = parsed
-                        else:
-                            # Log if it was found but failed parsing/validation
-                            post_id = item.get('id') if isinstance(item, dict) else 'unknown'
-                            self.logger.debug("post_rejected", post_id=post_id)
-                except Exception:
-                    pass
+                except: pass
             
             page.on("response", handle_response)
             
             try:
                 self.logger.info("navigating_to_url", target=target or "news_feed")
                 url = target if target else "https://nextdoor.com/news_feed/"
-                # Faster navigation: 45s instead of 90s.
-                page.goto(url, timeout=45000)
+                page.goto(url, timeout=60000, wait_until="domcontentloaded")
+                
+                # Resilient Tab Switching
+                if "/search/" in url:
+                    try:
+                        # Catch more possible Post tags/buttons
+                        selectors = [
+                            'button:has-text("Posts")', 
+                            'a:has-text("Posts")',
+                            '[role="tab"]:has-text("Posts")'
+                        ]
+                        for s in selectors:
+                            tab = page.locator(s).first
+                            if tab.is_visible(timeout=5000):
+                                tab.click()
+                                page.wait_for_timeout(3000)
+                                break
+                    except: pass
+
                 try:
-                    # WAIT for network to be quiet, but only for 15s (Thumbtack ads often hang networkidle)
-                    page.wait_for_load_state("networkidle", timeout=15000)
-                except:
-                    pass
-                # Short wait for any dynamic content
-                page.wait_for_timeout(2000)
+                    page.wait_for_load_state("networkidle", timeout=10000)
+                except: pass
+                page.wait_for_timeout(5000)
 
                 # Initial DOM extraction
                 scrape_from_dom(page)
 
                 if "login" in page.url or "signup" in page.url:
-                    self.logger.error("session_invalid_redirected")
-                    raise ValueError("Nextdoor session invalid.")
+                    raise ValueError("Nextdoor session invalid or redirected to auth.")
                 
-                previous_count = 0
                 for i in range(max_pages):
                     page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                    # Reduced scroll wait from 4s to 2s
-                    page.wait_for_timeout(2000)
-                    
-                    # Call DOM extract during each scroll
+                    page.wait_for_timeout(4000)
                     scrape_from_dom(page)
-                    
                     if "login" in page.url or "signup" in page.url: break
+                    
                 if len(collected_posts) == 0:
-                    self.logger.error("feed_empty", reason="No posts detected in neighborhood feed")
-                    raise ValueError("Nextdoor feed is completely empty. Invalid location or banned session.")
+                    page_text = page.inner_text("body")[:500].replace("\n", " ")
+                    self.logger.error("feed_empty_debug", url=page.url, body_snippet=page_text)
+                    raise ValueError("Nextdoor feed is completely empty. Verify session/region or check search query.")
 
                 self.logger.info("scrolling_complete", gathered_raw=len(collected_posts))
             except Exception as e:

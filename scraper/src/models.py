@@ -31,6 +31,9 @@ class ScrapedLead(BaseModel):
     phone: Optional[str] = None
     vertical: Optional[str] = None
     is_buyer_request: bool = False
+    is_hiring: bool = False
+    ollama_result: Optional[bool] = None
+    gemini_result: Optional[bool] = None
     is_vertical_match: bool = False
     intent_score: Optional[int] = None
     

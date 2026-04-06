@@ -99,6 +99,7 @@ class BaseScraper(ABC):
             
         self.start_job(target, kw.get('category'))
         try:
+            # 1. Scrape Leads (Now returns items with minimal processing)
             leads = self.scrape(target, **kw)
             self.scraped_items = leads
             
@@ -114,59 +115,54 @@ class BaseScraper(ABC):
                     l.extra_data = l.extra_data or {}
                     l.extra_data['user_detail'] = user_data
 
-            # Age Filter (48h)
-            age_limit = datetime.utcnow() - timedelta(hours=48)
-            fresh_leads = []
-            for l in leads:
-                posted = getattr(l, 'posted_date', None)
-                if posted:
-                    if hasattr(posted, 'tzinfo') and posted.tzinfo is not None:
-                        posted = posted.replace(tzinfo=None)
-                    if posted < age_limit:
-                        continue
-                fresh_leads.append(l)
-            leads = fresh_leads
-
-            # Enrichment & Vertical Matching
-            user_allowed_slugs = set()
-            mapper = None
-            if user_data and user_data.get('verticals'):
-                try:
-                    mapper = get_mapping_manager()
-                    user_allowed_slugs = {mapper._resolve_vertical_slug(v) for v in user_data.get('verticals', [])}
-                except Exception: pass
-
-            for l in leads:
-                text = f"{l.title or ''} {l.description or ''}".strip()
-                if not text: continue
-                l.vertical = LeadEnricher.extract_vertical(text)
-                if user_allowed_slugs and mapper and l.vertical:
-                    l.is_vertical_match = (mapper._resolve_vertical_slug(l.vertical) in user_allowed_slugs)
-                else:
-                    l.is_vertical_match = True
-
-            # Persistence
+            # 2. Save to Raw Data Collection
             if save and leads:
                 self.save_leads(leads, f"{self.name.capitalize()}_raw_data")
-                # Accept leads that passed buyer intent — handles both field names:
-                # - is_buyer_request (Facebook, Craigslist)
-                # - is_service_request (Nextdoor, stored in parse_item)
-                final_leads = [
-                    l for l in leads
-                    if (getattr(l, 'is_buyer_request', False) or getattr(l, 'is_service_request', False))
-                    and l.is_vertical_match
-                ]
+                
+                # 3. Regex and AI Checks (Standardized Binary Gate)
+                from utils.buyer_intent import BuyerIntentDetector
+                self.logger.info("starting_ai_qualification", count=len(leads))
+                
+                final_leads = []
+                for l in leads:
+                    text = f"{l.title or ''} {l.description or ''}".strip()
+                    if not text: continue
+                    
+                    # Run the strict triple-check and capture individual results
+                    res = BuyerIntentDetector.get_detailed_results(text)
+                    l.ollama_result = res.get("ollama_result")
+                    l.gemini_result = res.get("gemini_result")
+                    l.is_buyer_request = res.get("final_decision", False)
+                    l.is_hiring = l.is_buyer_request
+                    
+                    if l.is_hiring:
+                        l.intent_score = 5
+                        final_leads.append(l)
+                
+                # 4. Save to Final Data Collection
                 if final_leads:
                     self.save_leads(final_leads, f"{self.name.capitalize()}_final_data")
-
+                    
+                    # 5. Sync to Google Sheets and Push to GHL
+                    self._sync_and_push(final_leads)
+                
                 self.logger.info("pipeline_summary",
                     total_scraped=len(leads),
-                    rejected=len(leads) - len(final_leads),
-                    final_leads=len(final_leads),
-                    rejection_reasons="promo / non-US / low intent / length"
+                    qualified=len(final_leads),
+                    rejected=len(leads) - len(final_leads)
                 )
 
             self.complete_job("completed")
             return leads
         except Exception as e:
             self.complete_job("failed", e); raise
+
+    def _sync_and_push(self, leads: List[ScrapedLead]):
+        """Helper to sync leads to GHL and Google Sheets after AI classification."""
+        try:
+            from push_leads import push_leads
+            self.logger.info("starting_external_sync", count=len(leads))
+            # push_leads script already handles GHL and Sheets based on source name
+            push_leads(source=self.name, user_email=self.user_email)
+        except Exception as e:
+            self.logger.error("sync_push_failed", error=str(e))

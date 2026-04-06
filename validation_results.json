@@ -1,0 +1,156 @@
+[
+  {
+    "original_post": "Robert was struggling to put up a Fence for his family because the retaining wall was failing \n\nAfter seeing how urgent the situation was, we quickly checked in with North Arlington building department and prioritized his home in our calendar\n\nWe built Robert a completely new retaining wall and now he can finally give his family the privacy they need with the upcoming fence installation #northjersey #construction #explore",
+    "platform": "facebook",
+    "category": "fence",
+    "source": "facebook",
+    "ollama_result": {
+      "is_hiring": false,
+      "confidence": "low",
+      "reason": "Post is about completed work, not hiring"
+    },
+    "gemini_result": {
+      "is_hiring": false,
+      "confidence": "high",
+      "reason": "The post is a testimonial or case study from a service provider showcasing their own work, not a request for services."
+    },
+    "final_decision": false
+  },
+  {
+    "original_post": "\ud83c\udfe1 PHirst Impressions GenTri \u2013 Your Future Home Awaits!\nLooking for an affordable yet quality home in General Trias? Check out PHirst Impressions GenTri with beautifully designed townhouse units\u2014perfect for families starting their dream home.\n\n\u2728 Comfortable. Affordable. Perfect for your family.\n\n\ud83d\udce9 Ask now and schedule your tripping today!",
+    "platform": "facebook",
+    "category": "other",
+    "source": "facebook",
+    "ollama_result": null,
+    "gemini_result": null,
+    "final_decision": false
+  },
+  {
+    "original_post": "Update on the cats \nUpdate 1)\n\nWe have tried with the trap for the one by our house since the post was made. It was caught 5 times (we've used this trap in the past without any problems) but it got out every time. Two days we didn't see it, but the day after it came again. Keeps coming back for food though and tomorrow we are going to borrow another trap and try with and see.\n\nThe orange we haven't seen again since. We don't always with him, but ofc we pray that he's okay and we will keep trying.\n\nWe have contact with a rescue if needed. But will most likely take them to our vet. When we get a hold of them and have taken them to the vet we might update again incase ppl would like to help towards treatment etc.\n\nUntil this, incase there's anyone that would like to help either our own rescues or the strays we feed, we have Wishlists on Amazon. I double-checked with admin and got an okay. Ofc it's not a must to help, it's completely voluntary. \n\nThe stray cats wishlist:\n\nhttps://www.amazon.com/hz/wishlist/ls/1XI0GQFF7GEW6?ref_=wl_share\n\nFor both strays and our rescues, all under $15:\n\nhttps://www.amazon.com/hz/wishlist/ls/WPN41GQWTKQI?ref_=wl_share\n\nOur own rescues wishlist:\n\nhttps://www.amazon.com/hz/wishlist/ls/5YO1YNHS4ZRK?ref_=wl_share\n\n--------\n\nHelp asap\n\nWe just saw this girl come to us. She can't seem to be able to close her mouth, she's hurt. Skinny too. This is a first.\n\nWe also have an orange boy (very friendly, not neutered) that we see a couple of blocks away that has an abscess on the face (my son saw it last).\n\nBoth need to be trapped and taken care of. We do NOT have the possibility to take them in and foster. We have 11 cats ourselves (including a couple of ferals) and feed strays/rescue off the streets. \n\nEvery time I've contacted rescues we get a no and I get it. But this is urgent and they need help. Can someone please help me get a rescue for them?! \n\nWe are in desperate need of rescue, treatment etc with both of them! \n\nLocated close to HomeDepot on Targee/Staten Island.\n\nPlease \u2661",
+    "platform": "facebook",
+    "category": null,
+    "source": "facebook",
+    "ollama_result": null,
+    "gemini_result": null,
+    "final_decision": false
+  },
+  {
+    "original_post": "Ed Mclaughlin tagged you in a photo in Hudson valley New York small business listings.",
+    "platform": "facebook",
+    "category": null,
+    "source": "facebook",
+    "ollama_result": {
+      "is_hiring": false,
+      "confidence": "low",
+      "reason": "No clear indication of hiring or service need"
+    },
+    "gemini_result": {
+      "is_hiring": false,
+      "confidence": "high",
+      "reason": "The post is a social media notification about being tagged in a business listing, not a request for services."
+    },
+    "final_decision": false
+  },
+  {
+    "original_post": "NJ Contractors (New Jersey): \"Looking to make a deck 10x20 (2nd floor height) in Jackson NJ, whoever can do it in the $4k range...\"",
+    "platform": "facebook",
+    "category": null,
+    "source": "facebook",
+    "ollama_result": {
+      "is_hiring": true,
+      "confidence": "high",
+      "reason": "Clear request for a home service professional to build a deck"
+    },
+    "gemini_result": {
+      "is_hiring": true,
+      "confidence": "high",
+      "reason": "The user is explicitly looking for a contractor to build a deck and specifies dimensions, location, and budget."
+    },
+    "final_decision": true
+  },
+  {
+    "original_post": "You have a new friend suggestion: Annu Mehta.",
+    "platform": "facebook",
+    "category": null,
+    "source": "facebook",
+    "ollama_result": {
+      "is_hiring": false,
+      "confidence": "low",
+      "reason": "No indication of needing a service or hiring"
+    },
+    "gemini_result": {
+      "is_hiring": false,
+      "confidence": "high",
+      "reason": "This is a system notification from a social media platform regarding a friend suggestion, not a request for services."
+    },
+    "final_decision": false
+  },
+  {
+    "original_post": "Luka Stankovic mentioned you and others in a comment in NJ Contractors (New Jersey).",
+    "platform": "facebook",
+    "category": null,
+    "source": "facebook",
+    "ollama_result": {
+      "is_hiring": false,
+      "confidence": "low",
+      "reason": "No clear indication of hiring or service need"
+    },
+    "gemini_result": {
+      "is_hiring": false,
+      "confidence": "high",
+      "reason": "The post is a notification about a social media mention/tag, not a request for services."
+    },
+    "final_decision": false
+  },
+  {
+    "original_post": "Welcome to NEW YORK ANIMALS IN... Now you can post, connect with other members and more.",
+    "platform": "facebook",
+    "category": null,
+    "source": "facebook",
+    "ollama_result": {
+      "is_hiring": false,
+      "confidence": "low",
+      "reason": "Promotional content for a pet-related community platform"
+    },
+    "gemini_result": {
+      "is_hiring": false,
+      "confidence": "high",
+      "reason": "The post is a generic welcome message for a community group or platform, not a request for home services."
+    },
+    "final_decision": false
+  },
+  {
+    "original_post": "Need an electrician to fit a security light in my back garden. Reasonably priced please",
+    "platform": "facebook",
+    "category": null,
+    "source": "facebook",
+    "ollama_result": {
+      "is_hiring": true,
+      "confidence": "high",
+      "reason": "Clear request for an electrician service"
+    },
+    "gemini_result": {
+      "is_hiring": true,
+      "confidence": "high",
+      "reason": "The user is explicitly asking for an electrician to perform a specific service at their home."
+    },
+    "final_decision": true
+  },
+  {
+    "original_post": "Anyone need an electrician labourer I\u2019m based in Birmingham looking for work",
+    "platform": "facebook",
+    "category": null,
+    "source": "facebook",
+    "ollama_result": {
+      "is_hiring": false,
+      "confidence": "low",
+      "reason": "Posting job availability rather than seeking hire"
+    },
+    "gemini_result": {
+      "is_hiring": false,
+      "confidence": "high",
+      "reason": "The post is from a service provider looking for work, not someone looking to hire a professional."
+    },
+    "final_decision": false
+  }
+]

@@ -50,24 +50,6 @@ class CraigslistScraper(BaseScraper):
             
             description = raw_data.get('description')
             
-            # Combine title and description for buyer intent analysis
-            text = f"{raw_data.get('title', '')} {description or ''}"
-
-            # Use centralized buyer intent detector
-            is_buyer_request = BuyerIntentDetector.is_buyer_request(
-                text=text,
-                require_url=True,
-                url=url,
-                custom_keywords=custom_keywords,
-                exclude_keywords=exclude_keywords,
-                custom_indicators=custom_indicators
-            )
-            
-            # Log detection reason for debugging
-            if not is_buyer_request:
-                reason = BuyerIntentDetector.get_detection_reason(text, url)
-                self.logger.debug("filtered_non_buyer_post", reason=reason, title=raw_data.get('title'))
-            
             return CraigslistLead(
                 source_url=url or '',
                 source_id=posting_id,
@@ -78,7 +60,9 @@ class CraigslistScraper(BaseScraper):
                 category=raw_data.get('category'),
                 posted_date=raw_data.get('posted_date'),
                 images=raw_data.get('images', []),
-                is_buyer_request=is_buyer_request,
+                is_buyer_request=False, 
+                is_hiring=False,
+                intent_score=0,
             )
         except Exception as e:
             self.logger.warning("failed_to_parse_item", error=str(e))
